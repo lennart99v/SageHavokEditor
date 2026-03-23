@@ -1,0 +1,2933 @@
+﻿using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Core.Patching;
+using SkyrimHavokEditor.Core.Services;
+using SkyrimHavokEditor.Core.Validation;
+using SkyrimHavokEditor.Models;
+using SkyrimHavokEditor.Models.ViewModels;
+using SkyrimHavokEditor.UI;
+using SkyrimHavokEditor.UI.Converters;
+using SkyrimHavokEditor.UI.Dialogs;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Security.AccessControl;
+using System.Text;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Media;
+using System.Xml.Serialization;
+
+namespace SkyrimHavokEditor
+{
+    public partial class MainWindow : Window
+    {
+        private HavokManager manager = new HavokManager();
+
+        // ObservableCollections notify the UI when items are added/cleared
+        public ObservableCollection<IdNamePair> VariableList { get; set; } = new();
+        public ObservableCollection<IdNamePair> EventList { get; set; } = new();
+        public ObservableCollection<ClipInfo> ClipList { get; set; } = new();
+
+        public FileStats Stats { get; } = new FileStats();
+
+        private ContextMenu RecentFilesMenu = new ContextMenu();
+
+        private string _clipFilter = "";
+        public string ClipFilter
+        {
+            get => _clipFilter;
+            set
+            {
+                _clipFilter = value;
+                ClipsView.Refresh();
+            }
+        }
+
+        private string _variableFilter = "";
+        public string VariableFilter
+        {
+            get => _variableFilter;
+            set
+            {
+                _variableFilter = value;
+                VariablesView.Refresh();
+            }
+        }
+
+        public ICollectionView ClipsView { get; private set; }
+        public ICollectionView VariablesView { get; private set; }
+
+        public ObservableCollection<TransitionInfo> TransitionList { get; set; } = new();
+        public ICollectionView TransitionsView { get; private set; }
+
+        private string _transitionFilter = "";
+        public string TransitionFilter
+        {
+            get => _transitionFilter;
+            set { _transitionFilter = value; TransitionsView.Refresh(); }
+        }
+
+        public ObservableCollection<VariableUsage> UsageList { get; set; } = new();
+        public ICollectionView UsageView { get; private set; }
+
+        private IdNamePair _selectedVariable;
+        public IdNamePair SelectedVariable
+        {
+            get => _selectedVariable;
+            set
+            {
+                _selectedVariable = value;
+                if (value != null) RefreshVarUsages(value);
+            }
+        }
+
+        public ObservableCollection<EventUsageEntry> EventUsageList { get; set; } = new();
+
+        private IdNamePair _selectedEvent;
+        public IdNamePair SelectedEvent
+        {
+            get => _selectedEvent;
+            set
+            {
+                _selectedEvent = value;
+                if (value != null) RefreshEventUsages(value);
+            }
+        }
+
+        public ObservableCollection<ClipTrigger> TriggerList { get; set; } = new();
+
+        private ClipInfo _selectedClip;
+        public ClipInfo SelectedClip
+        {
+            get => _selectedClip;
+            set
+            {
+                _selectedClip = value;
+                if (value != null) RefreshTriggers(value);
+            }
+        }
+
+        public ObservableCollection<BindingEntry> BindingList { get; set; } = new();
+        public ICollectionView BindingsView { get; private set; }
+
+        private string _bindingFilter = "";
+        public string BindingFilter
+        {
+            get => _bindingFilter;
+            set { _bindingFilter = value; BindingsView.Refresh(); }
+        }
+
+        private const int MaxRecentFiles = 8;
+        private const string RecentFilesKey = "RecentFiles";
+
+        private static readonly string SettingsPath = System.IO.Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+    "SkyrimHavokEditor", "recent.txt");
+
+        private List<string> LoadRecentFiles()
+        {
+            try
+            {
+                if (!System.IO.File.Exists(SettingsPath)) return new List<string>();
+                return System.IO.File.ReadAllLines(SettingsPath)
+                    .Where(f => !string.IsNullOrEmpty(f) && System.IO.File.Exists(f))
+                    .ToList();
+            }
+            catch { return new List<string>(); }
+        }
+
+        private void SaveRecentFiles(List<string> files)
+        {
+            try
+            {
+                var dir = System.IO.Path.GetDirectoryName(SettingsPath);
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.WriteAllLines(SettingsPath, files.Take(MaxRecentFiles));
+            }
+            catch { }
+        }
+
+        private void AddRecentFile(string path)
+        {
+            var files = LoadRecentFiles();
+            files.Remove(path);           // remove if already present
+            files.Insert(0, path);        // push to top
+            SaveRecentFiles(files);
+            RefreshRecentFilesMenu();
+        }
+
+        private void RefreshRecentFilesMenu()
+        {
+            RecentFilesMenu.Items.Clear();
+            var files = LoadRecentFiles();
+
+            if (files.Count == 0)
+            {
+                RecentFilesMenu.Items.Add(new MenuItem
+                {
+                    Header = "(no recent files)",
+                    IsEnabled = false
+                });
+                return;
+            }
+
+            foreach (var f in files)
+            {
+                var item = new MenuItem { Header = f, ToolTip = f };
+                item.Click += (s, e) => LoadFile(f);
+                RecentFilesMenu.Items.Add(item);
+            }
+
+            RecentFilesMenu.Items.Add(new Separator());
+            var clear = new MenuItem { Header = "Clear Recent Files" };
+            clear.Click += (s, e) =>
+            {
+                SaveRecentFiles(new List<string>());
+                RefreshRecentFilesMenu();
+                LoadBookmarks();
+            };
+            RecentFilesMenu.Items.Add(clear);
+        }
+
+        private readonly UndoRedoManager _undoRedo = new();
+        private bool _suppressUndoRecord = false;
+
+        public MainWindow()
+        {
+            InitializeComponent();
+            this.DataContext = this;
+            ClipsView = CollectionViewSource.GetDefaultView(ClipList);
+            ClipsView.Filter = o => o is ClipInfo c &&
+                (string.IsNullOrEmpty(_clipFilter) ||
+                 c.Name.Contains(_clipFilter, StringComparison.OrdinalIgnoreCase) ||
+                 c.AnimationPath.Contains(_clipFilter, StringComparison.OrdinalIgnoreCase));
+
+            VariablesView = CollectionViewSource.GetDefaultView(VariableList);
+            VariablesView.Filter = o => o is IdNamePair v &&
+                (string.IsNullOrEmpty(_variableFilter) ||
+                 v.Name.Contains(_variableFilter, StringComparison.OrdinalIgnoreCase));
+            TransitionsView = CollectionViewSource.GetDefaultView(TransitionList);
+            TransitionsView.Filter = o => o is TransitionInfo t &&
+                (string.IsNullOrEmpty(_transitionFilter) ||
+                 t.FromState.Contains(_transitionFilter, StringComparison.OrdinalIgnoreCase) ||
+                 t.ToState.Contains(_transitionFilter, StringComparison.OrdinalIgnoreCase) ||
+                 t.EventName.Contains(_transitionFilter, StringComparison.OrdinalIgnoreCase));
+            UsageView = CollectionViewSource.GetDefaultView(UsageList);
+            BindingsView = CollectionViewSource.GetDefaultView(BindingList);
+            BindingsView.Filter = o => o is BindingEntry b &&
+                (string.IsNullOrEmpty(_bindingFilter) ||
+                 b.OwnerName.Contains(_bindingFilter, StringComparison.OrdinalIgnoreCase) ||
+                 b.VariableName.Contains(_bindingFilter, StringComparison.OrdinalIgnoreCase) ||
+                 b.MemberPath.Contains(_bindingFilter, StringComparison.OrdinalIgnoreCase));
+            // Recent files + drag drop
+            RefreshRecentFilesMenu();
+            AllowDrop = true;
+            DragOver += Window_DragOver;
+            Drop += Window_Drop;
+            UpdateCanvasBackground();
+            EventList.CollectionChanged += (s, e) =>
+            {
+                var eventStringData = manager?.ObjectMap?.Values
+                    .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+                if (eventStringData == null) return;
+
+                var eParam = eventStringData.Params.FirstOrDefault(p => p.Name == "eventNames");
+                if (eParam != null)
+                    eParam.NumElements = EventList.Count.ToString();
+            };
+            EventsView = CollectionViewSource.GetDefaultView(EventList);
+            EventsView.Filter = o => o is IdNamePair ev &&
+                (string.IsNullOrEmpty(_eventFilter) ||
+                 ev.Name.Contains(_eventFilter, StringComparison.OrdinalIgnoreCase) ||
+                 ev.Id.Contains(_eventFilter, StringComparison.OrdinalIgnoreCase));
+            GraphView.AddTransitionRequested += (fromObjectId, toStateId) =>
+            {
+                // Find the SM that owns this state
+                var parentSM = FindParentSM(fromObjectId);
+                if (parentSM == null) return;
+                SelectedSM = parentSM;
+                MainTabControl.SelectedIndex = 6; // SM Inspector tab
+                                                  // Pre-select the from state and open dialog
+                OpenTransitionDialog(isAdd: true,
+                    preselectedFromState: manager.ObjectMap[fromObjectId]);
+            };
+        }
+
+
+        private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2)
+                WindowState = WindowState == WindowState.Maximized
+                    ? WindowState.Normal
+                    : WindowState.Maximized;
+            else
+                DragMove();
+        }
+
+        private void BtnMinimize_Click(object sender, RoutedEventArgs e)
+            => WindowState = WindowState.Minimized;
+
+        private void BtnMaximize_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+            BtnMaximize.Content = WindowState == WindowState.Maximized ? "❐" : "□";
+        }
+
+        private void BtnClose_Click(object sender, RoutedEventArgs e)
+            => Close();
+
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            var source = PresentationSource.FromVisual(this) as System.Windows.Interop.HwndSource;
+            source?.AddHook(WndProc);
+        }
+
+        private const int WM_GETMINMAXINFO = 0x0024;
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == WM_GETMINMAXINFO)
+            {
+                WmGetMinMaxInfo(hwnd, lParam);
+                handled = true;
+            }
+            return IntPtr.Zero;
+        }
+
+        private readonly Stack<string> _navigationHistory = new();
+
+        private void NavigateToObject(string objectId)
+        {
+            if (!manager.ObjectMap.TryGetValue(objectId, out var obj)) return;
+
+            // Push current object to history if we have one
+            if (ParamsEditor.ItemsSource != null &&
+                BtnBackNavigation.Tag is string currentId)
+                _navigationHistory.Push(currentId);
+
+            LoadObjectIntoEditor(obj);
+            BtnBackNavigation.IsEnabled = _navigationHistory.Count > 0;
+        }
+
+        private void LoadObjectIntoEditor(HkObject obj)
+        {
+            SelectedClassName.Text = $"Class: {obj.ClassName}";
+            ParamsEditor.ItemsSource = obj.Params;
+            var name = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? obj.Id;
+            ObjectNameLabel.Text = $"{obj.Id}  {name}  ·  {obj.ClassName}";
+            BtnBackNavigation.Tag = obj.Id;
+
+            foreach (var param in obj.Params)
+                SubscribeParamUndo(param, obj.ClassName, name);
+        }
+
+        private void BtnBackNavigation_Click(object sender, RoutedEventArgs e)
+        {
+            if (_navigationHistory.Count == 0) return;
+            var prevId = _navigationHistory.Pop();
+            if (!manager.ObjectMap.TryGetValue(prevId, out var obj)) return;
+            LoadObjectIntoEditor(obj);
+            BtnBackNavigation.IsEnabled = _navigationHistory.Count > 0;
+        }
+
+        private void ParamValue_PreviewMouseLeftButtonDown(object sender,
+    System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (!System.Windows.Input.Keyboard.Modifiers
+                .HasFlag(System.Windows.Input.ModifierKeys.Control)) return;
+            if (sender is not TextBox tb) return;
+
+            var val = tb.Text?.Trim();
+            if (string.IsNullOrEmpty(val) || !val.StartsWith("#")) return;
+
+            // Handle space-separated multi-refs — find which token was clicked
+            var refs = val.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                          .Where(r => r.StartsWith("#"))
+                          .ToList();
+
+            if (refs.Count == 1)
+            {
+                NavigateToObject(refs[0]);
+            }
+            else if (refs.Count > 1)
+            {
+                // Show a small context menu to pick which ref to jump to
+                var menu = new ContextMenu();
+                foreach (var refId in refs)
+                {
+                    manager.ObjectMap.TryGetValue(refId, out var refObj);
+                    var label = refObj != null
+                        ? $"{refId}  {refObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? refObj.ClassName}"
+                        : refId;
+                    var item = new MenuItem { Header = label };
+                    var capturedId = refId;
+                    item.Click += (s, ev) => NavigateToObject(capturedId);
+                    menu.Items.Add(item);
+                }
+                menu.PlacementTarget = tb;
+                menu.IsOpen = true;
+            }
+            e.Handled = true;
+        }
+
+        private void ParamValue_PreviewMouseMove(object sender,
+    System.Windows.Input.MouseEventArgs e)
+        {
+            if (sender is not TextBox tb) return;
+            var val = tb.Text?.Trim() ?? "";
+            bool isRef = val.StartsWith("#") ||
+                         val.Split(' ').Any(t => t.StartsWith("#"));
+            bool ctrl = System.Windows.Input.Keyboard.Modifiers
+                .HasFlag(System.Windows.Input.ModifierKeys.Control);
+
+            if (isRef && ctrl)
+            {
+                tb.Cursor = System.Windows.Input.Cursors.Hand;
+                tb.Background = (SolidColorBrush)Application.Current.Resources["BgSelectedBrush"];
+            }
+            else
+            {
+                tb.Cursor = System.Windows.Input.Cursors.IBeam;
+                tb.Background = (SolidColorBrush)Application.Current.Resources["BgInputBrush"];
+            }
+        }
+
+        private void WmGetMinMaxInfo(IntPtr hwnd, IntPtr lParam)
+        {
+            var mmi = System.Runtime.InteropServices.Marshal.PtrToStructure<MINMAXINFO>(lParam);
+            var monitor = MonitorFromWindow(hwnd, 0x00000002);
+            if (monitor != IntPtr.Zero)
+            {
+                RECT workArea = new RECT();
+                SystemParametersInfo(0x0030, 0, ref workArea, 0);
+                mmi.ptMaxPosition.X = workArea.Left;
+                mmi.ptMaxPosition.Y = workArea.Top;
+                mmi.ptMaxSize.X = workArea.Right - workArea.Left;
+                mmi.ptMaxSize.Y = workArea.Bottom - workArea.Top;
+                mmi.ptMinTrackSize.X = 400;
+                mmi.ptMinTrackSize.Y = 300;
+            }
+            System.Runtime.InteropServices.Marshal.StructureToPtr(mmi, lParam, true);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32")]
+        private static extern IntPtr MonitorFromWindow(IntPtr handle, uint flags);
+
+        [System.Runtime.InteropServices.DllImport("user32")]
+        private static extern bool SystemParametersInfo(uint uAction, uint uParam, ref RECT lpvParam, uint fuWinIni);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct MINMAXINFO
+        {
+            public POINT ptReserved, ptMaxSize, ptMaxPosition, ptMinTrackSize, ptMaxTrackSize;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct POINT { public int X, Y; }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct RECT { public int Left, Top, Right, Bottom; }
+
+        private bool _isDarkMode = true;
+
+        private void ToggleTheme()
+        {
+            _isDarkMode = !_isDarkMode;
+            var dict = new ResourceDictionary
+            {
+                Source = new Uri(
+                    _isDarkMode ? "UI/Themes/DarkTheme.xaml" : "UI/Themes/LightTheme.xaml",
+                    UriKind.Relative)
+            };
+            Application.Current.Resources.MergedDictionaries[0] = dict;
+            Background = (SolidColorBrush)Application.Current.Resources["BgDarkBrush"];
+            BtnTheme.Content = _isDarkMode ? "☀ Light" : "🌙 Dark";
+            UpdateCanvasBackground();
+        }
+
+        private void UpdateCanvasBackground()
+        {
+            var dotColor = ((SolidColorBrush)Application.Current.Resources["CanvasDotBrush"]).Color;
+            GraphView.UpdateCanvasBackground(dotColor);
+        }
+
+        private void BtnTheme_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleTheme();
+            BtnTheme.Content = _isDarkMode ? "☀ Light" : "🌙 Dark";
+        }
+
+        private void LoadFile(string path)
+        {
+            try
+            {
+                var serializer = new XmlSerializer(typeof(HkPackfile));
+                using var fs = new System.IO.FileStream(path, System.IO.FileMode.Open);
+                var packfile = (HkPackfile)serializer.Deserialize(fs);
+
+                manager.BuildGraph(packfile);
+
+                _validator = new HavokValidator(manager);
+
+                var builder = new BehaviorTreeBuilder(manager);
+                var tree = builder.BuildTree("");
+                ObjectTree.ItemsSource = new List<BehaviorNodeData> { tree };
+
+                StatusText.Text = "✓ Loaded successfully";
+
+                _subscribedParams.Clear();
+                _navigationHistory.Clear();
+                BtnBackNavigation.IsEnabled = false;
+                BtnBackNavigation.Tag = null;
+                _undoRedo.Clear();
+                UpdateUndoRedoButtons();
+                GraphView.Load(manager, EventList.ToList());
+                GraphView.StateSelected += (id) =>
+                {
+                    if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
+                    SelectedClassName.Text = $"Class: {obj.ClassName}";
+                    ParamsEditor.ItemsSource = obj.Params;
+                    MainTabControl.SelectedIndex = 0;
+                };
+                RefreshLookups();
+                _originalSnapshot = TakeSnapshot();
+                _snapshotEvents = EventList.Select(e => e.Name).ToList();
+                _snapshotVars = VariableList.Select(v => v.Name).ToList();
+                AddRecentFile(path);
+
+                // Update stats
+                Stats.FileName = System.IO.Path.GetFileName(path);
+                Stats.HasFile = true;
+                Stats.ObjectCount = manager.ObjectMap.Count;
+                Stats.VariableCount = VariableList.Count;
+                Stats.EventCount = EventList.Count;
+                Stats.ClipCount = ClipList.Count;
+                Stats.TransitionCount = TransitionList.Count;
+                Stats.BindingCount = BindingList.Count;
+                Stats.StateMachineCount = manager.ObjectMap.Values
+                    .Count(o => o.ClassName == "hkbStateMachine");
+            }
+            catch (Exception ex)
+            {
+                string msg = ex.Message + (ex.InnerException != null
+                    ? "\n\nDetails: " + ex.InnerException.Message : "");
+                MessageBox.Show("Error: " + msg);
+            }
+        }
+
+        private void BtnLoad_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "XML files|*.xml" };
+            if (dlg.ShowDialog() == true)
+                LoadFile(dlg.FileName);
+        }
+
+        private void BtnRecentFiles_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshRecentFilesMenu();
+            RecentFilesMenu.PlacementTarget = sender as Button;
+            RecentFilesMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            RecentFilesMenu.IsOpen = true;
+        }
+
+        private void Window_DragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop)
+                ? DragDropEffects.Copy
+                : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void Window_Drop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            var xml = files.FirstOrDefault(f =>
+                f.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
+            if (xml != null) LoadFile(xml);
+        }
+
+        private void UpdateUndoRedoButtons()
+        {
+            BtnUndo.IsEnabled = _undoRedo.CanUndo;
+            BtnRedo.IsEnabled = _undoRedo.CanRedo;
+            BtnUndo.ToolTip = _undoRedo.CanUndo ? $"Undo: {_undoRedo.UndoDescription}" : "Nothing to undo";
+            BtnRedo.ToolTip = _undoRedo.CanRedo ? $"Redo: {_undoRedo.RedoDescription}" : "Nothing to redo";
+        }
+
+        private void BtnUndo_Click(object sender, RoutedEventArgs e)
+        {
+            _undoRedo.Undo();
+            UpdateUndoRedoButtons();
+        }
+
+        private void BtnRedo_Click(object sender, RoutedEventArgs e)
+        {
+            _undoRedo.Redo();
+            UpdateUndoRedoButtons();
+        }
+
+ 
+
+        private void RefreshLookups()
+        {
+            if (manager == null || manager.ObjectMap.Count == 0) return;
+
+            VariableList.Clear();
+            EventList.Clear();
+
+            // ------------------------
+            // VARIABLES
+            // ------------------------
+
+            var valueSet = manager.ObjectMap.Values
+     .FirstOrDefault(o => o.ClassName == "hkbVariableValueSet");
+
+            var valStrings = new List<string>();
+
+            var typeInfos = new List<string>();
+            var graphData = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphData");
+
+            if (graphData != null)
+            {
+                var varInfosParam = graphData.Params.FirstOrDefault(p => p.Name == "variableInfos");
+                if (varInfosParam?.Children != null)
+                {
+                    foreach (var child in varInfosParam.Children)
+                    {
+                        // type is stored as a role/type param inside each child hkobject
+                        var typeParam = child.Params.FirstOrDefault(p => p.Name == "type");
+                        typeInfos.Add(typeParam?.Value ?? "VARIABLE_TYPE_REAL");
+                    }
+                }
+            }
+
+            if (valueSet != null)
+            {
+                var wordValuesParam = valueSet.Params.FirstOrDefault(p => p.Name == "wordVariableValues");
+                if (wordValuesParam?.Children != null)
+                {
+                    foreach (var child in wordValuesParam.Children)
+                    {
+                        var vp = child.Params.FirstOrDefault(p => p.Name == "value");
+                        valStrings.Add(vp?.Value ?? "0");
+                    }
+                }
+            }
+
+            var variableObjects = manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbVariableNamesData"
+                         || o.ClassName == "hkbProjectStringData"
+                         || o.ClassName == "hkbBehaviorGraphStringData")
+                .ToList();
+
+            foreach (var varObj in variableObjects)
+            {
+                var namesParam = varObj.Params.FirstOrDefault(p => p.Name == "variableNames" || p.Name == "wordVariableNames");
+                if (namesParam == null) continue;
+
+                List<string> namesList = namesParam.Strings.Count > 0
+                    ? namesParam.Strings
+                    : namesParam.Value?.Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim())
+                        .Where(s => !string.IsNullOrEmpty(s))
+                        .ToList();
+
+                if (namesList == null || namesList.Count == 0) continue;
+
+                // NOW actually add to VariableList using the values we fetched
+                for (int i = 0; i < namesList.Count; i++)
+                {
+                    string rawVal = i < valStrings.Count ? valStrings[i] : "0";
+                    string typeStr = i < typeInfos.Count ? typeInfos[i] : "VARIABLE_TYPE_REAL";
+                    var pair = new IdNamePair
+                    {
+                        Id = $"{varObj.Id}_{i}",
+                        Name = namesList[i],
+                        Index = i,
+                        RawValue = rawVal,
+                        Value = DecodeHavokValue(rawVal),
+                        VariableType = typeStr
+                    };
+
+                    pair.ValueChanged += (s, args) =>
+                    {
+                        if (_suppressUndoRecord || s is not IdNamePair v) return;
+                        var capturedOld = args.OldValue;
+                        var capturedNew = args.NewValue;
+                        var capturedVar = v;
+                        _undoRedo.Record(new EditAction
+                        {
+                            Description = $"Change {v.Name}: {args.OldValue} → {args.NewValue}",
+                            Undo = () =>
+                            {
+                                _suppressUndoRecord = true;
+                                capturedVar.Value = capturedOld;
+                                _suppressUndoRecord = false;
+                                UpdateUndoRedoButtons();
+                            },
+                            Redo = () =>
+                            {
+                                _suppressUndoRecord = true;
+                                capturedVar.Value = capturedNew;
+                                _suppressUndoRecord = false;
+                                UpdateUndoRedoButtons();
+                            }
+                        });
+                        UpdateUndoRedoButtons();
+                    };
+
+                    VariableList.Add(pair);
+                }
+            }
+
+            // ------------------------
+            // EVENTS
+            // ------------------------
+            var eventObjects = manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbEventNamesData"
+                         || o.ClassName == "hkbProjectStringData"
+                         || o.ClassName == "hkbBehaviorGraphStringData")
+                .ToList();
+
+            foreach (var eObj in eventObjects)
+            {
+                var eParam = eObj.Params.FirstOrDefault(p => p.Name == "eventNames");
+                if (eParam == null) continue;
+
+                var eNames = eParam.Strings.Count > 0
+                    ? eParam.Strings
+                    : eParam.Value?
+                        .Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim())
+                        .Where(s => !string.IsNullOrEmpty(s))
+                        .ToList();
+
+                if (eNames == null || eNames.Count == 0) continue;
+
+                for (int i = 0; i < eNames.Count; i++)
+                {
+                    EventList.Add(new IdNamePair
+                    {
+                        Id = i.ToString(),
+                        Name = eNames[i]
+                    });
+                }
+            }
+
+            // ------------------------
+            // CLIPS
+            // ------------------------
+            ClipList.Clear();
+            var clips = manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbClipGenerator")
+                .OrderBy(o => o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id);
+
+            foreach (var clip in clips)
+            {
+                string Get(string n) => clip.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+
+                var clipEntry = new ClipInfo
+                {
+                    Id = clip.Id,
+                    Name = Get("name"),
+                    Mode = Get("mode"),
+                    PlaybackSpeed = Get("playbackSpeed")
+                };
+
+                // Subscribe BEFORE setting AnimationPath
+                clipEntry.PathChanged += (s, args) =>
+                {
+                    if (_suppressUndoRecord || s is not ClipInfo c) return;
+                    if (args.OldValue == args.NewValue) return;
+                    var capturedOld = args.OldValue;
+                    var capturedNew = args.NewValue;
+                    var capturedClip = c;
+                    _undoRedo.Record(new EditAction
+                    {
+                        Description = $"Path {c.Name}: {args.OldValue} → {args.NewValue}",
+                        Undo = () =>
+                        {
+                            _suppressUndoRecord = true;
+                            capturedClip.AnimationPath = capturedOld;
+                            _suppressUndoRecord = false;
+                            UpdateUndoRedoButtons();
+                        },
+                        Redo = () =>
+                        {
+                            _suppressUndoRecord = true;
+                            capturedClip.AnimationPath = capturedNew;
+                            _suppressUndoRecord = false;
+                            UpdateUndoRedoButtons();
+                        }
+                    });
+                    UpdateUndoRedoButtons();
+                };
+
+                // Set AFTER subscribing
+                clipEntry.AnimationPath = Get("animationName");
+                ClipList.Add(clipEntry);
+            }
+
+            // ------------------------
+            // TRANSITIONS
+            // ------------------------
+            TransitionList.Clear();
+
+            var stateIdToName = new Dictionary<string, string>();
+            foreach (var stateObj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachineStateInfo"))
+            {
+                var stateId = stateObj.Params.FirstOrDefault(p => p.Name == "stateId")?.Value ?? "";
+                var stateName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
+                if (!string.IsNullOrEmpty(stateId) && !stateIdToName.ContainsKey(stateId))
+                    stateIdToName[stateId] = stateName;
+            }
+
+            var eventNamesLookup = EventList
+                .ToDictionary(e => e.Id, e => e.Name);
+
+            foreach (var stateObj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachineStateInfo"))
+            {
+                var fromName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
+                var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
+
+                if (string.IsNullOrEmpty(transRef) || transRef == "null") continue;
+                if (!manager.TryResolve(transRef, out var transArrayObj)) continue;
+
+                // transArrayObj is hkbStateMachineTransitionInfoArray
+                // its "transitions" hkparam holds inline <hkobject> children
+                var transitionsParam = transArrayObj.Params.FirstOrDefault(p => p.Name == "transitions");
+                if (transitionsParam?.Children == null || transitionsParam.Children.Count == 0) continue;
+
+                foreach (var tr in transitionsParam.Children)
+                {
+                    string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+
+                    var toStateId = Get("toStateId");
+                    var eventId = Get("eventId");
+                    var flags = Get("flags");
+                    var effect = Get("transition");
+
+                    // blend duration lives inside the transition effect object
+                    var blendDuration = "";
+                    if (!string.IsNullOrEmpty(effect) && effect != "null"
+                        && manager.TryResolve(effect, out var effectObj))
+                    {
+                        blendDuration = effectObj.Params.FirstOrDefault(p => p.Name == "duration")?.Value ?? "";
+                    }
+
+                    stateIdToName.TryGetValue(toStateId, out var toName);
+                    eventNamesLookup.TryGetValue(eventId, out var evName);
+
+                    TransitionList.Add(new TransitionInfo
+                    {
+                        FromState = fromName,
+                        ToState = toName ?? $"ID:{toStateId}",
+                        EventId = eventId,
+                        EventName = evName ?? $"Event {eventId}",
+                        BlendDuration = blendDuration,
+                        Flags = flags,
+                        TransitionEffect = effect
+                    });
+                }
+            }
+
+            // ------------------------
+            // BINDINGS
+            // ------------------------
+            BindingList.Clear();
+
+            // Build variable index -> name lookup
+            var varIndexToName = VariableList
+                .Select((v, i) => (i, v.Name))
+                .ToDictionary(x => x.i.ToString(), x => x.Name);
+
+            foreach (var bindingSetObj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbVariableBindingSet"))
+            {
+                // Find the object that owns this binding set
+                var owner = manager.ObjectMap.Values.FirstOrDefault(o =>
+                    o.Params.Any(p => p.Value == bindingSetObj.Id));
+
+                var ownerName = owner?.Params.FirstOrDefault(p => p.Name == "name")?.Value
+                                 ?? owner?.Id ?? bindingSetObj.Id;
+                var ownerClass = owner?.ClassName ?? "Unknown";
+                var ownerId = owner?.Id ?? bindingSetObj.Id;
+
+                var bindingsParam = bindingSetObj.Params.FirstOrDefault(p => p.Name == "bindings");
+                if (bindingsParam?.Children == null) continue;
+
+                foreach (var binding in bindingsParam.Children)
+                {
+                    string Get(string n) => binding.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+
+                    var memberPath = Get("memberPath");
+                    var variableIndex = Get("variableIndex");
+                    var bindingType = Get("bindingType");
+
+                    varIndexToName.TryGetValue(variableIndex, out var varName);
+
+                    BindingList.Add(new BindingEntry
+                    {
+                        OwnerName = ownerName,
+                        OwnerClass = ownerClass,
+                        OwnerId = ownerId,
+                        MemberPath = memberPath,
+                        VariableIndex = variableIndex,
+                        VariableName = varName ?? $"var[{variableIndex}]",
+                        BindingType = bindingType
+                    });
+                }
+            }
+            RefreshSmList();
+        }
+
+        // ── Patch system ──────────────────────────────────────────────────────────
+        private Dictionary<string, ObjectSnapshot> _originalSnapshot;
+        private List<string> _snapshotEvents = new();
+        private List<string> _snapshotVars = new();
+
+        private Dictionary<string, ObjectSnapshot> TakeSnapshot()
+    => PatchGenerator.TakeSnapshot(manager);
+
+        private void BtnGeneratePatch_Click(object sender, RoutedEventArgs e)
+        {
+            if (_originalSnapshot == null || _originalSnapshot.Count == 0)
+            {
+                MessageBox.Show("No file loaded.");
+                return;
+            }
+
+            var strData = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+            if (strData != null)
+            {
+                var ep = strData.Params.FirstOrDefault(p => p.Name == "eventNames");
+                if (ep != null)
+                {
+                    ep.Strings = EventList.Select(ev => ev.Name).ToList();
+                    ep.Value = string.Join("\n", ep.Strings);
+                }
+            }
+
+            var gen = new PatchGenerator(manager, _originalSnapshot, _snapshotEvents, _snapshotVars);
+            var patch = gen.Generate(
+                baseFileName: System.IO.Path.GetFileNameWithoutExtension(Stats.FileName));
+
+            if (patch.Operations.Count == 0)
+            {
+                MessageBox.Show("No changes detected since the file was loaded.",
+                    "Nothing to patch", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var preview = new PatchPreviewDialog(patch) { Owner = this };
+            preview.ShowDialog();
+        }
+
+
+        private void BtnApplyPatch_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
+            {
+                MessageBox.Show("Load a behavior file first before applying a patch.");
+                return;
+            }
+
+            var dialog = new ApplyPatchDialog(manager) { Owner = this };
+            dialog.ShowDialog();
+
+            if (dialog.PatchWasApplied)
+            {
+                RefreshLookups();
+
+                var builder = new BehaviorTreeBuilder(manager);
+                ObjectTree.ItemsSource = new List<BehaviorNodeData> { builder.BuildTree("") };
+
+                // Force SM Inspector refresh
+                var currentSM = _selectedSM;
+                _selectedSM = null;
+                SelectedSM = currentSM; // triggers RefreshSmInspector via setter
+
+                _originalSnapshot = TakeSnapshot();
+                _snapshotEvents = EventList.Select(ev => ev.Name).ToList();
+                _snapshotVars = VariableList.Select(v => v.Name).ToList();
+
+                Stats.ObjectCount = manager.ObjectMap.Count;
+                Stats.VariableCount = VariableList.Count;
+                Stats.EventCount = EventList.Count;
+                Stats.ClipCount = ClipList.Count;
+                Stats.TransitionCount = TransitionList.Count;
+
+                StatusText.Text = $"✓ Patch applied — {dialog.LastResult.AppliedCount} ops";
+            }
+        }
+        private void AddTransition(HkObject tr, string fromName,
+    Dictionary<string, string> stateIdToName,
+    Dictionary<string, string> eventNames)
+        {
+            string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+
+            var toStateId = Get("toStateId");
+            var eventId = Get("eventId");
+            var blend = Get("duration");
+            var flags = Get("flags");
+            var effect = Get("transition");
+
+            stateIdToName.TryGetValue(toStateId, out var toName);
+            eventNames.TryGetValue(eventId, out var evName);
+
+            TransitionList.Add(new TransitionInfo
+            {
+                FromState = fromName,
+                ToState = toName ?? $"ID:{toStateId}",
+                EventId = eventId,
+                EventName = evName ?? $"Event {eventId}",
+                BlendDuration = blend,
+                Flags = flags,
+                TransitionEffect = effect
+            });
+        }
+
+        private void ObjectTree_SelectedItemChanged(object sender,
+    RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (e.NewValue is not BehaviorNodeData node || node.Object == null) return;
+
+            // Push current to history before navigating
+            if (BtnBackNavigation.Tag is string currentId &&
+                !string.IsNullOrEmpty(currentId))
+                _navigationHistory.Push(currentId);
+
+            LoadObjectIntoEditor(node.Object);
+            BtnBackNavigation.IsEnabled = _navigationHistory.Count > 0;
+
+            // Update bookmark button
+            bool isBookmarked = Bookmarks.Any(b => b.Id == node.Object.Id);
+            BtnBookmarkToggle.Content = isBookmarked ? "★" : "🔖";
+            BtnBookmarkToggle.Foreground = isBookmarked
+                ? new SolidColorBrush(Colors.Goldenrod)
+                : (SolidColorBrush)Application.Current.Resources["TextSecondaryBrush"];
+            BtnBookmarkToggle.ToolTip = isBookmarked ? "Remove bookmark" : "Bookmark this object";
+            BtnBookmarkToggle.Tag = node.Object;
+        }
+
+        private readonly HashSet<HkParam> _subscribedParams = new();
+
+        private void SubscribeParamUndo(HkParam param, string className, string nodeName)
+        {
+            if (_subscribedParams.Contains(param)) return;
+            _subscribedParams.Add(param);
+
+            param.ValueChanged += (s, args) =>
+            {
+                if (_suppressUndoRecord || s is not HkParam p) return;
+
+                // Ignore if values are the same or both null/empty
+                if (args.OldValue == args.NewValue) return;
+                if (string.IsNullOrEmpty(args.OldValue) && string.IsNullOrEmpty(args.NewValue)) return;
+
+                // Ignore if this is just whitespace normalization
+                if ((args.OldValue?.Trim() ?? "") == (args.NewValue?.Trim() ?? "")) return;
+
+                var capturedOld = args.OldValue;
+                var capturedNew = args.NewValue;
+                var capturedParam = p;
+
+                _undoRedo.Record(new EditAction
+                {
+                    Description = $"{nodeName}.{p.Name}: {args.OldValue} → {args.NewValue}",
+                    Undo = () =>
+                    {
+                        _suppressUndoRecord = true;
+                        capturedParam.Value = capturedOld;
+                        _suppressUndoRecord = false;
+                        UpdateUndoRedoButtons();
+                    },
+                    Redo = () =>
+                    {
+                        _suppressUndoRecord = true;
+                        capturedParam.Value = capturedNew;
+                        _suppressUndoRecord = false;
+                        UpdateUndoRedoButtons();
+                    }
+                });
+                UpdateUndoRedoButtons();
+            };
+        }
+
+        private void BtnBookmarkToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (BtnBookmarkToggle.Tag is not HkObject obj) return;
+
+            var existing = Bookmarks.FirstOrDefault(b => b.Id == obj.Id);
+            if (existing != null)
+            {
+                Bookmarks.Remove(existing);
+                BtnBookmarkToggle.Content = "🔖";
+                BtnBookmarkToggle.Foreground = (SolidColorBrush)Application.Current.Resources["TextSecondaryBrush"];
+                BtnBookmarkToggle.ToolTip = "Bookmark this object";
+            }
+            else
+            {
+                var name = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? obj.Id;
+                Bookmarks.Add(new BookmarkEntry
+                {
+                    Id = obj.Id,
+                    Name = name,
+                    ClassName = obj.ClassName,
+                    Label = ""
+                });
+                BtnBookmarkToggle.Content = "★";
+                BtnBookmarkToggle.Foreground = new SolidColorBrush(Colors.Goldenrod);
+                BtnBookmarkToggle.ToolTip = "Remove bookmark";
+            }
+            SaveBookmarks();
+        }
+
+        private void BookmarksList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (BookmarksList.SelectedItem is not BookmarkEntry bookmark) return;
+
+            if (!manager.ObjectMap.TryGetValue(bookmark.Id, out var obj))
+            {
+                MessageBox.Show($"Object {bookmark.Id} not found in current file.");
+                BookmarksList.SelectedItem = null;
+                return;
+            }
+
+            // Load params
+            SelectedClassName.Text = $"Class: {obj.ClassName}";
+            ParamsEditor.ItemsSource = obj.Params;
+            MainTabControl.SelectedIndex = 0; // switch to Object Data
+
+            // Update bookmark button state
+            ObjectNameLabel.Text = $"{bookmark.Name}  ·  {obj.ClassName}";
+            BtnBookmarkToggle.Content = "★";
+            BtnBookmarkToggle.Foreground = new SolidColorBrush(Colors.Goldenrod);
+            BtnBookmarkToggle.ToolTip = "Remove bookmark";
+            BtnBookmarkToggle.Tag = obj;
+
+            // Navigate tree
+            var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+            if (root != null)
+            {
+                var target = FindNodeById(root, bookmark.Id);
+                if (target != null) SelectTreeNode(ObjectTree, target);
+            }
+
+            BookmarksList.SelectedItem = null; // deselect so clicking same item works again
+        }
+
+        private ContextMenu BookmarksMenu = new ContextMenu();
+
+        private void BtnBookmark_Click(object sender, RoutedEventArgs e)
+        {
+            if (ObjectTree.SelectedItem is not BehaviorNodeData node || node.Object == null)
+            { MessageBox.Show("Select an object first."); return; }
+            var name = node.Object.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? node.Object.Id;
+            _bookmarkService.Add(node.Object.Id, name, node.Object.ClassName);
+            StatusText.Text = $"✓ Bookmarked: {name}";
+        }
+
+        private void BtnBookmarks_Click(object sender, RoutedEventArgs e)
+        {
+            BookmarksMenu.Items.Clear();
+            if (!Bookmarks.Any())
+                BookmarksMenu.Items.Add(new MenuItem { Header = "(no bookmarks)", IsEnabled = false });
+            else
+                foreach (var b in Bookmarks)
+                {
+                    var item = new MenuItem { Header = b.Display };
+                    item.Click += (s, ev) => NavigateToBookmarkById(b.Id);
+                    BookmarksMenu.Items.Add(item);
+                }
+            BookmarksMenu.PlacementTarget = sender as Button;
+            BookmarksMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            BookmarksMenu.IsOpen = true;
+        }
+
+        private void NavigateToBookmarkById(string id)
+        {
+            if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
+            SelectedClassName.Text = $"Class: {obj.ClassName}";
+            ParamsEditor.ItemsSource = obj.Params;
+            MainTabControl.SelectedIndex = 0;
+            var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+            if (root != null) { var t = FindNodeById(root, id); if (t != null) SelectTreeNode(ObjectTree, t); }
+        }
+
+        private void BtnRemoveBookmark_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as Button)?.Tag is not BookmarkEntry b) return;
+            Bookmarks.Remove(b);
+            SaveBookmarks();
+
+            // Update bookmark button if this was the current object
+            if (BtnBookmarkToggle.Tag is HkObject obj && obj.Id == b.Id)
+            {
+                BtnBookmarkToggle.Content = "🔖";
+                BtnBookmarkToggle.Foreground = (SolidColorBrush)Application.Current.Resources["TextSecondaryBrush"];
+                BtnBookmarkToggle.ToolTip = "Bookmark this object";
+            }
+        }
+
+        private readonly BookmarkService _bookmarkService = new();
+
+        // Replace Bookmarks references:
+        public ObservableCollection<BookmarkEntry> Bookmarks => _bookmarkService.Bookmarks;
+
+        // Replace SaveBookmarks():
+        private void SaveBookmarks() => _bookmarkService.Save();
+
+        // Replace LoadBookmarks():
+        private void LoadBookmarks() => _bookmarkService.Load();
+
+        private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (manager == null) return;
+            var searchText = TxtSearch.Text.Trim();
+
+            if (searchText.StartsWith("#"))
+            {
+                var found = manager.ObjectMap.TryGetValue(searchText, out var directObj);
+                StatusText.Text = $"Looking for '{searchText}' — found: {found} — total objects: {manager.ObjectMap.Count}";
+
+                if (found)
+                {
+                    SelectedClassName.Text = $"Class: {directObj.ClassName}";
+                    ParamsEditor.ItemsSource = directObj.Params;
+                    ObjectNameLabel.Text = $"{directObj.Id}  {directObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? directObj.Id}  ·  {directObj.ClassName}";
+                    MainTabControl.SelectedIndex = 0;
+
+                    foreach (var param in directObj.Params)
+                        SubscribeParamUndo(param, directObj.ClassName,
+                            directObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? directObj.Id);
+
+                    var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+                    if (root != null)
+                    {
+                        var target = FindNodeById(root, directObj.Id);
+                        if (target != null) SelectTreeNode(ObjectTree, target);
+                    }
+                    StatusText.Text = $"✓ Jumped to {directObj.Id}";
+                }
+                return;
+            }
+
+            var builder = new BehaviorTreeBuilder(manager);
+            var filteredTree = builder.BuildTree(searchText);
+            ObjectTree.ItemsSource = new List<BehaviorNodeData> { filteredTree };
+        }
+        private void BrowseAnimation_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as Button)?.Tag is not ClipInfo clip) return;
+
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select Animation File",
+                Filter = "Havok Animation|*.hkx;*.HKX|All files|*.*",
+                FileName = System.IO.Path.GetFileName(clip.AnimationPath ?? "")
+            };
+
+            // Try to set initial directory from existing path
+            if (!string.IsNullOrEmpty(clip.AnimationPath))
+            {
+                var dir = System.IO.Path.GetDirectoryName(
+                    System.IO.Path.Combine(@"C:\", clip.AnimationPath.TrimStart('\\', '/')));
+                if (System.IO.Directory.Exists(dir))
+                    dlg.InitialDirectory = dir;
+            }
+
+            if (dlg.ShowDialog() == true)
+            {
+                // Try to make path relative to "Animations\" folder
+                var full = dlg.FileName;
+                var animIdx = full.IndexOf("Animations\\", StringComparison.OrdinalIgnoreCase);
+                clip.AnimationPath = animIdx >= 0 ? full.Substring(animIdx) : full;
+            }
+        }
+
+        private void BtnSave_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0) return;
+
+            var sfd = new Microsoft.Win32.SaveFileDialog { Filter = "XML files|*.xml" };
+            if (sfd.ShowDialog() != true) return;
+
+            try
+            {
+                // --- 1. Write variable values back ---
+                var valueSet = manager.ObjectMap.Values
+                    .FirstOrDefault(o => o.ClassName == "hkbVariableValueSet");
+
+                if (valueSet != null)
+                {
+                    var wordValuesParam = valueSet.Params
+                        .FirstOrDefault(p => p.Name == "wordVariableValues");
+
+                    if (wordValuesParam?.Children != null)
+                    {
+                        for (int i = 0; i < wordValuesParam.Children.Count && i < VariableList.Count; i++)
+                        {
+                            var vp = wordValuesParam.Children[i].Params
+                                .FirstOrDefault(p => p.Name == "value");
+                            if (vp != null)
+                                vp.Value = EncodeHavokValue(VariableList[i].Value);
+                        }
+                    }
+                }
+
+                // --- 2. Write animation paths back ---
+                foreach (var clip in ClipList)
+                {
+                    if (!manager.ObjectMap.TryGetValue(clip.Id, out var clipObj)) continue;
+                    var animParam = clipObj.Params.FirstOrDefault(p => p.Name == "animationName");
+                    if (animParam != null)
+                        animParam.Value = clip.AnimationPath;
+                }
+
+                // --- 3. Write event names back ---
+                // Find the authoritative event name source
+                var eventStringData = manager.ObjectMap.Values
+                    .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+
+                if (eventStringData != null)
+                {
+                    var eParam = eventStringData.Params.FirstOrDefault(p => p.Name == "eventNames");
+                    if (eParam != null)
+                    {
+                        // Rebuild the Strings list from current EventList
+                        eParam.Strings = EventList.Select(ev => ev.Name).ToList();
+
+                        // Also keep Value in sync for serializers that use it
+                        eParam.Value = string.Join("\n", eParam.Strings);
+                    }
+                }
+
+                // --- 4. Serialize (Improved) ---
+                var packfile = new HkPackfile
+                {
+                    TopLevelObject = "#0050", // Ensure this is set to your root ID
+                    Sections = new List<HkSection>
+    {
+        new HkSection
+        {
+            Name = "__data__",
+            // Sort objects by their ID (#0001, #0002) to keep the XML clean
+            Objects = manager.ObjectMap.Values.OrderBy(o => o.Id).ToList()
+        }
+    }
+                };
+
+                // IMPORTANT: Use XmlAttributeOverrides if you can't change the classes directly,
+                // but the easiest way is to ensure your HkParam.Value is just a string.
+                var serializer = new XmlSerializer(typeof(HkPackfile));
+
+                // Write to a temp file first, then replace — avoids corrupt output on error
+                var tempPath = sfd.FileName + ".tmp";
+                using (var writer = new System.IO.StreamWriter(tempPath, false, Encoding.UTF8))
+                {
+                    serializer.Serialize(writer, packfile);
+                }
+
+                System.IO.File.Delete(sfd.FileName);
+                System.IO.File.Move(tempPath, sfd.FileName);
+
+                StatusText.Text = "✓ Saved successfully";
+                MessageBox.Show("Saved successfully!");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Save Error: " + ex.Message
+                    + (ex.InnerException != null ? "\n\n" + ex.InnerException.Message : ""));
+            }
+        }
+        private void BtnGroupedSummary_Click(object sender, RoutedEventArgs e) { /* Placeholder for your summary logic */ }
+
+        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
+            {
+                MessageBox.Show("No file loaded.");
+                return;
+            }
+
+            var sfd = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export Summary",
+                Filter = "CSV files|*.csv|Text file|*.txt",
+                FileName = "behavior_summary"
+            };
+
+            if (sfd.ShowDialog() != true) return;
+
+            try
+            {
+                var sb = new StringBuilder();
+                bool isCsv = sfd.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
+                string sep = isCsv ? "," : "\t";
+
+                // Helper to escape CSV values
+                string Esc(string s) => isCsv ? $"\"{(s ?? "").Replace("\"", "\"\"")}\"" : (s ?? "");
+
+                // ---- HEADER ----
+                sb.AppendLine("Behavior Summary");
+                sb.AppendLine($"File:        {Stats.FileName}");
+                sb.AppendLine($"States:      {manager.ObjectMap.Values.Count(o => o.ClassName == "hkbStateMachineStateInfo")}");
+                sb.AppendLine($"Clips:       {ClipList.Count}");
+                sb.AppendLine($"Variables:   {VariableList.Count}");
+                sb.AppendLine($"Events:      {EventList.Count}");
+                sb.AppendLine($"Transitions: {TransitionList.Count}");
+                sb.AppendLine($"Bindings:    {BindingList.Count}");
+                sb.AppendLine($"Exported:    {DateTime.Now:yyyy-MM-dd HH:mm}");
+                sb.AppendLine();
+
+                // ---- VARIABLES ----
+                sb.AppendLine("=== VARIABLES ===");
+                sb.AppendLine(string.Join(sep, "Index", "Name", "Type", "Value", "RawValue"));
+                for (int i = 0; i < VariableList.Count; i++)
+                {
+                    var v = VariableList[i];
+                    sb.AppendLine(string.Join(sep,
+                        Esc(i.ToString()),
+                        Esc(v.Name),
+                        Esc(v.VariableType.Replace("VARIABLE_TYPE_", "")),
+                        Esc(v.Value),
+                        Esc(v.RawValue)));
+                }
+
+                sb.AppendLine();
+
+                // ---- EVENTS ----
+                sb.AppendLine("=== EVENTS ===");
+                sb.AppendLine(string.Join(sep, "Index", "Name"));
+                foreach (var ev in EventList)
+                {
+                    sb.AppendLine(string.Join(sep,
+                        Esc(ev.Id),
+                        Esc(ev.Name)));
+                }
+
+                sb.AppendLine();
+
+                // ---- CLIPS ----
+                sb.AppendLine("=== CLIPS ===");
+                sb.AppendLine(string.Join(sep, "Id", "Name", "AnimationPath", "Mode", "PlaybackSpeed"));
+                foreach (var clip in ClipList)
+                {
+                    sb.AppendLine(string.Join(sep,
+                        Esc(clip.Id),
+                        Esc(clip.Name),
+                        Esc(clip.AnimationPath),
+                        Esc(clip.Mode),
+                        Esc(clip.PlaybackSpeed)));
+                }
+
+                sb.AppendLine();
+
+                // ---- TRANSITIONS ----
+                sb.AppendLine("=== TRANSITIONS ===");
+                sb.AppendLine(string.Join(sep, "FromState", "ToState", "Event", "BlendDuration", "Flags"));
+                foreach (var tr in TransitionList)
+                {
+                    sb.AppendLine(string.Join(sep,
+                        Esc(tr.FromState),
+                        Esc(tr.ToState),
+                        Esc(tr.EventName),
+                        Esc(tr.BlendDuration),
+                        Esc(tr.Flags)));
+                }
+
+                sb.AppendLine();
+
+                // ---- BINDINGS ----
+                sb.AppendLine("=== BINDINGS ===");
+                sb.AppendLine(string.Join(sep, "Owner", "OwnerClass", "Variable", "VariableIndex", "MemberPath", "BindingType"));
+                foreach (var b in BindingList)
+                {
+                    sb.AppendLine(string.Join(sep,
+                        Esc(b.OwnerName),
+                        Esc(b.OwnerClass),
+                        Esc(b.VariableName),
+                        Esc(b.VariableIndex),
+                        Esc(b.MemberPath),
+                        Esc(b.BindingType)));
+                }
+
+                System.IO.File.WriteAllText(sfd.FileName, sb.ToString(), Encoding.UTF8);
+                MessageBox.Show($"Exported successfully!\n{VariableList.Count} variables, {EventList.Count} events, {ClipList.Count} clips, {TransitionList.Count} transitions, {BindingList.Count} bindings.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Export error: " + ex.Message);
+            }
+        }
+
+        private void BtnCompare_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
+            {
+                MessageBox.Show("Load a file first to use as File A.");
+                return;
+            }
+
+            var dialog = new CompareDialog(
+                manager,
+                VariableList.ToList(),
+                EventList.ToList(),
+                ClipList.ToList());
+
+            dialog.Owner = this;
+            dialog.ObjectSelected += (id) =>
+            {
+                if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
+                SelectedClassName.Text = $"Class: {obj.ClassName}";
+                ParamsEditor.ItemsSource = obj.Params;
+                MainTabControl.SelectedIndex = 0;
+            };
+            dialog.Show();
+        }
+
+
+        private void ClipsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ClipsList.SelectedItem is not ClipInfo clip) return;
+
+            SelectedClip = clip;
+
+            var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+            if (root == null) return;
+
+            var target = FindNodeById(root, clip.Id);
+
+            if (manager.ObjectMap.TryGetValue(clip.Id, out var obj))
+            {
+                SelectedClassName.Text = $"Class: {obj.ClassName}";
+                ParamsEditor.ItemsSource = obj.Params;
+
+                if (MainTabControl.SelectedIndex != 0)
+                    MainTabControl.SelectedIndex = 0;
+            }
+
+            if (target != null)
+                SelectTreeNode(ObjectTree, target);
+        }
+
+        private void BindingsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if ((sender as ListBox)?.SelectedItem is not BindingEntry binding) return;
+            if (!manager.ObjectMap.TryGetValue(binding.OwnerId, out var obj)) return;
+
+            SelectedClassName.Text = $"Class: {obj.ClassName}";
+            ParamsEditor.ItemsSource = obj.Params;
+            MainTabControl.SelectedIndex = 0;
+
+            var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+            if (root == null) return;
+            var target = FindNodeById(root, binding.OwnerId);
+            if (target != null) SelectTreeNode(ObjectTree, target);
+        }
+
+        private BehaviorNodeData FindNodeById(BehaviorNodeData node, string id)
+        {
+            if (node.Object?.Id == id) return node;
+            foreach (var child in node.Children)
+            {
+                var found = FindNodeById(child, id);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private void RefreshTriggers(ClipInfo clip)
+        {
+            TriggerList.Clear();
+            if (!manager.ObjectMap.TryGetValue(clip.Id, out var clipObj)) return;
+
+            var triggersRef = clipObj.Params.FirstOrDefault(p => p.Name == "triggers")?.Value;
+            if (string.IsNullOrEmpty(triggersRef) || triggersRef == "null") return;
+            if (!manager.TryResolve(triggersRef, out var triggerArrayObj)) return;
+
+            var triggersParam = triggerArrayObj.Params.FirstOrDefault(p => p.Name == "triggers");
+            if (triggersParam?.Children == null) return;
+
+            var eventNamesLookup = EventList.ToDictionary(e => e.Id, e => e.Name);
+
+            foreach (var tr in triggersParam.Children)
+            {
+                string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+                var localTime = Get("localTime");
+                var relToEnd = Get("relativeToEndOfClip").ToLower() == "true";
+                var acyclic = Get("acyclic").ToLower() == "true";
+
+                var eventParam = tr.Params.FirstOrDefault(p => p.Name == "event");
+                var eventId = "";
+                if (eventParam?.Children?.Count > 0)
+                    eventId = eventParam.Children[0].Params
+                        .FirstOrDefault(p => p.Name == "id")?.Value ?? "";
+
+                eventNamesLookup.TryGetValue(eventId, out var evName);
+
+                TriggerList.Add(new ClipTrigger
+                {
+                    ClipName = clip.Name,
+                    LocalTime = localTime,
+                    EventId = eventId,
+                    EventName = evName ?? $"Event {eventId}",
+                    RelativeToEnd = relToEnd,
+                    Acyclic = acyclic
+                });
+            }
+
+            if (TriggerList.Count == 0)
+                TriggerList.Add(new ClipTrigger { EventName = "No triggers on this clip", LocalTime = "" });
+        }
+
+        private void RefreshVarUsages(IdNamePair variable)
+        {
+            UsageList.Clear();
+
+            // Extract the index from the Id (format: "#objId_index")
+            var parts = variable.Id.Split('_');
+            if (parts.Length < 2) return;
+            var varIndex = parts.Last();
+
+            // Scan all hkbVariableBindingSet objects
+            foreach (var obj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbVariableBindingSet"))
+            {
+                var bindingsParam = obj.Params.FirstOrDefault(p => p.Name == "bindings");
+                if (bindingsParam?.Children == null) continue;
+
+                foreach (var binding in bindingsParam.Children)
+                {
+                    string Get(string n) => binding.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+                    var bindingVarIndex = Get("variableIndex");
+                    if (bindingVarIndex != varIndex) continue;
+
+                    var memberPath = Get("memberPath");
+
+                    // Find the object that owns this binding set
+                    var owner = manager.ObjectMap.Values.FirstOrDefault(o =>
+                        o.Params.Any(p => p.Value == obj.Id));
+
+                    var ownerName = owner?.Params.FirstOrDefault(p => p.Name == "name")?.Value
+                                    ?? owner?.Id ?? obj.Id;
+                    var ownerClass = owner?.ClassName ?? "Unknown";
+
+                    UsageList.Add(new VariableUsage
+                    {
+                        VariableName = variable.Name,
+                        UsedBy = ownerName,
+                        UsedById = owner?.Id ?? obj.Id,
+                        ClassName = ownerClass,
+                        Property = memberPath,
+                        BindingType = "VariableBinding"
+                    });
+                }
+            }
+
+            // Also scan hkbExpressionCondition and hkbBoolVariableSequencedData for direct references
+            foreach (var obj in manager.ObjectMap.Values)
+            {
+                foreach (var param in obj.Params)
+                {
+                    if (param.Name == "variableIndex" && param.Value == varIndex)
+                    {
+                        var ownerName = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? obj.Id;
+                        UsageList.Add(new VariableUsage
+                        {
+                            VariableName = variable.Name,
+                            UsedBy = ownerName,
+                            UsedById = obj.Id,
+                            ClassName = obj.ClassName,
+                            Property = param.Name,
+                            BindingType = "Direct"
+                        });
+                    }
+                }
+            }
+
+            if (UsageList.Count == 0)
+            {
+                UsageList.Add(new VariableUsage
+                {
+                    VariableName = variable.Name,
+                    UsedBy = "No usages found",
+                    ClassName = "",
+                    Property = "",
+                    BindingType = ""
+                });
+            }
+        }
+
+        private void RefreshEventUsages(IdNamePair ev)
+        {
+            EventUsageList.Clear();
+            if (ev == null) return;
+
+            var eventIndex = ev.Id; // "0", "1", "18" etc.
+
+            // ── Transitions ───────────────────────────────────────────────
+            foreach (var stateObj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachineStateInfo"))
+            {
+                var fromName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
+                var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
+                if (string.IsNullOrEmpty(transRef) || transRef == "null") continue;
+                if (!manager.TryResolve(transRef, out var transArray)) continue;
+
+                var tp = transArray.Params.FirstOrDefault(p => p.Name == "transitions");
+                if (tp?.Children == null) continue;
+
+                foreach (var tr in tp.Children)
+                {
+                    var trEventId = tr.Params.FirstOrDefault(p => p.Name == "eventId")?.Value;
+                    if (trEventId != eventIndex) continue;
+
+                    var toStateId = tr.Params.FirstOrDefault(p => p.Name == "toStateId")?.Value ?? "";
+                    // resolve toState name
+                    var toStateObj = manager.ObjectMap.Values.FirstOrDefault(o =>
+                        o.ClassName == "hkbStateMachineStateInfo" &&
+                        o.Params.FirstOrDefault(p => p.Name == "stateId")?.Value == toStateId);
+                    var toName = toStateObj?.Params.FirstOrDefault(p => p.Name == "name")?.Value
+                                 ?? $"stateId:{toStateId}";
+
+                    EventUsageList.Add(new EventUsageEntry
+                    {
+                        UsageType = "Transition",
+                        Description = $"{fromName}  →  {toName}",
+                        ObjectId = stateObj.Id,
+                        ClassName = "hkbStateMachineStateInfo"
+                    });
+                }
+            }
+
+            // ── Wildcard transitions ──────────────────────────────────────
+            foreach (var sm in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachine"))
+            {
+                var wcRef = sm.Params.FirstOrDefault(p => p.Name == "wildcardTransitions")?.Value;
+                if (string.IsNullOrEmpty(wcRef) || wcRef == "null") continue;
+                if (!manager.TryResolve(wcRef, out var wcArray)) continue;
+
+                var wtp = wcArray.Params.FirstOrDefault(p => p.Name == "transitions");
+                if (wtp?.Children == null) continue;
+
+                var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
+
+                foreach (var tr in wtp.Children)
+                {
+                    var trEventId = tr.Params.FirstOrDefault(p => p.Name == "eventId")?.Value;
+                    if (trEventId != eventIndex) continue;
+
+                    var toStateId = tr.Params.FirstOrDefault(p => p.Name == "toStateId")?.Value ?? "";
+                    var toStateObj = manager.ObjectMap.Values.FirstOrDefault(o =>
+                        o.ClassName == "hkbStateMachineStateInfo" &&
+                        o.Params.FirstOrDefault(p => p.Name == "stateId")?.Value == toStateId);
+                    var toName = toStateObj?.Params.FirstOrDefault(p => p.Name == "name")?.Value
+                                 ?? $"stateId:{toStateId}";
+
+                    EventUsageList.Add(new EventUsageEntry
+                    {
+                        UsageType = "Wildcard",
+                        Description = $"★ {smName}  →  {toName}",
+                        ObjectId = sm.Id,
+                        ClassName = "hkbStateMachine"
+                    });
+                }
+            }
+
+            // ── Clip triggers ─────────────────────────────────────────────
+            foreach (var clipObj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbClipGenerator"))
+            {
+                var clipName = clipObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? clipObj.Id;
+                var trigRef = clipObj.Params.FirstOrDefault(p => p.Name == "triggers")?.Value;
+                if (string.IsNullOrEmpty(trigRef) || trigRef == "null") continue;
+                if (!manager.TryResolve(trigRef, out var trigArray)) continue;
+
+                var tp = trigArray.Params.FirstOrDefault(p => p.Name == "triggers");
+                if (tp?.Children == null) continue;
+
+                foreach (var tr in tp.Children)
+                {
+                    var eventParam = tr.Params.FirstOrDefault(p => p.Name == "event");
+                    if (eventParam?.Children?.Count == 0) continue;
+                    var triggerId = eventParam?.Children?[0].Params
+                        .FirstOrDefault(p => p.Name == "id")?.Value;
+                    if (triggerId != eventIndex) continue;
+
+                    var localTime = tr.Params.FirstOrDefault(p => p.Name == "localTime")?.Value ?? "?";
+                    EventUsageList.Add(new EventUsageEntry
+                    {
+                        UsageType = "Trigger",
+                        Description = $"{clipName}  at t={localTime}",
+                        ObjectId = clipObj.Id,
+                        ClassName = "hkbClipGenerator"
+                    });
+                }
+            }
+
+            // ── Generic param scan (enterEventId, exitEventId, etc.) ──────
+            var eventParamNames = new HashSet<string>
+    {
+        "enterEventId", "exitEventId", "returnToPreviousStateEvent",
+        "randomTransitionEventId", "transitionToNextHigherStateEventId",
+        "transitionToNextLowerStateEventId", "syncVariableIndex"
+    };
+
+            foreach (var obj in manager.ObjectMap.Values)
+            {
+                var objName = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? obj.Id;
+                foreach (var param in obj.Params)
+                {
+                    if (!eventParamNames.Contains(param.Name)) continue;
+                    if (param.Value != eventIndex) continue;
+
+                    EventUsageList.Add(new EventUsageEntry
+                    {
+                        UsageType = "Property",
+                        Description = $"{objName}  [{param.Name}]",
+                        ObjectId = obj.Id,
+                        ClassName = obj.ClassName
+                    });
+                }
+            }
+
+            if (EventUsageList.Count == 0)
+                EventUsageList.Add(new EventUsageEntry
+                {
+                    UsageType = "",
+                    Description = "No usages found",
+                    ObjectId = null,
+                    ClassName = ""
+                });
+        }
+
+        private void EventUsagesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if ((sender as ListBox)?.SelectedItem is not EventUsageEntry usage) return;
+            if (string.IsNullOrEmpty(usage.ObjectId)) return;
+            if (!manager.ObjectMap.TryGetValue(usage.ObjectId, out var obj)) return;
+            LoadObjectIntoEditor(obj);
+            MainTabControl.SelectedIndex = 0;
+            var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+            if (root != null)
+            {
+                var target = FindNodeById(root, usage.ObjectId);
+                if (target != null) SelectTreeNode(ObjectTree, target);
+            }
+        }
+
+        private void EventFindUsages_Click(object sender, RoutedEventArgs e)
+        {
+            if (EventsGrid.SelectedItem is IdNamePair ev)
+            {
+                SelectedEvent = ev;
+                // Panel updates automatically via SelectedEvent setter
+            }
+        }
+
+        public ObservableCollection<TransitionDetail> TransitionDetailList { get; set; } = new();
+
+        private TransitionInfo _selectedTransition;
+        public TransitionInfo SelectedTransition
+        {
+            get => _selectedTransition;
+            set
+            {
+                _selectedTransition = value;
+                if (value != null) RefreshTransitionDetail(value);
+            }
+        }
+
+        private void RefreshTransitionDetail(TransitionInfo tr)
+        {
+            TransitionDetailList.Clear();
+
+            // ── Basic info ────────────────────────────────────────────────
+            TransitionDetailList.Add(new TransitionDetail
+            { Label = "From State", Value = tr.FromState });
+            TransitionDetailList.Add(new TransitionDetail
+            { Label = "To State", Value = tr.ToState });
+            TransitionDetailList.Add(new TransitionDetail
+            { Label = "Event", Value = $"{tr.EventName}  (id {tr.EventId})" });
+            TransitionDetailList.Add(new TransitionDetail
+            { Label = "Blend", Value = string.IsNullOrEmpty(tr.BlendDuration) ? "0" : tr.BlendDuration });
+            TransitionDetailList.Add(new TransitionDetail
+            { Label = "Flags", Value = tr.Flags });
+
+            if (string.IsNullOrEmpty(tr.TransitionEffect) || tr.TransitionEffect == "null")
+                return;
+
+            if (!manager.TryResolve(tr.TransitionEffect, out var effectObj)) return;
+
+            // ── Transition effect details ─────────────────────────────────
+            string Get(string n) => effectObj.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+
+            var duration = Get("duration");
+            var blendCurve = Get("blendCurve");
+            var syncPoint = Get("syncPoint");
+            var toNestedSt = Get("toNestedStateId");
+            var fromNestedSt = Get("fromNestedStateId");
+            var priority = Get("priority");
+            var initSyncPt = Get("initiateInterval");
+
+            if (!string.IsNullOrEmpty(duration))
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "Blend Duration", Value = duration });
+            if (!string.IsNullOrEmpty(blendCurve))
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "Blend Curve", Value = blendCurve });
+            if (!string.IsNullOrEmpty(syncPoint))
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "Sync Point", Value = syncPoint });
+            if (toNestedSt != "0" && !string.IsNullOrEmpty(toNestedSt))
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "To Nested State", Value = toNestedSt });
+            if (fromNestedSt != "0" && !string.IsNullOrEmpty(fromNestedSt))
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "From Nested State", Value = fromNestedSt });
+            if (priority != "0" && !string.IsNullOrEmpty(priority))
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "Priority", Value = priority });
+
+            // ── Condition ─────────────────────────────────────────────────
+            var condRef = tr.TransitionEffect != null
+                ? effectObj.Params.FirstOrDefault(p => p.Name == "condition")?.Value
+                : null;
+
+            if (!string.IsNullOrEmpty(condRef) && condRef != "null"
+                && manager.TryResolve(condRef, out var condObj))
+            {
+                var condClass = condObj.ClassName ?? "";
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "──", Value = "Condition" });
+
+                // hkbExpressionCondition
+                var expr = condObj.Params.FirstOrDefault(p => p.Name == "expression")?.Value;
+                if (!string.IsNullOrEmpty(expr))
+                {
+                    // Substitute variable indices with names where possible
+                    var resolved = System.Text.RegularExpressions.Regex.Replace(expr,
+                        @"\bvar\[(\d+)\]", m =>
+                        {
+                            var idx = m.Groups[1].Value;
+                            var vn = VariableList.FirstOrDefault(v => v.Index.ToString() == idx)?.Name;
+                            return vn != null ? vn : m.Value;
+                        });
+                    TransitionDetailList.Add(new TransitionDetail
+                    { Label = "Expression", Value = resolved, ObjectId = condObj.Id });
+                }
+
+                // hkbBoolVariableCondition / hkbVariableCondition
+                var varIdx = condObj.Params.FirstOrDefault(p => p.Name == "variableIndex")?.Value;
+                if (!string.IsNullOrEmpty(varIdx))
+                {
+                    var varName = VariableList.FirstOrDefault(v => v.Index.ToString() == varIdx)?.Name
+                                  ?? $"var[{varIdx}]";
+                    var compareVal = condObj.Params.FirstOrDefault(p =>
+                        p.Name == "value" || p.Name == "compareValue")?.Value ?? "?";
+                    var op = condObj.Params.FirstOrDefault(p => p.Name == "operation")?.Value ?? "==";
+                    TransitionDetailList.Add(new TransitionDetail
+                    {
+                        Label = "Condition",
+                        Value = $"{varName}  {op}  {compareVal}",
+                        ObjectId = condObj.Id
+                    });
+                }
+
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "Cond. Class", Value = condClass, ObjectId = condObj.Id });
+            }
+
+            // ── Trigger / initiate interval ───────────────────────────────
+            var trigIntervalRef = effectObj.Params
+                .FirstOrDefault(p => p.Name == "triggerInterval")?.Children?.FirstOrDefault();
+            if (trigIntervalRef != null)
+            {
+                string TGet(string n) =>
+                    trigIntervalRef.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+                var enter = TGet("enterEventId");
+                var exit = TGet("exitEventId");
+                var tEnter = TGet("enterTime");
+                var tExit = TGet("exitTime");
+
+                if (enter != "-1" || exit != "-1")
+                {
+                    TransitionDetailList.Add(new TransitionDetail
+                    { Label = "──", Value = "Trigger Interval" });
+                    if (enter != "-1")
+                    {
+                        var evName = EventList.FirstOrDefault(e => e.Id == enter)?.Name ?? $"event[{enter}]";
+                        TransitionDetailList.Add(new TransitionDetail
+                        { Label = "Enter Event", Value = $"{evName}  at t={tEnter}" });
+                    }
+                    if (exit != "-1")
+                    {
+                        var evName = EventList.FirstOrDefault(e => e.Id == exit)?.Name ?? $"event[{exit}]";
+                        TransitionDetailList.Add(new TransitionDetail
+                        { Label = "Exit Event", Value = $"{evName}  at t={tExit}" });
+                    }
+                }
+            }
+        }
+
+        private void TransitionsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if ((sender as ListBox)?.SelectedItem is TransitionInfo tr)
+                SelectedTransition = tr;
+        }
+
+        private void TransitionDetail_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if ((sender as ListBox)?.SelectedItem is not TransitionDetail detail) return;
+            if (string.IsNullOrEmpty(detail.ObjectId)) return;
+            if (!manager.ObjectMap.TryGetValue(detail.ObjectId, out var obj)) return;
+            LoadObjectIntoEditor(obj);
+            MainTabControl.SelectedIndex = 0;
+        }
+
+        private bool SelectTreeNode(ItemsControl container, BehaviorNodeData target)
+        {
+            foreach (var item in container.Items)
+            {
+                if (item is not BehaviorNodeData node) continue;
+
+                var tvi = container.ItemContainerGenerator.ContainerFromItem(item) as TreeViewItem;
+                if (tvi == null) continue;
+
+                if (node == target)
+                {
+                    tvi.IsSelected = true;
+                    tvi.BringIntoView();
+                    return true;
+                }
+
+                tvi.IsExpanded = true;
+                tvi.UpdateLayout(); // force child containers to generate
+
+                if (SelectTreeNode(tvi, target))
+                    return true;
+            }
+            return false;
+        }
+
+        private void BtnGlobalSearch_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
+            {
+                MessageBox.Show("No file loaded.");
+                return;
+            }
+
+            var dialog = new GlobalSearchDialog(manager, EventList.ToList());
+            dialog.Owner = this;
+            dialog.ObjectSelected += (id) =>
+            {
+                if (id == null) return; // Events/Variables fire null to signal tab switch only
+                if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
+                LoadObjectIntoEditor(obj);
+                MainTabControl.SelectedIndex = 0;
+                var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+                if (root != null)
+                {
+                    var target = FindNodeById(root, id);
+                    if (target != null) SelectTreeNode(ObjectTree, target);
+                }
+            };
+            dialog.NavigateToEvent += (idxStr) =>
+            {
+                if (!idxStr.StartsWith("idx:")) return;
+                if (!int.TryParse(idxStr.Substring(4), out int idx)) return;
+                if (idx < 0 || idx >= EventList.Count) return;
+
+                EventFilter = "";
+
+                MainTabControl.SelectedIndex = 4;
+
+                Dispatcher.InvokeAsync(() =>
+                {
+                    var target = EventList.FirstOrDefault(ev => ev.Id == idx.ToString());
+                    if (target == null) return;
+                    EventsGrid.SelectedItem = target;
+                    EventsGrid.ScrollIntoView(target);
+                }, System.Windows.Threading.DispatcherPriority.Loaded);
+            };
+
+            dialog.NavigateToVariable += (name) =>
+            {
+                var match = VariableList.FirstOrDefault(v =>
+                    v.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (match == null) return;
+
+                VariableFilter = "";
+
+                MainTabControl.SelectedIndex = 2;
+
+                Dispatcher.InvokeAsync(() =>
+                {
+                    VariablesList.SelectedItem = match;
+                    VariablesList.ScrollIntoView(match);
+                    SelectedVariable = match;
+                }, System.Windows.Threading.DispatcherPriority.Loaded);
+            };
+            dialog.Show();
+        }
+
+        public ICollectionView EventsView { get; private set; }
+
+        private string _eventFilter = "";
+        public string EventFilter
+        {
+            get => _eventFilter;
+            set { _eventFilter = value; EventsView?.Refresh(); }
+        }
+
+
+        private void VariablesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (VariablesList.SelectedItem is IdNamePair pair)
+                SelectedVariable = pair;
+        }
+
+        private void BtnEditStates_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as Button)?.Tag is not HkParam statesParam) return;
+
+            // Find the parent object that owns this param
+            var parentObj = manager.ObjectMap.Values.FirstOrDefault(o =>
+                o.Params.Contains(statesParam));
+            if (parentObj == null) return;
+
+            // Get all available states in the file
+            var allStates = manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachineStateInfo")
+                .OrderBy(o => o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id)
+                .ToList();
+
+            // Get current state IDs from the param value
+            var currentIds = (statesParam.Value ?? "")
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .ToList();
+
+            var dialog = new SkyrimHavokEditor.UI.Dialogs.StatesEditorDialog(allStates, currentIds, manager);
+            dialog.Owner = this;
+
+            if (dialog.ShowDialog() == true)
+            {
+                var oldValue = statesParam.Value;
+                var newIds = dialog.ResultIds;
+                var newValue = string.Join(" ", newIds);
+
+                statesParam.Value = newValue;
+
+                // Update numelements
+                statesParam.NumElements = newIds.Count.ToString();
+
+                _undoRedo.Record(new EditAction
+                {
+                    Description = $"Edit states of {parentObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? parentObj.Id}",
+                    Undo = () =>
+                    {
+                        _suppressUndoRecord = true;
+                        statesParam.Value = oldValue;
+                        statesParam.NumElements = oldValue.Split(' ',
+                            StringSplitOptions.RemoveEmptyEntries).Length.ToString();
+                        _suppressUndoRecord = false;
+                        UpdateUndoRedoButtons();
+                    },
+                    Redo = () =>
+                    {
+                        _suppressUndoRecord = true;
+                        statesParam.Value = newValue;
+                        statesParam.NumElements = newIds.Count.ToString();
+                        _suppressUndoRecord = false;
+                        UpdateUndoRedoButtons();
+                    }
+                });
+                UpdateUndoRedoButtons();
+                StatusText.Text = $"✓ States updated ({newIds.Count} states)";
+            }
+        }
+
+        protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
+        {
+            base.OnPreviewKeyDown(e);
+
+            bool ctrl = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control);
+            bool shift = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift);
+
+            if (!ctrl) return;
+
+            switch (e.Key)
+            {
+                case System.Windows.Input.Key.S:
+                    BtnSave_Click(null, null);
+                    e.Handled = true;
+                    break;
+
+                case System.Windows.Input.Key.O:
+                    BtnLoad_Click(null, null);
+                    e.Handled = true;
+                    break;
+
+                case System.Windows.Input.Key.Z:
+                    if (shift)
+                    {
+                        // Ctrl+Shift+Z = Redo
+                        if (_undoRedo.CanRedo)
+                        {
+                            _undoRedo.Redo();
+                            UpdateUndoRedoButtons();
+                        }
+                    }
+                    else
+                    {
+                        // Ctrl+Z = Undo
+                        if (_undoRedo.CanUndo)
+                        {
+                            _undoRedo.Undo();
+                            UpdateUndoRedoButtons();
+                        }
+                    }
+                    e.Handled = true;
+                    break;
+
+                case System.Windows.Input.Key.Y:
+                    // Ctrl+Y = Redo (alternative)
+                    if (_undoRedo.CanRedo)
+                    {
+                        _undoRedo.Redo();
+                        UpdateUndoRedoButtons();
+                    }
+                    e.Handled = true;
+                    break;
+
+                case System.Windows.Input.Key.F:
+                    // Ctrl+F = focus the active search box
+                    FocusActiveSearchBox();
+                    e.Handled = true;
+                    break;
+
+                case System.Windows.Input.Key.E:
+                    // Ctrl+E = Export CSV
+                    BtnExport_Click(null, null);
+                    e.Handled = true;
+                    break;
+
+                case System.Windows.Input.Key.G:
+                    BtnGlobalSearch_Click(null, null);
+                    e.Handled = true;
+                    break;
+
+                case System.Windows.Input.Key.B:
+                    if (shift) BtnBookmarks_Click(null, null);
+                    else BtnBookmark_Click(null, null);
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        private void FocusActiveSearchBox()
+        {
+            switch (MainTabControl.SelectedIndex)
+            {
+                case 1: VarSearchBox.Focus(); VarSearchBox.SelectAll(); break;
+                case 2: ClipSearchBox.Focus(); ClipSearchBox.SelectAll(); break;
+                default: TxtSearch.Focus(); TxtSearch.SelectAll(); break;
+            }
+        }
+
+        private string DecodeHavokValue(string rawValue)
+        {
+            if (string.IsNullOrWhiteSpace(rawValue)) return "0";
+
+            // Try to parse the integer bit pattern (handles negative too)
+            if (long.TryParse(rawValue, out long longVal))
+            {
+                int intVal = (int)longVal;
+
+                // Heuristic: Values like 1, 2, 3 are indices/bools. 
+                // Bit patterns for floats like 0.1, 1.0, etc., are huge (> 1 million).
+                if (Math.Abs(intVal) > 1000000 || intVal < 0)
+                {
+                    float f = BitConverter.Int32BitsToSingle(intVal);
+
+                    // Check if it's a valid float (not NaN or Infinity)
+                    if (!float.IsNaN(f) && !float.IsInfinity(f))
+                    {
+                        return f.ToString("0.###", CultureInfo.InvariantCulture);
+                    }
+                }
+                return intVal.ToString(); // It's a plain integer (0, 1, 2, etc.)
+            }
+
+            return rawValue; // Fallback
+        }
+
+        private HavokValidator _validator;
+
+
+        private void BtnValidate_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
+            {
+                MessageBox.Show("No file loaded.");
+                return;
+            }
+
+            var issues = _validator.RunValidation();
+            var dialog = new ValidationDialog(issues);
+            dialog.Owner = this;
+            dialog.ObjectSelected += (id) =>
+            {
+                if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
+                SelectedClassName.Text = $"Class: {obj.ClassName}";
+                ParamsEditor.ItemsSource = obj.Params;
+                MainTabControl.SelectedIndex = 0;
+
+                var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+                if (root != null)
+                {
+                    var target = FindNodeById(root, id);
+                    if (target != null) SelectTreeNode(ObjectTree, target);
+                }
+            };
+            dialog.Show();
+        }
+
+        // ── EVENTS: selection → enable Delete button ──────────────────────────────
+        private void EventsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            BtnDeleteEvent.IsEnabled = EventsGrid.SelectedItem is IdNamePair;
+            if (EventsGrid.SelectedItem is IdNamePair ev)
+                SelectedEvent = ev;
+        }
+
+        // ── EVENTS: Add ───────────────────────────────────────────────────────────
+        private void BtnAddEvent_Click(object sender, RoutedEventArgs e)
+        {
+            // New index = next sequential id
+            var newId = EventList.Count.ToString();
+            var newEvent = new IdNamePair { Id = newId, Name = $"NewEvent_{newId}" };
+
+            // Apply
+            EventList.Add(newEvent);
+
+            // Wire undo/redo
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Add event '{newEvent.Name}'",
+                Undo = () =>
+                {
+                    _suppressUndoRecord = true;
+                    EventList.Remove(newEvent);
+                    RenumberEvents();
+                    _suppressUndoRecord = false;
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    _suppressUndoRecord = true;
+                    EventList.Add(newEvent);
+                    RenumberEvents();
+                    _suppressUndoRecord = false;
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+
+            // Select and immediately begin editing the Name cell
+            EventsGrid.SelectedItem = newEvent;
+            EventsGrid.ScrollIntoView(newEvent);
+            EventsGrid.CurrentCell = new DataGridCellInfo(newEvent,
+                EventsGrid.Columns[1]); // column 1 = Name
+            EventsGrid.BeginEdit();
+
+            StatusText.Text = $"✓ Event added (index {newId})";
+        }
+
+        // ── EVENTS: Delete ────────────────────────────────────────────────────────
+        private void BtnDeleteEvent_Click(object sender, RoutedEventArgs e)
+        {
+            if (EventsGrid.SelectedItem is not IdNamePair target) return;
+
+            var capturedIndex = EventList.IndexOf(target);
+            var capturedEvent = target;
+
+            // Confirm
+            if (MessageBox.Show(
+                    $"Delete event '{target.Name}' (index {target.Id})?\n\nWarning: any transitions referencing this event by ID will be affected.",
+                    "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+
+            // Apply
+            EventList.Remove(target);
+            RenumberEvents();
+
+            // Wire undo/redo
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Delete event '{capturedEvent.Name}'",
+                Undo = () =>
+                {
+                    _suppressUndoRecord = true;
+                    // Re-insert at original position if possible
+                    int insertAt = Math.Min(capturedIndex, EventList.Count);
+                    EventList.Insert(insertAt, capturedEvent);
+                    RenumberEvents();
+                    _suppressUndoRecord = false;
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    _suppressUndoRecord = true;
+                    EventList.Remove(capturedEvent);
+                    RenumberEvents();
+                    _suppressUndoRecord = false;
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+
+            BtnDeleteEvent.IsEnabled = false;
+            StatusText.Text = $"✓ Event '{capturedEvent.Name}' deleted";
+        }
+
+        // ── EVENTS: Inline edit committed → record undo ──────────────────────────
+        private void EventsGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            // Only care about committed edits to the Name column
+            if (e.EditAction != DataGridEditAction.Commit) return;
+            if (e.Column.Header?.ToString() != "Name") return;
+            if (e.Row.Item is not IdNamePair edited) return;
+
+            // The TextBox still holds the *new* value; the binding hasn't flushed yet
+            var newName = (e.EditingElement as TextBox)?.Text ?? edited.Name;
+            var oldName = edited.Name;
+
+            if (oldName == newName) return;
+
+            // Flush the value now so undo captures the right state
+            var capturedOld = oldName;
+            var capturedNew = newName;
+            var capturedItem = edited;
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Rename event '{capturedOld}' → '{capturedNew}'",
+                Undo = () =>
+                {
+                    _suppressUndoRecord = true;
+                    capturedItem.Name = capturedOld;
+                    _suppressUndoRecord = false;
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    _suppressUndoRecord = true;
+                    capturedItem.Name = capturedNew;
+                    _suppressUndoRecord = false;
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+
+            StatusText.Text = $"✓ Event renamed: '{capturedOld}' → '{capturedNew}'";
+        }
+
+        // ── Helper: keep Id values sequential after add/delete ───────────────────
+        private void RenumberEvents()
+        {
+            for (int i = 0; i < EventList.Count; i++)
+                EventList[i].Id = i.ToString();
+        }
+
+  
+
+        // ── SM Inspector collections ──────────────────────────────────────────────
+        public ObservableCollection<HkObject> SmList { get; set; } = new();
+        public ObservableCollection<SmTransitionRow> SmTransitionRows { get; set; } = new();
+
+        // States valid in the currently selected SM — used for ToState dropdown
+        public ObservableCollection<IdNamePair> SmStateOptions { get; set; } = new();
+
+        private HkObject _selectedSM;
+        public HkObject SelectedSM
+        {
+            get => _selectedSM;
+            set { _selectedSM = value; if (value != null) RefreshSmInspector(value); }
+        }
+
+        private SmTransitionRow _selectedSmRow;
+        public SmTransitionRow SelectedSmRow
+        {
+            get => _selectedSmRow;
+            set { _selectedSmRow = value; }
+        }
+
+        // ── Find the hkbStateMachine that directly owns a given state object ──────
+        private HkObject FindParentSM(string stateObjectId)
+        {
+            return manager.ObjectMap.Values.FirstOrDefault(o =>
+                o.ClassName == "hkbStateMachine" &&
+                (o.Params.FirstOrDefault(p => p.Name == "states")
+                    ?.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Contains(stateObjectId) ?? false));
+        }
+
+        // ── Build the SM list (call after RefreshLookups) ─────────────────────────
+        private void RefreshSmList()
+        {
+            SmList.Clear();
+            foreach (var sm in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachine")
+                .OrderBy(o => o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id))
+            {
+                SmList.Add(sm);
+            }
+        }
+
+        // ── Populate the SM Inspector for a chosen state machine ─────────────────
+        private void RefreshSmInspector(HkObject sm)
+        {
+            SmTransitionRows.Clear();
+            SmStateOptions.Clear();
+
+            var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
+            var eventLookup = EventList.ToDictionary(e => e.Id, e => e.Name);
+
+            var stateIdToName = new Dictionary<string, string>();
+            var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
+            if (statesParam == null) return;
+
+            // Build stateId → name map and dropdown options
+            foreach (var stateRef in statesParam.Value
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!manager.TryResolve(stateRef, out var stateObj)) continue;
+                var sid = stateObj.Params.FirstOrDefault(p => p.Name == "stateId")?.Value ?? "";
+                var name = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
+                stateIdToName[sid] = name;
+                SmStateOptions.Add(new IdNamePair { Id = sid, Name = $"{name}  (id {sid})" });
+            }
+
+            // ── Walk every state's own transition array ───────────────────────────
+            foreach (var stateRef in statesParam.Value
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!manager.TryResolve(stateRef, out var stateObj)) continue;
+                var fromName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
+                var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
+                if (string.IsNullOrEmpty(transRef) || transRef == "null") continue;
+                if (!manager.TryResolve(transRef, out var transArray)) continue;
+
+                var transitionsParam = transArray.Params.FirstOrDefault(p => p.Name == "transitions");
+                if (transitionsParam?.Children == null) continue;
+
+                foreach (var tr in transitionsParam.Children)
+                {
+                    string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+                    var toStateId = Get("toStateId");
+                    var eventId = Get("eventId");
+                    var flags = Get("flags");
+                    var effect = Get("transition");
+
+                    var blendDuration = "";
+                    if (!string.IsNullOrEmpty(effect) && effect != "null"
+                        && manager.TryResolve(effect, out var effectObj))
+                        blendDuration = effectObj.Params
+                            .FirstOrDefault(p => p.Name == "duration")?.Value ?? "";
+
+                    stateIdToName.TryGetValue(toStateId, out var toName);
+                    eventLookup.TryGetValue(eventId, out var evName);
+
+                    SmTransitionRows.Add(new SmTransitionRow
+                    {
+                        OwnerState = stateObj,
+                        TransitionArray = transArray,
+                        TransitionChild = tr,
+                        ParentSM = sm,
+                        ParentSMName = smName,
+                        FromState = fromName,
+                        ToState = toName ?? $"ID:{toStateId}",
+                        ToStateId = toStateId,
+                        EventId = eventId,
+                        EventName = evName ?? $"Event {eventId}",
+                        BlendDuration = blendDuration,
+                        Flags = flags
+                    });
+                }
+            }
+
+            // ── Wildcard transitions (added ONCE, outside the state loop) ─────────
+            var wildcardRef = sm.Params.FirstOrDefault(p => p.Name == "wildcardTransitions")?.Value;
+            if (!string.IsNullOrEmpty(wildcardRef) && wildcardRef != "null"
+                && manager.TryResolve(wildcardRef, out var wildcardArrayObj))
+            {
+                var wtp = wildcardArrayObj.Params.FirstOrDefault(p => p.Name == "transitions");
+                if (wtp?.Children != null)
+                {
+                    foreach (var tr in wtp.Children)
+                    {
+                        string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+                        var toStateId = Get("toStateId");
+                        var eventId = Get("eventId");
+                        var flags = Get("flags");
+                        var effect = Get("transition");
+
+                        var blendDuration = "";
+                        if (!string.IsNullOrEmpty(effect) && effect != "null"
+                            && manager.TryResolve(effect, out var effectObj))
+                            blendDuration = effectObj.Params
+                                .FirstOrDefault(p => p.Name == "duration")?.Value ?? "";
+
+                        stateIdToName.TryGetValue(toStateId, out var toName);
+                        eventLookup.TryGetValue(eventId, out var evName);
+
+                        SmTransitionRows.Add(new SmTransitionRow
+                        {
+                            OwnerState = null,
+                            TransitionArray = wildcardArrayObj,
+                            TransitionChild = tr,
+                            ParentSM = sm,
+                            ParentSMName = smName,
+                            FromState = "★ WILDCARD",
+                            ToState = toName ?? $"ID:{toStateId}",
+                            ToStateId = toStateId,
+                            EventId = eventId,
+                            EventName = evName ?? $"Event {eventId}",
+                            BlendDuration = blendDuration,
+                            Flags = flags
+                        });
+                    }
+                }
+            }
+        }
+
+        private void SmTransitionsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            _selectedSmRow = SmTransitionsGrid.SelectedItem as SmTransitionRow;
+            SelectedSmRow = _selectedSmRow;
+
+            bool hasRow = _selectedSmRow != null;
+            BtnDeleteSmTransition.IsEnabled = hasRow;
+            BtnEditSmTransition.IsEnabled = hasRow;
+        }
+
+        // ── Edit button ───────────────────────────────────────────────────────────────
+        private void BtnEditSmTransition_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedSmRow == null) return;
+            OpenTransitionDialog(isAdd: false, preselectedFromState: null);
+        }
+
+        // ── Add button ────────────────────────────────────────────────────────────────
+        private void BtnAddSmTransition_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedSM == null) { MessageBox.Show("Select a state machine first."); return; }
+
+            var statesParam = _selectedSM.Params.FirstOrDefault(p => p.Name == "states");
+            if (statesParam == null || string.IsNullOrWhiteSpace(statesParam.Value))
+            { MessageBox.Show("This state machine has no states."); return; }
+
+            // Go straight to the shared popup — no InputDialog prompt
+            OpenTransitionDialog(isAdd: true, preselectedFromState: null);
+        }
+        // ── Shared Add / Edit popup ───────────────────────────────────────────────────
+        private void OpenTransitionDialog(bool isAdd, HkObject preselectedFromState)
+        {
+            var statesParam = _selectedSM?.Params.FirstOrDefault(p => p.Name == "states");
+            var stateOptions = new List<IdNamePair>();
+            if (statesParam != null)
+            {
+                foreach (var sr in statesParam.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!manager.TryResolve(sr, out var so)) continue;
+                    var sid = so.Params.FirstOrDefault(p => p.Name == "stateId")?.Value ?? "";
+                    var name = so.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? so.Id;
+                    stateOptions.Add(new IdNamePair { Id = sid, Name = $"{name}  (id {sid})" });
+                }
+            }
+
+            // For the From State combo — use object IDs (not stateIds) as keys
+            var fromOptions = statesParam?.Value
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(r => manager.TryResolve(r, out var so)
+                    ? new IdNamePair { Id = so.Id, Name = so.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? so.Id }
+                    : null)
+                .Where(x => x != null)
+                .ToList() ?? new List<IdNamePair>();
+
+            string title, initFromId, initEventId, initToStateId, initFlags;
+
+            if (isAdd)
+            {
+                title = "Add Transition";
+                initFromId = fromOptions.Count > 0 ? fromOptions[0].Id : null;
+                initEventId = EventList.Count > 0 ? EventList[0].Id : null;
+                initToStateId = stateOptions.Count > 0 ? stateOptions[0].Id : null;
+                initFlags = "FLAG_DISABLE_CONDITION";
+            }
+            else
+            {
+                title = "Edit Transition";
+                initFromId = preselectedFromState?.Id ?? _selectedSmRow.OwnerState?.Id;
+                initEventId = _selectedSmRow.EventId;
+                initToStateId = _selectedSmRow.ToStateId;
+                initFlags = _selectedSmRow.Flags;
+            }
+
+            var popup = new SkyrimHavokEditor.UI.Dialogs.SmTransitionDialog(
+                title, fromOptions, EventList, stateOptions,
+                initFromId, initEventId, initToStateId, initFlags)
+            { Owner = this };
+
+            if (popup.ShowDialog() != true) return;
+
+            // Resolve the chosen from-state HkObject by its ID
+            var fromStateObj = isAdd
+                ? manager.ObjectMap.TryGetValue(popup.ResultFromStateId ?? "", out var fso) ? fso : null
+                : preselectedFromState ?? _selectedSmRow.OwnerState;
+
+            if (isAdd && fromStateObj == null) { MessageBox.Show("Could not resolve selected from-state."); return; }
+
+            var resultEventId = popup.ResultEventId;
+            var resultToStateId = popup.ResultToStateId;
+            var resultFlags = popup.ResultFlags;
+
+            if (isAdd)
+            {
+                // ── Commit: ADD ──────────────────────────────────────────────────────
+                // Get or create transition array
+                var transRef = fromStateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
+                HkObject transArray;
+
+                if (string.IsNullOrEmpty(transRef) || transRef == "null" ||
+                    !manager.TryResolve(transRef, out transArray))
+                {
+                    var newId = GenerateNewObjectId();
+                    transArray = new HkObject
+                    {
+                        Id = newId,
+                        ClassName = "hkbStateMachineTransitionInfoArray",
+                        Signature = "0xe397b11e",
+                        Params = new List<HkParam>
+                {
+                    new HkParam { Name = "transitions", NumElements = "0",
+                                  Children = new List<HkObject>() }
+                }
+                    };
+                    manager.ObjectMap[newId] = transArray;
+                    var tp2 = fromStateObj.Params.FirstOrDefault(p => p.Name == "transitions");
+                    if (tp2 != null) tp2.Value = newId;
+                }
+
+                var newTr = new HkObject
+                {
+                    Params = new List<HkParam>
+            {
+                new HkParam { Name = "triggerInterval",  Children = new List<HkObject>
+                {
+                    new HkObject { Params = new List<HkParam> {
+                        new HkParam { Name = "enterEventId", Value = "-1" },
+                        new HkParam { Name = "exitEventId",  Value = "-1" },
+                        new HkParam { Name = "enterTime",    Value = "0.000000" },
+                        new HkParam { Name = "exitTime",     Value = "0.000000" }
+                    }}
+                }},
+                new HkParam { Name = "initiateInterval", Children = new List<HkObject>
+                {
+                    new HkObject { Params = new List<HkParam> {
+                        new HkParam { Name = "enterEventId", Value = "-1" },
+                        new HkParam { Name = "exitEventId",  Value = "-1" },
+                        new HkParam { Name = "enterTime",    Value = "0.000000" },
+                        new HkParam { Name = "exitTime",     Value = "0.000000" }
+                    }}
+                }},
+                new HkParam { Name = "transition",           Value = "#0141"  },
+                new HkParam { Name = "condition",            Value = "null"   },
+                new HkParam { Name = "eventId",              Value = resultEventId   ?? "0" },
+                new HkParam { Name = "toStateId",            Value = resultToStateId ?? "0" },
+                new HkParam { Name = "fromNestedStateId",    Value = "0" },
+                new HkParam { Name = "toNestedStateId",      Value = "0" },
+                new HkParam { Name = "priority",             Value = "0" },
+                new HkParam { Name = "flags",                Value = resultFlags ?? "FLAG_DISABLE_CONDITION" }
+            }
+                };
+
+                var tParam = transArray.Params.FirstOrDefault(p => p.Name == "transitions");
+                tParam?.Children.Add(newTr);
+                if (tParam != null) tParam.NumElements = tParam.Children.Count.ToString();
+
+                var capturedFromName = fromStateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value
+                                       ?? fromStateObj.Id;
+
+                _undoRedo.Record(new EditAction
+                {
+                    Description = $"Add transition from {capturedFromName}",
+                    Undo = () =>
+                    {
+                        tParam?.Children.Remove(newTr);
+                        if (tParam != null) tParam.NumElements = tParam.Children.Count.ToString();
+                        RefreshSmInspector(_selectedSM); UpdateUndoRedoButtons();
+                    },
+                    Redo = () =>
+                    {
+                        tParam?.Children.Add(newTr);
+                        if (tParam != null) tParam.NumElements = tParam.Children.Count.ToString();
+                        RefreshSmInspector(_selectedSM); UpdateUndoRedoButtons();
+                    }
+                });
+                UpdateUndoRedoButtons();
+
+                RefreshSmInspector(_selectedSM);
+                StatusText.Text = $"✓ Transition added from {capturedFromName}";
+            }
+            else
+            {
+                // ── Commit: EDIT ─────────────────────────────────────────────────────
+                var row = _selectedSmRow;
+                var oldEventId = row.EventId;
+                var oldToStateId = row.ToStateId;
+                var oldFlags = row.Flags;
+
+                // Write new values to the backing HkObject params
+                var eparam = row.TransitionChild?.Params.FirstOrDefault(x => x.Name == "eventId");
+                var tparam = row.TransitionChild?.Params.FirstOrDefault(x => x.Name == "toStateId");
+                var fparam = row.TransitionChild?.Params.FirstOrDefault(x => x.Name == "flags");
+                if (eparam != null) eparam.Value = resultEventId;
+                if (tparam != null) tparam.Value = resultToStateId;
+                if (fparam != null) fparam.Value = resultFlags;
+
+                // Resolve display names
+                var eventLookup = EventList.ToDictionary(e => e.Id, e => e.Name);
+                eventLookup.TryGetValue(resultEventId ?? "", out var newEvName);
+
+                var stateIdToName = new Dictionary<string, string>();
+                foreach (var s in stateOptions)
+                    stateIdToName[s.Id] = s.Name.Split('(')[0].Trim();
+                stateIdToName.TryGetValue(resultToStateId ?? "", out var newToName);
+
+                row.EventId = resultEventId;
+                row.EventName = newEvName ?? $"Event {resultEventId}";
+                row.ToStateId = resultToStateId;
+                row.ToState = newToName ?? $"ID:{resultToStateId}";
+                row.Flags = resultFlags;
+
+                _undoRedo.Record(new EditAction
+                {
+                    Description = $"Edit transition {row.FromState} → {row.ToState}",
+                    Undo = () =>
+                    {
+                        _suppressUndoRecord = true;
+                        if (eparam != null) eparam.Value = oldEventId;
+                        if (tparam != null) tparam.Value = oldToStateId;
+                        if (fparam != null) fparam.Value = oldFlags;
+                        row.EventId = oldEventId;
+                        row.ToStateId = oldToStateId;
+                        row.Flags = oldFlags;
+                        RefreshSmInspector(_selectedSM);
+                        _suppressUndoRecord = false;
+                        UpdateUndoRedoButtons();
+                    },
+                    Redo = () =>
+                    {
+                        _suppressUndoRecord = true;
+                        if (eparam != null) eparam.Value = resultEventId;
+                        if (tparam != null) tparam.Value = resultToStateId;
+                        if (fparam != null) fparam.Value = resultFlags;
+                        row.EventId = resultEventId;
+                        row.ToStateId = resultToStateId;
+                        row.Flags = resultFlags;
+                        RefreshSmInspector(_selectedSM);
+                        _suppressUndoRecord = false;
+                        UpdateUndoRedoButtons();
+                    }
+                });
+                UpdateUndoRedoButtons();
+                StatusText.Text = $"✓ Transition updated";
+            }
+        }
+
+        // ── Delete (unchanged logic, button enable already handled above) ─────────────
+        private void BtnDeleteSmTransition_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedSmRow == null) return;
+            var row = _selectedSmRow;
+            var tParam = row.TransitionArray.Params.FirstOrDefault(p => p.Name == "transitions");
+            if (tParam == null) return;
+
+            if (MessageBox.Show(
+                    $"Delete transition:\n{row.FromState}  ➔  {row.ToState}  [{row.EventName}]?",
+                    "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning)
+                != MessageBoxResult.Yes) return;
+
+            tParam.Children.Remove(row.TransitionChild);
+            tParam.NumElements = tParam.Children.Count.ToString();
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Delete transition {row.FromState} → {row.ToState}",
+                Undo = () =>
+                {
+                    tParam.Children.Add(row.TransitionChild);
+                    tParam.NumElements = tParam.Children.Count.ToString();
+                    RefreshSmInspector(_selectedSM); UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    tParam.Children.Remove(row.TransitionChild);
+                    tParam.NumElements = tParam.Children.Count.ToString();
+                    RefreshSmInspector(_selectedSM); UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+            RefreshSmInspector(_selectedSM);
+            StatusText.Text = "✓ Transition deleted";
+        }
+
+        // ── Generate a safe new object ID not already in ObjectMap ────────────────
+        private string GenerateNewObjectId()
+        {
+            var existing = manager.ObjectMap.Keys
+                .Where(k => k.StartsWith("#"))
+                .Select(k => int.TryParse(k.Substring(1), out int n) ? n : 0)
+                .ToHashSet();
+            int next = 1;
+            while (existing.Contains(next)) next++;
+            return $"#{next:D4}";
+        }
+
+
+        private string EncodeHavokValue(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return "0";
+
+            // If it looks like a float, encode as IEEE 754 bit pattern
+            if (input.Contains(".") && float.TryParse(input, NumberStyles.Float, CultureInfo.InvariantCulture, out float fVal))
+            {
+                byte[] bytes = BitConverter.GetBytes(fVal);
+                return BitConverter.ToUInt32(bytes, 0).ToString();
+            }
+
+            // Otherwise pass integers through as-is
+            return input;
+        }
+    }
+}    
