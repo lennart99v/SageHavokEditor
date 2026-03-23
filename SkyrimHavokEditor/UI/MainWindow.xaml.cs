@@ -21,6 +21,8 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Xml.Serialization;
+using System.IO;
+using System.Threading.Tasks; 
 
 namespace SkyrimHavokEditor
 {
@@ -179,7 +181,8 @@ namespace SkyrimHavokEditor
             foreach (var f in files)
             {
                 var item = new MenuItem { Header = f, ToolTip = f };
-                item.Click += (s, e) => LoadFile(f);
+                var capturedPath = f;
+                item.Click += async (s, e) => await LoadFileAsync(capturedPath);
                 RecentFilesMenu.Items.Add(item);
             }
 
@@ -196,6 +199,10 @@ namespace SkyrimHavokEditor
 
         private readonly UndoRedoManager _undoRedo = new();
         private bool _suppressUndoRecord = false;
+
+        private readonly HkxConversionService _hkxConv = new();
+        private bool _sourceWasHkx = false;
+        private string _originalHkxPath = null;
 
         public MainWindow()
         {
@@ -515,6 +522,9 @@ namespace SkyrimHavokEditor
                 Stats.BindingCount = BindingList.Count;
                 Stats.StateMachineCount = manager.ObjectMap.Values
                     .Count(o => o.ClassName == "hkbStateMachine");
+                Title = _sourceWasHkx
+                    ? $"Skyrim Havok Editor — {Path.GetFileName(_originalHkxPath)} [SE HKX]"
+                     : $"Skyrim Havok Editor — {Path.GetFileName(path)}";
             }
             catch (Exception ex)
             {
@@ -524,11 +534,72 @@ namespace SkyrimHavokEditor
             }
         }
 
-        private void BtnLoad_Click(object sender, RoutedEventArgs e)
+        private async void BtnLoad_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "XML files|*.xml" };
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Open Havok Behavior File",
+                Filter = "Havok files|*.hkx;*.xml|" +
+                         "Skyrim SE HKX (64-bit binary)|*.hkx|" +
+                         "Havok XML|*.xml|" +
+                         "All files|*.*"
+            };
             if (dlg.ShowDialog() == true)
-                LoadFile(dlg.FileName);
+                await LoadFileAsync(dlg.FileName);
+        }
+
+        // ── New central load entry point ───────────────────────────────────────────────
+        // Everything — button, drag-drop, recent files — calls this one method.
+
+        private async Task LoadFileAsync(string path)
+        {
+            if (!File.Exists(path))
+            {
+                MessageBox.Show($"File not found:\n{path}");
+                return;
+            }
+
+            StatusText.Text = "⏳ Opening…";
+            BtnLoad.IsEnabled = false;
+
+            try
+            {
+                Workspace ??= new HavokWorkspace(_hkxConv);
+                var fileType = await Workspace.LoadAutoAsync(path);
+
+                switch (fileType)
+                {
+                    case HkFileType.Project:
+                        LoadProjectIntoUI();
+                        // Also load behavior if one was resolved
+                        if (Workspace.ActiveBehavior != null)
+                            LoadBehaviorIntoApp(Workspace.BehaviorFile!);
+                        StatusText.Text = "✓ Project loaded";
+                        break;
+
+                    case HkFileType.Character:
+                        LoadCharacterIntoUI();
+                        StatusText.Text = "✓ Character loaded";
+                        break;
+
+                    case HkFileType.Behavior:
+                    default:
+                        LoadBehaviorIntoApp(Workspace.BehaviorFile!);
+                        StatusText.Text = "✓ Behavior loaded";
+                        break;
+                }
+
+                AddRecentFile(path);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening file:\n{ex.Message}");
+                StatusText.Text = "Error";
+            }
+            finally
+            {
+                BtnLoad.IsEnabled = true;
+            }
         }
 
         private void BtnRecentFiles_Click(object sender, RoutedEventArgs e)
@@ -547,13 +618,19 @@ namespace SkyrimHavokEditor
             e.Handled = true;
         }
 
-        private void Window_Drop(object sender, DragEventArgs e)
+        private async void Window_Drop(object sender, DragEventArgs e)
         {
             if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
             var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-            var xml = files.FirstOrDefault(f =>
-                f.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
-            if (xml != null) LoadFile(xml);
+
+            // Accept first .hkx or .xml — or any file (let DetectFormat decide)
+            var file = files.FirstOrDefault(f =>
+                f.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                ?? files.FirstOrDefault();
+
+            if (file != null)
+                await LoadFileAsync(file);
         }
 
         private void UpdateUndoRedoButtons()
@@ -1260,101 +1337,143 @@ namespace SkyrimHavokEditor
             }
         }
 
-        private void BtnSave_Click(object sender, RoutedEventArgs e)
+        private async void BtnSave_Click(object sender, RoutedEventArgs e)
         {
-            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0) return;
+            if (manager?.ObjectMap == null || manager.ObjectMap.Count == 0) return;
 
-            var sfd = new Microsoft.Win32.SaveFileDialog { Filter = "XML files|*.xml" };
+            // Default to saving in the same format as the source
+            string defaultFilter = _sourceWasHkx
+                ? "Skyrim SE HKX (64-bit)|*.hkx|Havok XML|*.xml"
+                : "Havok XML|*.xml|Skyrim SE HKX (64-bit)|*.hkx";
+
+            string defaultName = _sourceWasHkx
+    ? Path.GetFileNameWithoutExtension(_originalHkxPath)
+    : Path.GetFileNameWithoutExtension(Stats.FileName ?? "behavior");
+
+            var sfd = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save Havok Behavior File",
+                Filter = defaultFilter,
+                FileName = defaultName,
+                InitialDirectory = _sourceWasHkx
+                    ? Path.GetDirectoryName(_originalHkxPath)
+                    : null
+            };
             if (sfd.ShowDialog() != true) return;
+
+            bool saveAsHkx = sfd.FileName.EndsWith(".hkx",
+                StringComparison.OrdinalIgnoreCase);
+
+            StatusText.Text = saveAsHkx ? "⏳ Saving as SE HKX…" : "⏳ Saving XML…";
 
             try
             {
-                // --- 1. Write variable values back ---
-                var valueSet = manager.ObjectMap.Values
-                    .FirstOrDefault(o => o.ClassName == "hkbVariableValueSet");
-
-                if (valueSet != null)
+                if (saveAsHkx)
                 {
-                    var wordValuesParam = valueSet.Params
-                        .FirstOrDefault(p => p.Name == "wordVariableValues");
+                    // Step 1 — serialize current state to a temp XML
+                    var tmpXml = sfd.FileName + ".tmp.xml";
+                    SerializeToFile(tmpXml);
 
-                    if (wordValuesParam?.Children != null)
-                    {
-                        for (int i = 0; i < wordValuesParam.Children.Count && i < VariableList.Count; i++)
-                        {
-                            var vp = wordValuesParam.Children[i].Params
-                                .FirstOrDefault(p => p.Name == "value");
-                            if (vp != null)
-                                vp.Value = EncodeHavokValue(VariableList[i].Value);
-                        }
-                    }
+                    // Step 2 — convert temp XML → SE HKX binary
+                    await _hkxConv.XmlToHkxAsync(tmpXml, sfd.FileName);
+                    File.Delete(tmpXml);
+
+                    StatusText.Text = "✓ Saved as Skyrim SE HKX";
+                }
+                else
+                {
+                    SerializeToFile(sfd.FileName);
+                    StatusText.Text = "✓ Saved as XML";
                 }
 
-                // --- 2. Write animation paths back ---
-                foreach (var clip in ClipList)
+                // If user saved as HKX, update source tracking
+                if (saveAsHkx)
                 {
-                    if (!manager.ObjectMap.TryGetValue(clip.Id, out var clipObj)) continue;
-                    var animParam = clipObj.Params.FirstOrDefault(p => p.Name == "animationName");
-                    if (animParam != null)
-                        animParam.Value = clip.AnimationPath;
+                    _sourceWasHkx = true;
+                    _originalHkxPath = sfd.FileName;
                 }
 
-                // --- 3. Write event names back ---
-                // Find the authoritative event name source
-                var eventStringData = manager.ObjectMap.Values
-                    .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
-
-                if (eventStringData != null)
-                {
-                    var eParam = eventStringData.Params.FirstOrDefault(p => p.Name == "eventNames");
-                    if (eParam != null)
-                    {
-                        // Rebuild the Strings list from current EventList
-                        eParam.Strings = EventList.Select(ev => ev.Name).ToList();
-
-                        // Also keep Value in sync for serializers that use it
-                        eParam.Value = string.Join("\n", eParam.Strings);
-                    }
-                }
-
-                // --- 4. Serialize (Improved) ---
-                var packfile = new HkPackfile
-                {
-                    TopLevelObject = "#0050", // Ensure this is set to your root ID
-                    Sections = new List<HkSection>
-    {
-        new HkSection
-        {
-            Name = "__data__",
-            // Sort objects by their ID (#0001, #0002) to keep the XML clean
-            Objects = manager.ObjectMap.Values.OrderBy(o => o.Id).ToList()
-        }
-    }
-                };
-
-                // IMPORTANT: Use XmlAttributeOverrides if you can't change the classes directly,
-                // but the easiest way is to ensure your HkParam.Value is just a string.
-                var serializer = new XmlSerializer(typeof(HkPackfile));
-
-                // Write to a temp file first, then replace — avoids corrupt output on error
-                var tempPath = sfd.FileName + ".tmp";
-                using (var writer = new System.IO.StreamWriter(tempPath, false, Encoding.UTF8))
-                {
-                    serializer.Serialize(writer, packfile);
-                }
-
-                System.IO.File.Delete(sfd.FileName);
-                System.IO.File.Move(tempPath, sfd.FileName);
-
-                StatusText.Text = "✓ Saved successfully";
-                MessageBox.Show("Saved successfully!");
+                StatusText.Text = $"✓ Saved: {Path.GetFileName(sfd.FileName)}";
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Save Error: " + ex.Message
-                    + (ex.InnerException != null ? "\n\n" + ex.InnerException.Message : ""));
+                MessageBox.Show(
+                    $"Save failed:\n{ex.Message}\n\n" +
+                    "If saving as HKX, make sure the XML is valid Havok XML " +
+                    "(not a converted-from-LE file).",
+                    "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusText.Text = "Save failed";
             }
         }
+
+        private void SerializeToFile(string path)
+        {
+            // Write variable values back
+            var valueSet = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbVariableValueSet");
+            if (valueSet != null)
+            {
+                var wordValuesParam = valueSet.Params
+                    .FirstOrDefault(p => p.Name == "wordVariableValues");
+                if (wordValuesParam?.Children != null)
+                    for (int i = 0; i < wordValuesParam.Children.Count && i < VariableList.Count; i++)
+                    {
+                        var vp = wordValuesParam.Children[i].Params
+                            .FirstOrDefault(p => p.Name == "value");
+                        if (vp != null) vp.Value = EncodeHavokValue(VariableList[i].Value);
+                    }
+            }
+
+            // Write animation paths back
+            foreach (var clip in ClipList)
+            {
+                if (!manager.ObjectMap.TryGetValue(clip.Id, out var clipObj)) continue;
+                var animParam = clipObj.Params.FirstOrDefault(p => p.Name == "animationName");
+                if (animParam != null) animParam.Value = clip.AnimationPath;
+            }
+
+            // Write event names back
+            var eventStringData = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+            if (eventStringData != null)
+            {
+                var eParam = eventStringData.Params.FirstOrDefault(p => p.Name == "eventNames");
+                if (eParam != null)
+                {
+                    eParam.Strings = EventList.Select(ev => ev.Name).ToList();
+                    eParam.Value = string.Join("\n", eParam.Strings);
+                }
+            }
+
+            // Serialize
+            var packfile = new HkPackfile
+            {
+                TopLevelObject = "#0050",
+                Sections = new List<HkSection>
+        {
+            new HkSection
+            {
+                Name    = "__data__",
+                Objects = manager.ObjectMap.Values.OrderBy(o => o.Id).ToList()
+            }
+        }
+            };
+
+            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(HkPackfile));
+            var tempPath = path + ".tmp";
+            using (var writer = new StreamWriter(tempPath, false, Encoding.UTF8))
+                serializer.Serialize(writer, packfile);
+
+            if (File.Exists(path)) File.Delete(path);
+            File.Move(tempPath, path);
+        }
+
+        private async void RecentFile_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem mi && mi.Tag is string path)
+                await LoadFileAsync(path);
+        }
+
         private void BtnGroupedSummary_Click(object sender, RoutedEventArgs e) { /* Placeholder for your summary logic */ }
 
         private void BtnExport_Click(object sender, RoutedEventArgs e)

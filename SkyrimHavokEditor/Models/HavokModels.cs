@@ -99,11 +99,11 @@ namespace SkyrimHavokEditor.Models
         {
             get
             {
-                // If we have children with IDs (references like #0052), return them as text
+                // Don't override value with children refs if we have hkcstring data
+                if (Strings != null && Strings.Count > 0)
+                    return _value;
                 if (Children != null && Children.Count > 0 && !IsInlineAccounted)
-                {
                     return string.Join(" ", Children.Select(c => c.Id));
-                }
                 return _value;
             }
             set
