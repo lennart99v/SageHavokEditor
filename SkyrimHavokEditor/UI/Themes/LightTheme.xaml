@@ -4,7 +4,7 @@
     <Color x:Key="BgDark">#F5F5F5</Color>
     <Color x:Key="BgMid">#FFFFFF</Color>
     <Color x:Key="BgPanel">#E8E8E8</Color>
-    <Color x:Key="BgInput">#FFFFFF</Color>
+    <Color x:Key="BgInput">#E3E3E3</Color>
     <Color x:Key="BgHover">#D0D0D0</Color>
     <Color x:Key="BgSelected">#CCE4F7</Color>
     <Color x:Key="BorderColor">#CCCCCC</Color>

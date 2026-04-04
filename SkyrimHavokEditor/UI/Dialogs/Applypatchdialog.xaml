@@ -29,22 +29,26 @@
 
         <!-- Patch file picker -->
         <Border Grid.Row="1" Background="{StaticResource BgPanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
+        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+        CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel>
-                    <TextBlock Text="Patch File" FontWeight="SemiBold" FontSize="11"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,3"/>
+                    <TextBlock Text="Patch File / Folder" FontWeight="SemiBold" FontSize="11"
+                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,3"/>
                     <TextBlock x:Name="PatchFileLabel" Text="No patch selected"
-                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
                 </StackPanel>
-                <Button Grid.Column="1" Content="Browse..." Padding="10,5"
-                        VerticalAlignment="Center" Margin="10,0,0,0"
-                        Click="BtnBrowsePatch_Click"/>
+                <Button Grid.Column="1" Content="Browse .behaviorpatch…" Padding="10,5"
+                VerticalAlignment="Center" Margin="6,0,0,0"
+                Click="BtnBrowsePatch_Click"/>
+                <Button Grid.Column="2" Content="Browse Nemesis/Pandora folder…" Padding="10,5"
+                VerticalAlignment="Center" Margin="6,0,0,0"
+                Click="BtnBrowseNemesisFolder_Click"/>
             </Grid>
         </Border>
 

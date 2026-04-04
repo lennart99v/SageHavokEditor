@@ -3,15 +3,17 @@
 // or append to the bottom of MainWindow.cs inside the class body.
 
 using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Core.Services;
 using SkyrimHavokEditor.Models;
-using SkyrimHavokEditor.UI;
-using System.Globalization;
-using System.Windows;
-using System.IO;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using System.Linq;
 using SkyrimHavokEditor.Models.ViewModels;
+using SkyrimHavokEditor.UI;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
 
 namespace SkyrimHavokEditor
 {
@@ -46,15 +48,16 @@ namespace SkyrimHavokEditor
             _undoRedo.Clear();
             UpdateUndoRedoButtons();
 
-            GraphView.Load(manager, EventList.ToList());
+            // RefreshLookups FIRST so EventList is populated before the graph builds
+            RefreshLookups();
+
+            GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
             GraphView.StateSelected += (id) =>
             {
                 if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
                 SelectedClassName.Text = $"Class: {obj.ClassName}";
                 ParamsEditor.ItemsSource = obj.Params;
             };
-
-            RefreshLookups();
             _originalSnapshot = TakeSnapshot();
             _snapshotEvents = EventList.Select(e => e.Name).ToList();
             _snapshotVars = VariableList.Select(v => v.Name).ToList();
@@ -73,6 +76,9 @@ namespace SkyrimHavokEditor
             Title = file.WasHkx
                 ? $"Skyrim Havok Editor — {Path.GetFileName(file.HkxPath)} [SE HKX]"
                 : $"Skyrim Havok Editor — {Path.GetFileName(file.XmlPath)}";
+
+            // Wire graph events (delete transition, inline rename) for undo support
+            WireGraphEvents();
         }
 
         // ── Project UI ────────────────────────────────────────────────────────
@@ -427,5 +433,196 @@ namespace SkyrimHavokEditor
         private void OnPropertyChanged(string name)
             => PropertyChanged?.Invoke(this,
                 new System.ComponentModel.PropertyChangedEventArgs(name));
+
+        // ── Graph event wiring (call from LoadBehaviorIntoApp) ────────────────
+
+        private void WireGraphEvents()
+        {
+            // Avoid double-subscribing
+            GraphView.TransitionDeletedFromGraph -= OnTransitionDeletedFromGraph;
+            GraphView.NodeRenamedOnGraph -= OnNodeRenamedOnGraph;
+            GraphView.NodeAddedToGraph -= OnNodeAddedToGraph;
+            GraphView.NodeDeletedFromGraph -= OnNodeDeletedFromGraph;
+            GraphView.StatusText_ -= OnGraphStatus;
+            GraphView.TransitionDeletedFromGraph += OnTransitionDeletedFromGraph;
+            GraphView.NodeRenamedOnGraph += OnNodeRenamedOnGraph;
+            GraphView.NodeAddedToGraph += OnNodeAddedToGraph;
+            GraphView.NodeDeletedFromGraph += OnNodeDeletedFromGraph;
+            GraphView.StatusText_ += OnGraphStatus;
+        }
+
+        private void OnGraphStatus(string msg)
+            => StatusText.Text = msg;
+
+        private void OnNodeDeletedFromGraph(
+            SkyrimHavokEditor.Models.HkObject deletedObj,
+            SkyrimHavokEditor.Models.HkObject parentSM,
+            string oldStatesValue)
+        {
+            var capturedId = deletedObj.Id;
+            var capturedObj = deletedObj;
+            var capturedSM = parentSM;
+            var capturedOldStates = oldStatesValue;
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Delete '{deletedObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? deletedObj.Id}'",
+                Undo = () =>
+                {
+                    manager.ObjectMap[capturedId] = capturedObj;
+                    if (capturedSM != null)
+                    {
+                        var sp = capturedSM.Params.FirstOrDefault(p => p.Name == "states");
+                        if (sp != null)
+                        {
+                            sp.Value = capturedOldStates;
+                            sp.NumElements = (capturedOldStates ?? "")
+                                .Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
+                                .Length.ToString();
+                        }
+                    }
+                    RefreshLookups();
+                    GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    manager.ObjectMap.Remove(capturedId);
+                    if (capturedSM != null)
+                    {
+                        var sp = capturedSM.Params.FirstOrDefault(p => p.Name == "states");
+                        if (sp != null)
+                        {
+                            var ids = (sp.Value ?? "")
+                                .Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
+                                .Where(id => id != capturedId).ToList();
+                            sp.Value = string.Join(" ", ids);
+                            sp.NumElements = ids.Count.ToString();
+                        }
+                    }
+                    RefreshLookups();
+                    GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+            RefreshLookups();
+        }
+
+        private void OnNodeAddedToGraph(
+            SkyrimHavokEditor.Models.HkObject newObj,
+            SkyrimHavokEditor.Models.HkObject parentSM)
+        {
+            // Record undo — remove from ObjectMap and from SM states list
+            var capturedId = newObj.Id;
+            var capturedSM = parentSM;
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Add '{newObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? newObj.Id}'",
+                Undo = () =>
+                {
+                    manager.ObjectMap.Remove(capturedId);
+                    if (capturedSM != null)
+                    {
+                        var sp = capturedSM.Params.FirstOrDefault(p => p.Name == "states");
+                        if (sp != null)
+                        {
+                            var ids = sp.Value.Split(' ',
+                                System.StringSplitOptions.RemoveEmptyEntries)
+                                .Where(id => id != capturedId).ToList();
+                            sp.Value = string.Join(" ", ids);
+                            sp.NumElements = ids.Count.ToString();
+                        }
+                    }
+                    RefreshLookups();
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    manager.ObjectMap[capturedId] = newObj;
+                    if (capturedSM != null)
+                    {
+                        var sp = capturedSM.Params.FirstOrDefault(p => p.Name == "states");
+                        if (sp != null)
+                        {
+                            var current = sp.Value?.Trim() ?? "";
+                            sp.Value = string.IsNullOrEmpty(current)
+                                ? capturedId : current + " " + capturedId;
+                            sp.NumElements = sp.Value
+                                .Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
+                                .Length.ToString();
+                        }
+                    }
+                    RefreshLookups();
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+            RefreshLookups();
+        }
+
+        private void OnTransitionDeletedFromGraph(
+            SkyrimHavokEditor.Models.HkObject trChild,
+            SkyrimHavokEditor.Models.HkObject transArray,
+            string fromName, string toName)
+        {
+            var tParam = transArray.Params
+                .FirstOrDefault(p => p.Name == "transitions");
+            if (tParam == null) return;
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Delete transition {fromName} → {toName} (graph)",
+                Undo = () =>
+                {
+                    tParam.Children.Add(trChild);
+                    tParam.NumElements = tParam.Children.Count.ToString();
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    tParam.Children.Remove(trChild);
+                    tParam.NumElements = tParam.Children.Count.ToString();
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+            StatusText.Text = $"✓ Transition deleted: {fromName} → {toName}";
+
+            // Refresh transitions tab
+            RefreshLookups();
+        }
+
+        private void OnNodeRenamedOnGraph(string objectId, string oldName, string newName)
+        {
+            if (!manager.ObjectMap.TryGetValue(objectId, out var obj)) return;
+            var nameParam = obj.Params.FirstOrDefault(p => p.Name == "name");
+            if (nameParam == null) return;
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Rename '{oldName}' → '{newName}' (graph)",
+                Undo = () =>
+                {
+                    _suppressUndoRecord = true;
+                    nameParam.Value = oldName;
+                    _suppressUndoRecord = false;
+                    // Rebuild graph to show old name
+                    GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    _suppressUndoRecord = true;
+                    nameParam.Value = newName;
+                    _suppressUndoRecord = false;
+                    GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+            StatusText.Text = $"✓ Renamed: '{oldName}' → '{newName}'";
+        }
     }
 }

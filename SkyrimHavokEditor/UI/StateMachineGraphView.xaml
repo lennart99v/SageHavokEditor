@@ -19,6 +19,33 @@
             Click="BtnBack_Click" Padding="8,4" Margin="4,3"
             DockPanel.Dock="Left"/>
 
+                <Border Background="{DynamicResource BgMidBrush}"
+        BorderBrush="{DynamicResource BorderBrush}"
+        BorderThickness="1" CornerRadius="3"
+        Margin="6,0,0,0" Padding="0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🔍" VerticalAlignment="Center"
+                   Padding="6,0,4,0"
+                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBox x:Name="GraphSearchBox"
+                 Width="160" Padding="2,3"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 Foreground="{DynamicResource TextPrimaryBrush}"
+                 VerticalAlignment="Center"
+                 FontSize="11"
+                 ToolTip="Search nodes (Enter to go-to, Esc to clear)"
+                 KeyDown="GraphSearchBox_KeyDown"
+                 TextChanged="GraphSearchBox_TextChanged"/>
+                        <Button Content="✕" Padding="4,0" Margin="0"
+                Background="Transparent" BorderThickness="0"
+                Foreground="{DynamicResource TextSecondaryBrush}"
+                FontSize="10" VerticalAlignment="Center"
+                Click="GraphSearchClear_Click"
+                ToolTip="Clear search"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Machine selector -->
                 <ComboBox x:Name="MachineSelector" Width="180" Margin="4,3"
               SelectionChanged="MachineSelector_SelectionChanged"
@@ -32,6 +59,11 @@
                     <Button Content="⊕"         Click="BtnZoomIn_Click"  Padding="6,3" Margin="0,0,2,0"/>
                     <Button Content="⊖"         Click="BtnZoomOut_Click" Padding="6,3" Margin="0,0,2,0"/>
                     <Button Content="⊡"         Click="BtnFit_Click"     Padding="6,3" Margin="0,0,2,0"/>
+                    <Button x:Name="BtnPanToActive"
+        Content="🎯" ToolTip="Pan to active node (off)"
+        Click="BtnPanToActive_Click"
+        Padding="4,2" Margin="0,0,2,0"
+        FontSize="10" Opacity="0.5"/>
                     <Button Content="Export PNG" Click="BtnExportPng_Click" Padding="6,3"/>
                 </StackPanel>
 
@@ -43,7 +75,13 @@
                 </ScrollViewer>
             </DockPanel>
         </Border>
-
+        <ItemsControl x:Name="BookmarkStrip"
+              DockPanel.Dock="Top"
+              Height="0"
+              Background="Transparent">
+            <!-- Slots 1-9 shown as tiny dots when set; clicking jumps to bookmark -->
+            <!-- Populated from code-behind after SaveGraphBookmark -->
+        </ItemsControl>
         <!-- Graph canvas with pan/zoom -->
         <Border Grid.Row="1"
         x:Name="CanvasBorder"

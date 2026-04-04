@@ -72,12 +72,47 @@ namespace SkyrimHavokEditor.Models.ViewModels
                     _boolValue = trimmed == "1" || trimmed?.ToLower() == "true";
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(BoolValue));
+                    OnPropertyChanged(nameof(BoolDisplayValue));  // ← add this
                     if (old != null || trimmed != null)
                         ValueChanged?.Invoke(this, (old, trimmed));
                 }
             }
         }
 
+        public string BoolDisplayValue
+        {
+            get => (_value == "1" || _value?.ToLower() == "true") ? "true" : "false";
+            set
+            {
+                Value = value == "true" ? "1" : "0";
+                OnPropertyChanged();
+            }
+        }
+
+        // Add these two properties to IdNamePair:
+        public string TypeShort => VariableType switch
+        {
+            "VARIABLE_TYPE_BOOL" => "BOOL",
+            "VARIABLE_TYPE_INT8" => "INT8",
+            "VARIABLE_TYPE_INT16" => "INT16",
+            "VARIABLE_TYPE_INT32" => "INT",
+            "VARIABLE_TYPE_REAL" => "FLOAT",   // ← file uses REAL, display as FLOAT
+            "VARIABLE_TYPE_FLOAT" => "FLOAT",   // ← keep for compatibility
+            "VARIABLE_TYPE_POINTER" => "PTR",
+            _ => "?"
+        };
+
+        public string TypeColor => VariableType switch
+        {
+            "VARIABLE_TYPE_BOOL" => "#1A3A5C",
+            "VARIABLE_TYPE_INT8"
+                or "VARIABLE_TYPE_INT16"
+                or "VARIABLE_TYPE_INT32" => "#1A3A1A",
+            "VARIABLE_TYPE_REAL"
+                or "VARIABLE_TYPE_FLOAT" => "#3A2A00",
+            "VARIABLE_TYPE_POINTER" => "#3A1A3A",
+            _ => "#2A2A2A"
+        };
 
 
         public event EventHandler<(string OldValue, string NewValue)> ValueChanged;

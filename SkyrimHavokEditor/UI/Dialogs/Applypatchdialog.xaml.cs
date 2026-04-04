@@ -123,6 +123,49 @@ namespace SkyrimHavokEditor.UI.Dialogs
             SummaryText.Text = $"Preview: {wouldApply} ok   {wouldWarn} warnings   {wouldFail} conflicts";
         }
 
+        private void BtnBrowseNemesisFolder_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Navigate to the behavior patch folder containing #XXXX.txt files, " +
+                        "then click Save (the folder itself is selected, not a file)",
+                FileName = "navigate_to_folder_then_click_save",
+                Filter = "Any file|*.*",
+                CheckFileExists = false,
+                CheckPathExists = false
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var folder = System.IO.Path.GetDirectoryName(dlg.FileName);
+
+            // Verify it actually contains patch files
+            var patchFiles = System.IO.Directory.GetFiles(folder, "#*.txt");
+            if (patchFiles.Length == 0)
+            {
+                MessageBox.Show(
+                    $"No patch files (#XXXX.txt) found in:\n{folder}\n\n" +
+                    "Navigate inside the mod folder to the behavior subfolder, e.g.:\n" +
+                    @"Nemesis_Engine\mod\mymod\0_master\",
+                    "Wrong folder");
+                return;
+            }
+
+            try
+            {
+                _patch = NemesisPatchReader.ReadFolder(folder);
+                PatchFileLabel.Text = $"[Nemesis/Pandora] {System.IO.Path.GetFileName(folder)}" +
+                                      $"  ({patchFiles.Length} files, {_patch.Operations.Count} ops)";
+                ShowPatchInfo();
+                PreviewOps();
+                BtnPreview.IsEnabled = true;
+                BtnApply.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to read patch folder:\n" + ex.Message);
+            }
+        }
+
         private (string icon, string msg, string color) ValidateOp(PatchOperation op)
         {
             switch (op)

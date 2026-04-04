@@ -116,14 +116,26 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
         <Setter Property="Padding" Value="4,2"/>
-        <Style.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
-            </Trigger>
-            <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{StaticResource BgSelectedBrush}"/>
-            </Trigger>
-        </Style.Triggers>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        Padding="{TemplateBinding Padding}">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{StaticResource BgSelectedBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- TabControl -->
@@ -169,7 +181,7 @@
 
     <!-- ComboBox -->
     <Style TargetType="ComboBox">
-        <Setter Property="Background"      Value="{StaticResource BgPanelBrush}"/>
+        <Setter Property="Background"      Value="{StaticResource BgInputBrush}"/>
         <Setter Property="Foreground"      Value="{StaticResource TextPrimaryBrush}"/>
         <Setter Property="BorderBrush"     Value="{StaticResource ComboBoxBorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
@@ -179,17 +191,18 @@
                 <ControlTemplate TargetType="ComboBox">
                     <Grid>
                         <ToggleButton x:Name="ToggleButton"
-                                  Background="{TemplateBinding Background}"
-                                  BorderBrush="{TemplateBinding BorderBrush}"
-                                  BorderThickness="{TemplateBinding BorderThickness}"
-                                  Foreground="{TemplateBinding Foreground}"
-                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                                  Focusable="False">
+              OverridesDefaultStyle="True"
+              Background="{TemplateBinding Background}"
+              BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}"
+              Foreground="{TemplateBinding Foreground}"
+              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+              Focusable="False">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
-                                    <Border Background="{StaticResource BgMidBrush}"
-                                        BorderBrush="{StaticResource ComboBoxBorderBrush}"
-                                        BorderThickness="{TemplateBinding BorderThickness}">
+                                    <Border Background="{StaticResource BgInputBrush}"
+                BorderBrush="{StaticResource ComboBoxBorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -197,23 +210,23 @@
                                             </Grid.ColumnDefinitions>
                                             <Border Grid.Column="0"/>
                                             <Path Grid.Column="1"
-                                              Data="M0,0 L4,4 L8,0"
-                                              Stroke="{StaticResource TextSecondaryBrush}"
-                                              StrokeThickness="1.5"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
+                      Data="M0,0 L4,4 L8,0"
+                      Stroke="{StaticResource TextSecondaryBrush}"
+                      StrokeThickness="1.5"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"/>
                                         </Grid>
                                     </Border>
                                 </ControlTemplate>
                             </ToggleButton.Template>
                         </ToggleButton>
                         <ContentPresenter x:Name="ContentSite"
-                                      Content="{TemplateBinding SelectionBoxItem}"
-                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                      Margin="8,3,24,3"
-                                      VerticalAlignment="Center"
-                                      HorizontalAlignment="Left"
-                                      IsHitTestVisible="False"/>
+                                  Content="{TemplateBinding SelectionBoxItem}"
+                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                  Margin="8,3,24,3"
+                                  VerticalAlignment="Center"
+                                  HorizontalAlignment="Left"
+                                  IsHitTestVisible="False"/>
                         <Popup x:Name="Popup"
                            IsOpen="{TemplateBinding IsDropDownOpen}"
                            AllowsTransparency="True"
@@ -326,6 +339,108 @@
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="0,0,1,1"/>
         <Setter Property="Padding"     Value="8,4"/>
+    </Style>
+
+    <!-- ContextMenu -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background"        Value="{StaticResource BgPanelBrush}"/>
+        <Setter Property="BorderBrush"       Value="{StaticResource BorderBrush}"/>
+        <Setter Property="BorderThickness"   Value="1"/>
+        <Setter Property="Padding"           Value="0,4"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{TemplateBinding Background}"
+        BorderBrush="{TemplateBinding BorderBrush}"
+        BorderThickness="{TemplateBinding BorderThickness}"
+        CornerRadius="6"
+        Padding="{TemplateBinding Padding}">
+                        <Border.Effect>
+                            <DropShadowEffect Color="#000000" BlurRadius="16"
+                          ShadowDepth="4" Opacity="0.5" Direction="270"/>
+                        </Border.Effect>
+                        <ItemsPresenter/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- MenuItem -->
+    <Style TargetType="MenuItem">
+        <Setter Property="Background"    Value="Transparent"/>
+        <Setter Property="Foreground"    Value="#D4D4D4"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding"       Value="12,6,20,6"/>
+        <Setter Property="FontSize"      Value="12"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Bd"
+                        Background="{TemplateBinding Background}"
+                        Margin="4,1"
+                        CornerRadius="4"
+                        Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ContentPresenter Grid.Column="0"
+                                          ContentSource="Header"
+                                          RecognizesAccessKey="True"
+                                          VerticalAlignment="Center"/>
+                            <!-- Submenu arrow -->
+                            <Path x:Name="Arrow" Grid.Column="1"
+                              Data="M0,0 L4,4 L0,8"
+                              Stroke="#666680" StrokeThickness="1.5"
+                              VerticalAlignment="Center" Margin="8,0,0,0"
+                              Visibility="Collapsed"/>
+                            <Popup x:Name="PART_Popup"
+                               IsOpen="{TemplateBinding IsSubmenuOpen}"
+                               AllowsTransparency="True"
+                               Focusable="False"
+                               Placement="Right"
+                               HorizontalOffset="-4">
+                                <Border Background="#1E1E2A"
+        BorderBrush="#3F3F55"
+        BorderThickness="1"
+        CornerRadius="6"
+        Padding="0,4">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="#000000" BlurRadius="16"
+                          ShadowDepth="4" Opacity="0.5" Direction="270"/>
+                                    </Border.Effect>
+                                    <ItemsPresenter/>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="#555565"/>
+                        </Trigger>
+                        <Trigger Property="Role" Value="TopLevelHeader">
+                            <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed"/>
+                        </Trigger>
+                        <Trigger Property="HasItems" Value="True">
+                            <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Separator inside menus -->
+    <Style x:Key="MenuSeparatorStyle" TargetType="Separator">
+        <Setter Property="Background"  Value="{StaticResource BgHoverBrush}"/>
+        <Setter Property="Height"      Value="1"/>
+        <Setter Property="Margin"      Value="8,3"/>
+        <Setter Property="BorderThickness" Value="0"/>
     </Style>
 
 </ResourceDictionary>

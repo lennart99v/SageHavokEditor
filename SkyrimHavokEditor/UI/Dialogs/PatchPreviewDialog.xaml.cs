@@ -1,4 +1,5 @@
-﻿using SkyrimHavokEditor.Core.Patching;
+﻿using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Core.Patching;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -12,7 +13,13 @@ namespace SkyrimHavokEditor.UI.Dialogs
         private readonly BehaviorPatch _patch;
         public ObservableCollection<PatchOpViewModel> Ops { get; } = new();
 
-        public PatchPreviewDialog(BehaviorPatch patch)
+        private readonly HavokManager _manager;
+        private readonly Dictionary<string, ObjectSnapshot> _snapshot;
+        private readonly string _behaviorFilePath;
+
+        public PatchPreviewDialog(BehaviorPatch patch, HavokManager manager = null,
+    Dictionary<string, ObjectSnapshot> snapshot = null,
+    string behaviorFilePath = "")
         {
             InitializeComponent();
             DataContext = this;
@@ -32,7 +39,9 @@ namespace SkyrimHavokEditor.UI.Dialogs
                     Operation = op
                 });
             }
-
+            _manager = manager;
+            _snapshot = snapshot;
+            _behaviorFilePath = behaviorFilePath;
             UpdateSummary();
         }
 
@@ -141,6 +150,80 @@ namespace SkyrimHavokEditor.UI.Dialogs
             public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
             protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null)
                 => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(n));
+        }
+
+        private void BtnExportNemesis_Click(object sender, RoutedEventArgs e)
+    => ExportPatch(PatchEngineTarget.Nemesis);
+
+        private void BtnExportPandora_Click(object sender, RoutedEventArgs e)
+            => ExportPatch(PatchEngineTarget.Pandora);
+
+        private void ExportPatch(PatchEngineTarget target)
+        {
+            if (_manager == null || _snapshot == null)
+            { MessageBox.Show("Manager not available — open patch preview from the editor."); return; }
+
+            var engineRoot = target == PatchEngineTarget.Nemesis ? "Nemesis_Engine" : "Pandora_Engine";
+
+            // Single dialog — filename = mod code, folder = output root
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = $"Export {target} Patch — type your mod code as the filename",
+                FileName = "mymod",
+                Filter = "Mod folder|*.modcode",
+                OverwritePrompt = false,
+                CheckFileExists = false,
+                CheckPathExists = true
+            };
+
+            if (dlg.ShowDialog() != true) return;
+
+            var modCode = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName).Trim();
+            if (string.IsNullOrEmpty(modCode) || modCode.Contains(" "))
+            { MessageBox.Show("Mod code cannot be empty or contain spaces."); return; }
+
+            var outputFolder = System.IO.Path.GetDirectoryName(dlg.FileName);
+            var behaviorName = System.IO.Path.GetFileNameWithoutExtension(_behaviorFilePath);
+
+            var opts = new PatchExportOptions
+            {
+                ModCode = modCode,
+                ModName = string.IsNullOrEmpty(_patch.Author) ? modCode : _patch.Author,
+                Author = _patch.Author,
+                OutputFolder = outputFolder,
+                BehaviorFileName = behaviorName,
+                ProjectName = DeriveProjectName(_behaviorFilePath),
+                Target = target
+            };
+
+            try
+            {
+                var exporter = new HavokPatchExporter(_manager, _snapshot);
+                var (count, errors) = exporter.Export(opts);
+
+                string enginePath = System.IO.Path.Combine(outputFolder, engineRoot, "mod", modCode);
+                string msg = $"✓ Exported {count} patch file(s).\n\nOutput: {enginePath}";
+                if (errors.Count > 0)
+                    msg += $"\n\nWarnings ({errors.Count}):\n" + string.Join("\n", errors.Take(5));
+
+                MessageBox.Show(msg, $"{target} patch exported",
+                    MessageBoxButton.OK,
+                    errors.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Export failed:\n" + ex.Message);
+            }
+        }
+
+        private static string DeriveProjectName(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return "";
+            var lower = path.ToLowerInvariant();
+            if (lower.Contains("_1stperson")) return "_1stperson";
+            if (lower.Contains("\\character\\") || lower.Contains("/character/")) return "defaultfemale";
+            if (lower.Contains("horse")) return "horseproject";
+            return "";
         }
     }
 }

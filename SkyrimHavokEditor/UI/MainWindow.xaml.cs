@@ -204,10 +204,13 @@ namespace SkyrimHavokEditor
         private bool _sourceWasHkx = false;
         private string _originalHkxPath = null;
 
+        private bool _debuggerRunning = false;
+
         public MainWindow()
         {
             InitializeComponent();
             this.DataContext = this;
+            WireDebugPanel();
             ClipsView = CollectionViewSource.GetDefaultView(ClipList);
             ClipsView.Filter = o => o is ClipInfo c &&
                 (string.IsNullOrEmpty(_clipFilter) ||
@@ -473,67 +476,6 @@ namespace SkyrimHavokEditor
             BtnTheme.Content = _isDarkMode ? "☀ Light" : "🌙 Dark";
         }
 
-        private void LoadFile(string path)
-        {
-            try
-            {
-                var serializer = new XmlSerializer(typeof(HkPackfile));
-                using var fs = new System.IO.FileStream(path, System.IO.FileMode.Open);
-                var packfile = (HkPackfile)serializer.Deserialize(fs);
-
-                manager.BuildGraph(packfile);
-
-                _validator = new HavokValidator(manager);
-
-                var builder = new BehaviorTreeBuilder(manager);
-                var tree = builder.BuildTree("");
-                ObjectTree.ItemsSource = new List<BehaviorNodeData> { tree };
-
-                StatusText.Text = "✓ Loaded successfully";
-
-                _subscribedParams.Clear();
-                _navigationHistory.Clear();
-                BtnBackNavigation.IsEnabled = false;
-                BtnBackNavigation.Tag = null;
-                _undoRedo.Clear();
-                UpdateUndoRedoButtons();
-                GraphView.Load(manager, EventList.ToList());
-                GraphView.StateSelected += (id) =>
-                {
-                    if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
-                    SelectedClassName.Text = $"Class: {obj.ClassName}";
-                    ParamsEditor.ItemsSource = obj.Params;
-                    MainTabControl.SelectedIndex = 0;
-                };
-                RefreshLookups();
-                _originalSnapshot = TakeSnapshot();
-                _snapshotEvents = EventList.Select(e => e.Name).ToList();
-                _snapshotVars = VariableList.Select(v => v.Name).ToList();
-                AddRecentFile(path);
-
-                // Update stats
-                Stats.FileName = System.IO.Path.GetFileName(path);
-                Stats.HasFile = true;
-                Stats.ObjectCount = manager.ObjectMap.Count;
-                Stats.VariableCount = VariableList.Count;
-                Stats.EventCount = EventList.Count;
-                Stats.ClipCount = ClipList.Count;
-                Stats.TransitionCount = TransitionList.Count;
-                Stats.BindingCount = BindingList.Count;
-                Stats.StateMachineCount = manager.ObjectMap.Values
-                    .Count(o => o.ClassName == "hkbStateMachine");
-                Title = _sourceWasHkx
-                    ? $"Skyrim Havok Editor — {Path.GetFileName(_originalHkxPath)} [SE HKX]"
-                     : $"Skyrim Havok Editor — {Path.GetFileName(path)}";
-            }
-            catch (Exception ex)
-            {
-                string msg = ex.Message + (ex.InnerException != null
-                    ? "\n\nDetails: " + ex.InnerException.Message : "");
-                MessageBox.Show("Error: " + msg);
-            }
-        }
-
         private async void BtnLoad_Click(object sender, RoutedEventArgs e)
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
@@ -653,7 +595,21 @@ namespace SkyrimHavokEditor
             UpdateUndoRedoButtons();
         }
 
- 
+        private void BtnDebugger_Click(object sender, RoutedEventArgs e)
+        {
+            if (_debuggerRunning)
+            {
+                GraphView.StopDebugging();
+                BtnDebugger.Content = "🎮 Live Debug";
+                _debuggerRunning = false;
+            }
+            else
+            {
+                GraphView.StartDebugging();
+                BtnDebugger.Content = "⏹ Stop Debug";
+                _debuggerRunning = true;
+            }
+        }
 
         private void RefreshLookups()
         {
@@ -979,6 +935,7 @@ namespace SkyrimHavokEditor
         private Dictionary<string, ObjectSnapshot> TakeSnapshot()
     => PatchGenerator.TakeSnapshot(manager);
 
+
         private void BtnGeneratePatch_Click(object sender, RoutedEventArgs e)
         {
             if (_originalSnapshot == null || _originalSnapshot.Count == 0)
@@ -1010,7 +967,9 @@ namespace SkyrimHavokEditor
                 return;
             }
 
-            var preview = new PatchPreviewDialog(patch) { Owner = this };
+            var preview = new PatchPreviewDialog(patch, manager, _originalSnapshot,
+    Workspace?.BehaviorFile?.OriginalPath ?? "")
+            { Owner = this };
             preview.ShowDialog();
         }
 
@@ -1954,11 +1913,8 @@ namespace SkyrimHavokEditor
 
         private void EventFindUsages_Click(object sender, RoutedEventArgs e)
         {
-            if (EventsGrid.SelectedItem is IdNamePair ev)
-            {
+            if (EventsListBox.SelectedItem is IdNamePair ev)
                 SelectedEvent = ev;
-                // Panel updates automatically via SelectedEvent setter
-            }
         }
 
         public ObservableCollection<TransitionDetail> TransitionDetailList { get; set; } = new();
@@ -2146,6 +2102,39 @@ namespace SkyrimHavokEditor
             return false;
         }
 
+        private DebuggerWindow _debuggerWindow;
+
+        private void WireDebugPanel()
+        {
+            DebugTabPanel.DataContext = GraphView.DebugVM;
+        }
+
+        private void BtnDetachDebugger_Click(object sender, RoutedEventArgs e)
+        {
+            if (_debuggerWindow == null)
+            {
+                _debuggerWindow = new DebuggerWindow(GraphView.DebugVM, this);
+                _debuggerWindow.ReturnToDock = () =>
+                {
+                    DebuggerTab.Header = "🎮 Debugger";
+                    BtnDetachDebugger.Content = "⧉ Pop Out";
+                };
+            }
+
+            if (_debuggerWindow.IsVisible)
+            {
+                _debuggerWindow.Hide();
+                DebuggerTab.Header = "🎮 Debugger";
+                BtnDetachDebugger.Content = "⧉ Pop Out";
+            }
+            else
+            {
+                _debuggerWindow.Show();
+                DebuggerTab.Header = "🎮 Debugger ⧉";
+                BtnDetachDebugger.Content = "↩ Dock";
+            }
+        }
+
         private void BtnGlobalSearch_Click(object sender, RoutedEventArgs e)
         {
             if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
@@ -2176,15 +2165,14 @@ namespace SkyrimHavokEditor
                 if (idx < 0 || idx >= EventList.Count) return;
 
                 EventFilter = "";
-
                 MainTabControl.SelectedIndex = 4;
 
                 Dispatcher.InvokeAsync(() =>
                 {
                     var target = EventList.FirstOrDefault(ev => ev.Id == idx.ToString());
                     if (target == null) return;
-                    EventsGrid.SelectedItem = target;
-                    EventsGrid.ScrollIntoView(target);
+                    EventsListBox.SelectedItem = target;
+                    EventsListBox.ScrollIntoView(target);
                 }, System.Windows.Threading.DispatcherPriority.Loaded);
             };
 
@@ -2215,13 +2203,6 @@ namespace SkyrimHavokEditor
         {
             get => _eventFilter;
             set { _eventFilter = value; EventsView?.Refresh(); }
-        }
-
-
-        private void VariablesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (VariablesList.SelectedItem is IdNamePair pair)
-                SelectedVariable = pair;
         }
 
         private void BtnEditStates_Click(object sender, RoutedEventArgs e)
@@ -2359,6 +2340,13 @@ namespace SkyrimHavokEditor
                     else BtnBookmark_Click(null, null);
                     e.Handled = true;
                     break;
+
+                case System.Windows.Input.Key.F2:
+                    if (MainTabControl.SelectedIndex == 0)
+                        GraphView.RequestRenameSelected();
+                    e.Handled = true;
+                    break;
+
             }
         }
 
@@ -2431,52 +2419,72 @@ namespace SkyrimHavokEditor
         }
 
         // ── EVENTS: selection → enable Delete button ──────────────────────────────
-        private void EventsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void EventsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            BtnDeleteEvent.IsEnabled = EventsGrid.SelectedItem is IdNamePair;
-            if (EventsGrid.SelectedItem is IdNamePair ev)
-                SelectedEvent = ev;
+            var ev = EventsListBox.SelectedItem as IdNamePair;
+            BtnDeleteEvent.IsEnabled = ev != null;
+            if (ev != null) SelectedEvent = ev;
+        }
+
+        // ── EVENTS: inline name edit ─────────────────────────────────────────────────
+        private void EventName_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (sender is not TextBox tb || tb.Tag is not IdNamePair ev) return;
+            var newName = tb.Text?.Trim() ?? "";
+            var oldName = ev.Name;
+            if (oldName == newName) return;
+
+            var capturedOld = oldName;
+            var capturedNew = newName;
+            var capturedItem = ev;
+            ev.Name = newName;
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Rename event '{capturedOld}' → '{capturedNew}'",
+                Undo = () => { _suppressUndoRecord = true; capturedItem.Name = capturedOld; _suppressUndoRecord = false; UpdateUndoRedoButtons(); },
+                Redo = () => { _suppressUndoRecord = true; capturedItem.Name = capturedNew; _suppressUndoRecord = false; UpdateUndoRedoButtons(); }
+            });
+            UpdateUndoRedoButtons();
+            StatusText.Text = $"✓ Renamed '{capturedOld}' → '{capturedNew}'";
+        }
+
+        // ── EVENTS: inline delete button ─────────────────────────────────────────────
+        private void BtnDeleteEventInline_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as Button)?.Tag is not IdNamePair target) return;
+            EventsListBox.SelectedItem = target;
+            BtnDeleteEvent_Click(null, null);
         }
 
         // ── EVENTS: Add ───────────────────────────────────────────────────────────
         private void BtnAddEvent_Click(object sender, RoutedEventArgs e)
         {
-            // New index = next sequential id
             var newId = EventList.Count.ToString();
             var newEvent = new IdNamePair { Id = newId, Name = $"NewEvent_{newId}" };
 
-            // Apply
             EventList.Add(newEvent);
 
-            // Wire undo/redo
             _undoRedo.Record(new EditAction
             {
                 Description = $"Add event '{newEvent.Name}'",
-                Undo = () =>
-                {
-                    _suppressUndoRecord = true;
-                    EventList.Remove(newEvent);
-                    RenumberEvents();
-                    _suppressUndoRecord = false;
-                    UpdateUndoRedoButtons();
-                },
-                Redo = () =>
-                {
-                    _suppressUndoRecord = true;
-                    EventList.Add(newEvent);
-                    RenumberEvents();
-                    _suppressUndoRecord = false;
-                    UpdateUndoRedoButtons();
-                }
+                Undo = () => { _suppressUndoRecord = true; EventList.Remove(newEvent); RenumberEvents(); _suppressUndoRecord = false; UpdateUndoRedoButtons(); },
+                Redo = () => { _suppressUndoRecord = true; EventList.Add(newEvent); RenumberEvents(); _suppressUndoRecord = false; UpdateUndoRedoButtons(); }
             });
             UpdateUndoRedoButtons();
 
-            // Select and immediately begin editing the Name cell
-            EventsGrid.SelectedItem = newEvent;
-            EventsGrid.ScrollIntoView(newEvent);
-            EventsGrid.CurrentCell = new DataGridCellInfo(newEvent,
-                EventsGrid.Columns[1]); // column 1 = Name
-            EventsGrid.BeginEdit();
+            EventsListBox.SelectedItem = newEvent;
+            EventsListBox.ScrollIntoView(newEvent);
+
+            // Focus the name TextBox inside the new item
+            Dispatcher.InvokeAsync(() =>
+            {
+                var container = EventsListBox.ItemContainerGenerator
+                    .ContainerFromItem(newEvent) as ListBoxItem;
+                var tb = container?.FindVisualChild<TextBox>();
+                tb?.Focus();
+                tb?.SelectAll();
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
 
             StatusText.Text = $"✓ Event added (index {newId})";
         }
@@ -2484,43 +2492,24 @@ namespace SkyrimHavokEditor
         // ── EVENTS: Delete ────────────────────────────────────────────────────────
         private void BtnDeleteEvent_Click(object sender, RoutedEventArgs e)
         {
-            if (EventsGrid.SelectedItem is not IdNamePair target) return;
+            if (EventsListBox.SelectedItem is not IdNamePair target) return;
 
             var capturedIndex = EventList.IndexOf(target);
             var capturedEvent = target;
 
-            // Confirm
             if (MessageBox.Show(
-                    $"Delete event '{target.Name}' (index {target.Id})?\n\nWarning: any transitions referencing this event by ID will be affected.",
+                    $"Delete event '{target.Name}' (index {target.Id})?\n\nWarning: transitions referencing this event by ID will be affected.",
                     "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return;
 
-            // Apply
             EventList.Remove(target);
             RenumberEvents();
 
-            // Wire undo/redo
             _undoRedo.Record(new EditAction
             {
                 Description = $"Delete event '{capturedEvent.Name}'",
-                Undo = () =>
-                {
-                    _suppressUndoRecord = true;
-                    // Re-insert at original position if possible
-                    int insertAt = Math.Min(capturedIndex, EventList.Count);
-                    EventList.Insert(insertAt, capturedEvent);
-                    RenumberEvents();
-                    _suppressUndoRecord = false;
-                    UpdateUndoRedoButtons();
-                },
-                Redo = () =>
-                {
-                    _suppressUndoRecord = true;
-                    EventList.Remove(capturedEvent);
-                    RenumberEvents();
-                    _suppressUndoRecord = false;
-                    UpdateUndoRedoButtons();
-                }
+                Undo = () => { _suppressUndoRecord = true; int at = Math.Min(capturedIndex, EventList.Count); EventList.Insert(at, capturedEvent); RenumberEvents(); _suppressUndoRecord = false; UpdateUndoRedoButtons(); },
+                Redo = () => { _suppressUndoRecord = true; EventList.Remove(capturedEvent); RenumberEvents(); _suppressUndoRecord = false; UpdateUndoRedoButtons(); }
             });
             UpdateUndoRedoButtons();
 
@@ -3047,6 +3036,245 @@ namespace SkyrimHavokEditor
 
             // Otherwise pass integers through as-is
             return input;
+        }
+
+        private void VariablesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (VariablesList.SelectedItem is IdNamePair pair)
+            {
+                SelectedVariable = pair;
+                BtnDeleteVariable.IsEnabled = true;
+            }
+            else
+            {
+                BtnDeleteVariable.IsEnabled = false;
+            }
+        }
+
+        private void BtnAddVariable_Click(object sender, RoutedEventArgs e)
+        {
+            var strData = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+            var graphData = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphData");
+            var valueSet = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbVariableValueSet");
+
+            if (strData == null) { MessageBox.Show("No hkbBehaviorGraphStringData found."); return; }
+
+            // Pick type
+            var typeDialog = new InputDialog("Variable type:", "VARIABLE_TYPE_FLOAT") { Owner = this };
+            if (typeDialog.ShowDialog() != true) return;
+            var varType = typeDialog.InputText?.Trim();
+            if (string.IsNullOrEmpty(varType)) return;
+
+            var newIndex = VariableList.Count;
+            var newName = $"NewVariable_{newIndex}";
+
+            // 1 — Add to variableNames string list
+            var namesParam = strData.Params.FirstOrDefault(p => p.Name == "variableNames");
+            if (namesParam != null)
+            {
+                if (namesParam.Strings == null || namesParam.Strings.Count == 0)
+                    namesParam.Strings = (namesParam.Value ?? "")
+                        .Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                        .ToList();
+                namesParam.Strings.Add(newName);
+                namesParam.Value = string.Join("\n", namesParam.Strings);
+                namesParam.NumElements = namesParam.Strings.Count.ToString();
+            }
+
+            // 2 — Add to variableInfos in hkbBehaviorGraphData
+            if (graphData != null)
+            {
+                var infosParam = graphData.Params.FirstOrDefault(p => p.Name == "variableInfos");
+                if (infosParam != null)
+                {
+                    infosParam.Children ??= new List<HkObject>();
+                    infosParam.Children.Add(new HkObject
+                    {
+                        Params = new List<HkParam>
+                {
+                    new HkParam { Name = "role", Value = "{ 0 0 0 }" },
+                    new HkParam { Name = "type", Value = varType }
+                }
+                    });
+                    infosParam.NumElements = infosParam.Children.Count.ToString();
+                }
+            }
+
+            // 3 — Add default value to hkbVariableValueSet
+            if (valueSet != null)
+            {
+                var wordValsParam = valueSet.Params
+                    .FirstOrDefault(p => p.Name == "wordVariableValues");
+                if (wordValsParam != null)
+                {
+                    wordValsParam.Children ??= new List<HkObject>();
+                    wordValsParam.Children.Add(new HkObject
+                    {
+                        Params = new List<HkParam>
+                {
+                    new HkParam { Name = "value", Value = "0" }
+                }
+                    });
+                    wordValsParam.NumElements = wordValsParam.Children.Count.ToString();
+                }
+            }
+
+            // 4 — Add to UI list
+            var newVar = new IdNamePair
+            {
+                Id = $"{strData.Id}_{newIndex}",
+                Name = newName,
+                Index = newIndex,
+                RawValue = "0",
+                Value = "0",
+                VariableType = varType
+            };
+            VariableList.Add(newVar);
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Add variable '{newName}'",
+                Undo = () => { _suppressUndoRecord = true; DeleteVariableAt(newIndex); _suppressUndoRecord = false; },
+                Redo = () => { /* re-add is complex — just refresh */ RefreshLookups(); }
+            });
+            UpdateUndoRedoButtons();
+
+            // Select and rename immediately
+            VariablesList.SelectedItem = newVar;
+            VariablesList.ScrollIntoView(newVar);
+            StatusText.Text = $"✓ Variable added (index {newIndex})";
+        }
+
+        private void BtnDeleteVariable_Click(object sender, RoutedEventArgs e)
+        {
+            if (VariablesList.SelectedItem is not IdNamePair variable) return;
+
+            // Check usages first
+            var usages = GetVariableUsageList(variable.Index);
+            if (usages.Count > 0)
+            {
+                var usageText = string.Join("\n", usages.Take(8));
+                if (usages.Count > 8) usageText += $"\n...and {usages.Count - 8} more";
+                var answer = MessageBox.Show(
+                    $"'{variable.Name}' is used in {usages.Count} place(s):\n\n{usageText}\n\n" +
+                    "Deleting will leave those references broken.\nDelete anyway?",
+                    "Variable In Use",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (answer != MessageBoxResult.Yes) return;
+            }
+            else
+            {
+                if (MessageBox.Show(
+                    $"Delete variable '{variable.Name}' (index {variable.Index})?",
+                    "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Question)
+                    != MessageBoxResult.Yes) return;
+            }
+
+            DeleteVariableAt(variable.Index);
+            StatusText.Text = $"✓ Variable '{variable.Name}' deleted";
+        }
+
+        private void DeleteVariableAt(int index)
+        {
+            var strData = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+            var graphData = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphData");
+            var valueSet = manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbVariableValueSet");
+
+            // Remove from variableNames
+            if (strData != null)
+            {
+                var np = strData.Params.FirstOrDefault(p => p.Name == "variableNames");
+                if (np?.Strings != null && index < np.Strings.Count)
+                {
+                    np.Strings.RemoveAt(index);
+                    np.Value = string.Join("\n", np.Strings);
+                    np.NumElements = np.Strings.Count.ToString();
+                }
+            }
+
+            // Remove from variableInfos
+            if (graphData != null)
+            {
+                var ip = graphData.Params.FirstOrDefault(p => p.Name == "variableInfos");
+                if (ip?.Children != null && index < ip.Children.Count)
+                {
+                    ip.Children.RemoveAt(index);
+                    ip.NumElements = ip.Children.Count.ToString();
+                }
+            }
+
+            // Remove from wordVariableValues
+            if (valueSet != null)
+            {
+                var wp = valueSet.Params.FirstOrDefault(p => p.Name == "wordVariableValues");
+                if (wp?.Children != null && index < wp.Children.Count)
+                {
+                    wp.Children.RemoveAt(index);
+                    wp.NumElements = wp.Children.Count.ToString();
+                }
+            }
+
+            // Refresh UI — renumbers everything correctly
+            RefreshLookups();
+            BtnDeleteVariable.IsEnabled = false;
+            UpdateUndoRedoButtons();
+        }
+
+        private List<string> GetVariableUsageList(int varIndex)
+        {
+            var usages = new List<string>();
+            var idx = varIndex.ToString();
+
+            // Check variableBindingSet bindings
+            foreach (var obj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbVariableBindingSet"))
+            {
+                var bp = obj.Params.FirstOrDefault(p => p.Name == "bindings");
+                if (bp?.Children == null) continue;
+                foreach (var binding in bp.Children)
+                {
+                    var vi = binding.Params.FirstOrDefault(p => p.Name == "variableIndex")?.Value;
+                    if (vi != idx) continue;
+                    var owner = manager.ObjectMap.Values.FirstOrDefault(o =>
+                        o.Params.Any(p => p.Value == obj.Id));
+                    var ownerName = owner?.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? obj.Id;
+                    var memberPath = binding.Params.FirstOrDefault(p => p.Name == "memberPath")?.Value ?? "";
+                    usages.Add($"Binding: {ownerName}.{memberPath}");
+                }
+            }
+
+            // Check direct variableIndex params
+            foreach (var obj in manager.ObjectMap.Values)
+            {
+                var name = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? obj.Id;
+                foreach (var param in obj.Params
+                    .Where(p => p.Name == "variableIndex" && p.Value == idx))
+                    usages.Add($"Direct: {name} [{obj.ClassName}]");
+            }
+
+            return usages;
+        }
+    }
+
+    public static class VisualHelper
+    {
+        public static T FindVisualChild<T>(this DependencyObject parent) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T t) return t;
+                var result = FindVisualChild<T>(child);
+                if (result != null) return result;
+            }
+            return null;
         }
     }
 }    
