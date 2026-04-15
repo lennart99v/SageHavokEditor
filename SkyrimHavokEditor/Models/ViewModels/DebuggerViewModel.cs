@@ -22,8 +22,6 @@ namespace SkyrimHavokEditor.UI
         public ObservableCollection<VariableValue> DragonVars { get; } = new();
 
         // ── Actor header ──────────────────────────────────────────────────────
-        private Brush _headerBg = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x2E));
-        public Brush HeaderBg { get => _headerBg; set { _headerBg = value; OnProp(); } }
 
         private Brush _dotFill = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55));
         public Brush DotFill { get => _dotFill; set { _dotFill = value; OnProp(); } }

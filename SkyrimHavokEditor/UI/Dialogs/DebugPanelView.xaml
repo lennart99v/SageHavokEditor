@@ -2,7 +2,6 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <UserControl.Resources>
-        <!-- Expander header style — flush, no chrome -->
         <Style x:Key="GroupExpanderStyle" TargetType="Expander">
             <Setter Property="IsExpanded" Value="True"/>
             <Setter Property="Background" Value="Transparent"/>
@@ -13,9 +12,8 @@
                     <ControlTemplate TargetType="Expander">
                         <StackPanel>
                             <ToggleButton x:Name="HeaderToggle"
-                                          IsChecked="{Binding IsExpanded,
-                                          Mode=TwoWay,
-                                          RelativeSource={RelativeSource TemplatedParent}}"
+                                          IsChecked="{Binding IsExpanded, Mode=TwoWay,
+                                              RelativeSource={RelativeSource TemplatedParent}}"
                                           Background="Transparent"
                                           BorderThickness="0"
                                           Padding="6,3"
@@ -26,7 +24,7 @@
                                     <ControlTemplate TargetType="ToggleButton">
                                         <Border Background="{TemplateBinding Background}"
                                                 BorderThickness="0,0,0,1"
-                                                BorderBrush="#22334455"
+                                                BorderBrush="{DynamicResource BorderBrush}"
                                                 Padding="{TemplateBinding Padding}">
                                             <ContentPresenter/>
                                         </Border>
@@ -50,23 +48,16 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <!-- Row 0: Header -->
             <RowDefinition Height="Auto"/>
-            <!-- Row 1: ACTIVE STATES label -->
             <RowDefinition Height="80"/>
-            <!-- Row 2: Active States -->
             <RowDefinition Height="Auto"/>
-            <!-- Row 3: TRANSITION HISTORY label -->
             <RowDefinition Height="110"/>
-            <!-- Row 4: Transition History -->
             <RowDefinition Height="Auto"/>
-            <!-- Row 5: VARIABLES label -->
             <RowDefinition Height="*"/>
-            <!-- Row 6: Variables ScrollViewer -->
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <Border Grid.Row="0" Background="{Binding HeaderBg}" Padding="8,5">
+        <Border Grid.Row="0" Background="{DynamicResource BgPanelBrush}" Padding="8,5">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                     <Ellipse Width="8" Height="8" Fill="{Binding DotFill}"
@@ -75,7 +66,8 @@
                                FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding ActorLabel}"
                                FontSize="11" FontWeight="SemiBold"
-                               Foreground="#D4D4D4" VerticalAlignment="Center"/>
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right"
                             HorizontalAlignment="Right">
@@ -95,7 +87,7 @@
 
         <!-- Active States label -->
         <TextBlock Grid.Row="1" Text="ACTIVE STATES" FontSize="9" FontWeight="Bold"
-                   Foreground="#4FC3F7" Margin="8,5,8,2"/>
+                   Foreground="{DynamicResource AccentBlueBrush}" Margin="8,5,8,2"/>
 
         <!-- Active States -->
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
@@ -104,12 +96,15 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Border Margin="0,1" Padding="5,3"
-                                Background="#0D1A2A" CornerRadius="3">
+                                Background="{DynamicResource BgDarkBrush}"
+                                CornerRadius="3">
                             <StackPanel>
                                 <TextBlock Text="{Binding SMName}" FontSize="8"
-                                           Foreground="#4FC3F7" FontWeight="SemiBold"/>
+                                           Foreground="{DynamicResource AccentBlueBrush}"
+                                           FontWeight="SemiBold"/>
                                 <TextBlock Text="{Binding StateName}" FontSize="10"
-                                           Foreground="#00FF80" FontWeight="SemiBold"/>
+                                           Foreground="{DynamicResource AccentGreenBrush}"
+                                           FontWeight="SemiBold"/>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -119,7 +114,7 @@
 
         <!-- Transition History label -->
         <TextBlock Grid.Row="3" Text="TRANSITION HISTORY" FontSize="9" FontWeight="Bold"
-                   Foreground="#9D9D9D" Margin="8,4,8,2"/>
+                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,4,8,2"/>
 
         <!-- Transition History -->
         <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto"
@@ -130,10 +125,10 @@
                         <Border x:Name="RowBg" Background="Transparent">
                             <StackPanel Orientation="Horizontal" Margin="4,2">
                                 <TextBlock Text="{Binding Time}" FontSize="8"
-                                           Foreground="#555570" Margin="0,0,6,0"
-                                           VerticalAlignment="Center"/>
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding Label}" FontSize="9"
-                                           Foreground="#8888AA"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
                         </Border>
@@ -141,7 +136,8 @@
                             <DataTrigger Value="1"
                                 Binding="{Binding Path=(ItemsControl.AlternationIndex),
                                           RelativeSource={RelativeSource AncestorType=ContentPresenter}}">
-                                <Setter TargetName="RowBg" Property="Background" Value="#0A0A12"/>
+                                <Setter TargetName="RowBg" Property="Background"
+                                        Value="{DynamicResource BgMidBrush}"/>
                             </DataTrigger>
                         </DataTemplate.Triggers>
                     </DataTemplate>
@@ -151,14 +147,14 @@
 
         <!-- Variables label -->
         <TextBlock Grid.Row="5" Text="VARIABLES" FontSize="9" FontWeight="Bold"
-                   Foreground="#9D9D9D" Margin="8,4,8,2"/>
+                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,4,8,2"/>
 
         <!-- Grouped variables -->
         <ScrollViewer Grid.Row="6" VerticalScrollBarVisibility="Auto"
                       Margin="4,0,4,4" Padding="0,0,12,0">
             <StackPanel>
 
-                <!-- ── Actor group ─────────────────────────────────── -->
+                <!-- Actor group -->
                 <Expander Style="{StaticResource GroupExpanderStyle}">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
@@ -194,7 +190,8 @@
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsAlternate}" Value="True">
-                                        <Setter TargetName="RowBg" Property="Background" Value="#0A0E14"/>
+                                        <Setter TargetName="RowBg" Property="Background"
+                                                Value="{DynamicResource BgDarkBrush}"/>
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -202,7 +199,7 @@
                     </ItemsControl>
                 </Expander>
 
-                <!-- ── Mount group — only when mounted ────────────── -->
+                <!-- Mount group -->
                 <Expander Style="{StaticResource GroupExpanderStyle}"
                           Visibility="{Binding DragonVis}"
                           Margin="0,4,0,0">
@@ -226,19 +223,21 @@
                                             <ColumnDefinition Width="56"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding Name}" FontSize="10"
-                                                   Foreground="#7A6A9A"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    TextTrimming="CharacterEllipsis"
                                                    VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding Value, StringFormat={}{0:F2}}"
-                                                   FontSize="10" Foreground="#C586C0"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource AccentBlueBrush}"
                                                    HorizontalAlignment="Right"
                                                    VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsAlternate}" Value="True">
-                                        <Setter TargetName="RowBg" Property="Background" Value="#0A0E14"/>
+                                        <Setter TargetName="RowBg" Property="Background"
+                                                Value="{DynamicResource BgDarkBrush}"/>
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -248,6 +247,5 @@
 
             </StackPanel>
         </ScrollViewer>
-
     </Grid>
 </UserControl>

@@ -5,7 +5,7 @@
         Title="Compare Behavior Files"
         Height="650" Width="1000"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource BgDarkBrush}"
+        Background="{DynamicResource BgDarkBrush}"
         WindowStyle="SingleBorderWindow"
         ResizeMode="CanResize">
 
@@ -27,25 +27,25 @@
             </Grid.ColumnDefinitions>
 
             <!-- File A -->
-            <Border Grid.Column="0" Background="{StaticResource BgPanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            <Border Grid.Column="0" Background="{DynamicResource BgPanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="10,8">
                 <StackPanel>
-                    <TextBlock Text="File A (current)" FontWeight="Bold" 
-                               Foreground="{StaticResource AccentBlueBrush}" Margin="0,0,0,4"/>
+                    <TextBlock Text="File A (current)" FontWeight="Bold"
+                               Foreground="{DynamicResource AccentBlueBrush}" Margin="0,0,0,4"/>
                     <TextBlock x:Name="FileALabel" Text="(loaded file)"
-                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
                                TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
             </Border>
 
             <TextBlock Grid.Column="1" Text="⇄" FontSize="20" FontWeight="Bold"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
 
             <!-- File B -->
-            <Border Grid.Column="2" Background="{StaticResource BgPanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            <Border Grid.Column="2" Background="{DynamicResource BgPanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="10,8">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -53,14 +53,14 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Text="File B" FontWeight="Bold"
-                               Foreground="{StaticResource AccentGreenBrush}" Margin="0,0,0,4"/>
+                               Foreground="{DynamicResource AccentGreenBrush}" Margin="0,0,0,4"/>
                     <Grid Grid.Row="1">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="FileBLabel" Text="No file selected"
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                         <Button Grid.Column="1" Content="Browse..." Padding="8,3"
                                 Margin="8,0,0,0" Click="BtnBrowseB_Click"/>
@@ -71,16 +71,29 @@
 
         <!-- Filter options -->
         <WrapPanel Grid.Row="1" Margin="0,0,0,8">
-            <CheckBox x:Name="ChkVariables"  Content="Variables"  IsChecked="True" Margin="0,0,12,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
-            <CheckBox x:Name="ChkEvents"     Content="Events"     IsChecked="True" Margin="0,0,12,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
-            <CheckBox x:Name="ChkClips"      Content="Clips"      IsChecked="True" Margin="0,0,12,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
-            <CheckBox x:Name="ChkObjects"    Content="Objects"    IsChecked="True" Margin="0,0,20,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
-            <CheckBox x:Name="ChkHideSame"   Content="Hide identical" IsChecked="True" Margin="0,0,12,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
-            <TextBlock x:Name="SummaryText"  Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+            <CheckBox x:Name="ChkVariables" Content="Variables" IsChecked="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}"
+                      Margin="0,0,12,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+            <CheckBox x:Name="ChkEvents"    Content="Events"    IsChecked="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}"
+                      Margin="0,0,12,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+            <CheckBox x:Name="ChkClips"     Content="Clips"     IsChecked="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}"
+                      Margin="0,0,12,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+            <CheckBox x:Name="ChkObjects"   Content="Objects"   IsChecked="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}"
+                      Margin="0,0,20,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+            <CheckBox x:Name="ChkHideSame"  Content="Hide identical" IsChecked="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}"
+                      Margin="0,0,12,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+            <TextBlock x:Name="SummaryText"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       FontSize="11" VerticalAlignment="Center"/>
         </WrapPanel>
 
         <!-- Column headers -->
-        <Grid Grid.Row="2" Margin="0,0,0,4">
+        <Grid Grid.Row="2" Margin="0,0,0,4"
+              Background="{DynamicResource BgPanelBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="80"/>
                 <ColumnDefinition Width="80"/>
@@ -88,15 +101,23 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Type"     FontWeight="Bold" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-            <TextBlock Grid.Column="1" Text="Diff"     FontWeight="Bold" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-            <TextBlock Grid.Column="2" Text="Name/ID"  FontWeight="Bold" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-            <TextBlock Grid.Column="3" Text="File A"   FontWeight="Bold" FontSize="11" Foreground="{StaticResource AccentBlueBrush}"/>
-            <TextBlock Grid.Column="4" Text="File B"   FontWeight="Bold" FontSize="11" Foreground="{StaticResource AccentGreenBrush}"/>
+            <TextBlock Grid.Column="0" Text="Type"    FontWeight="Bold" FontSize="11"
+                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,4"/>
+            <TextBlock Grid.Column="1" Text="Diff"    FontWeight="Bold" FontSize="11"
+                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,4"/>
+            <TextBlock Grid.Column="2" Text="Name/ID" FontWeight="Bold" FontSize="11"
+                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,4"/>
+            <TextBlock Grid.Column="3" Text="File A"  FontWeight="Bold" FontSize="11"
+                       Foreground="{DynamicResource AccentBlueBrush}"   Margin="4,4"/>
+            <TextBlock Grid.Column="4" Text="File B"  FontWeight="Bold" FontSize="11"
+                       Foreground="{DynamicResource AccentGreenBrush}"  Margin="4,4"/>
         </Grid>
 
         <!-- Results -->
         <ListBox x:Name="ResultsList" Grid.Row="3"
+                 Background="{DynamicResource BgMidBrush}"
+                 Foreground="{DynamicResource TextPrimaryBrush}"
+                 BorderBrush="{DynamicResource BorderBrush}"
                  SelectionChanged="ResultsList_SelectionChanged"
                  VirtualizingPanel.IsVirtualizing="True">
             <ListBox.ItemTemplate>
@@ -112,7 +133,7 @@
 
                         <!-- Category -->
                         <TextBlock Grid.Column="0" Text="{Binding Category}"
-                                   FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"
                                    VerticalAlignment="Center"/>
 
                         <!-- Diff type badge -->
@@ -120,16 +141,16 @@
                                 HorizontalAlignment="Left" VerticalAlignment="Center">
                             <Border.Style>
                                 <Style TargetType="Border">
-                                    <Setter Property="Background" Value="#2A3A2A"/>
+                                    <Setter Property="Background" Value="{DynamicResource BadgeGrayBrush}"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding DiffType}" Value="Added">
-                                            <Setter Property="Background" Value="#1A3A1A"/>
+                                            <Setter Property="Background" Value="{DynamicResource BadgeGreenBrush}"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding DiffType}" Value="Removed">
-                                            <Setter Property="Background" Value="#3A1A1A"/>
+                                            <Setter Property="Background" Value="{DynamicResource BadgePurpleBrush}"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding DiffType}" Value="Modified">
-                                            <Setter Property="Background" Value="#3A2A00"/>
+                                            <Setter Property="Background" Value="{DynamicResource BadgeYellowBrush}"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -137,16 +158,16 @@
                             <TextBlock Text="{Binding DiffType}" FontSize="10" FontWeight="Bold">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding DiffType}" Value="Added">
-                                                <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource BadgeGreenTextBrush}"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding DiffType}" Value="Removed">
-                                                <Setter Property="Foreground" Value="#FF6B6B"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource BadgePurpleTextBrush}"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding DiffType}" Value="Modified">
-                                                <Setter Property="Foreground" Value="Orange"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource BadgeYellowTextBrush}"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -156,18 +177,19 @@
 
                         <!-- Name -->
                         <TextBlock Grid.Column="2" Text="{Binding Name}"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
                                    FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" Margin="4,0"/>
 
                         <!-- Value A -->
                         <TextBlock Grid.Column="3" Text="{Binding ValueA}"
-                                   FontSize="11" Foreground="{StaticResource AccentBlueBrush}"
+                                   FontSize="11" Foreground="{DynamicResource AccentBlueBrush}"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" Margin="4,0"/>
 
                         <!-- Value B -->
                         <TextBlock Grid.Column="4" Text="{Binding ValueB}"
-                                   FontSize="11" Foreground="{StaticResource AccentGreenBrush}"
+                                   FontSize="11" Foreground="{DynamicResource AccentGreenBrush}"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" Margin="4,0"/>
                     </Grid>

@@ -14,8 +14,49 @@
         Activated="Window_Activated"
         Deactivated="Window_Deactivated">
 
-    <Border Background="#EF1E1E1E"
-            BorderBrush="#FF3C3C3F"
+    <Window.Resources>
+        <!-- ToggleButton style scoped to this dialog so it doesn't need to be in the theme -->
+        <Style x:Key="FilterChipStyle" TargetType="ToggleButton">
+            <Setter Property="Background"       Value="{DynamicResource BgMidBrush}"/>
+            <Setter Property="Foreground"       Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="BorderBrush"      Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness"  Value="1"/>
+            <Setter Property="Padding"          Value="10,4"/>
+            <Setter Property="FontSize"         Value="11"/>
+            <Setter Property="Cursor"           Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgHoverBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgSelectedBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgSelectedBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border Background="{DynamicResource BgDarkBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1"
             CornerRadius="6">
         <Grid Margin="12">
@@ -29,19 +70,18 @@
             </Grid.RowDefinitions>
 
             <!-- Row 0: Title bar -->
-            <Grid Grid.Row="0" MouseLeftButtonDown="TitleBar_MouseDown"
-                  Margin="0,0,0,10">
+            <Grid Grid.Row="0" MouseLeftButtonDown="TitleBar_MouseDown" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="🔭  Global Search &amp; Replace"
                            FontWeight="SemiBold" FontSize="13"
-                           Foreground="{StaticResource TextPrimaryBrush}"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
                            VerticalAlignment="Center"/>
                 <Button Grid.Column="1" Content="✕" Padding="8,3"
                         Background="Transparent" BorderThickness="0"
-                        Foreground="{StaticResource TextSecondaryBrush}"
+                        Foreground="{DynamicResource TextSecondaryBrush}"
                         Click="BtnClose_Click"/>
             </Grid>
 
@@ -56,12 +96,12 @@
                          KeyDown="TxtSearch_KeyDown"/>
                 <TextBlock Grid.Column="0"
                            Text="🔍  Search everything...  (event:  clip:  state:  var:  obj:  prefixes supported)"
-                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
                            VerticalAlignment="Center" Margin="10,0,0,0"
                            IsHitTestVisible="False"
                            Visibility="{Binding PlaceholderVisibility}"/>
                 <TextBlock x:Name="ResultCount" Grid.Column="1"
-                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
                            VerticalAlignment="Center" Margin="10,0,0,0"/>
             </Grid>
 
@@ -86,28 +126,37 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Filter: " Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock Text="Filter: " Foreground="{DynamicResource TextSecondaryBrush}"
                                FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <ToggleButton x:Name="FilterAll"       Content="All"         IsChecked="True"
-                                  Margin="0,0,3,0" Padding="8,3" FontSize="11" Click="Filter_Click" Tag="all"/>
+                                  Style="{StaticResource FilterChipStyle}"
+                                  Margin="0,0,3,0" Click="Filter_Click" Tag="all"/>
                     <ToggleButton x:Name="FilterEvents"    Content="⚡ Events"
-                                  Margin="0,0,3,0" Padding="8,3" FontSize="11" Click="Filter_Click" Tag="event"/>
+                                  Style="{StaticResource FilterChipStyle}"
+                                  Margin="0,0,3,0" Click="Filter_Click" Tag="event"/>
                     <ToggleButton x:Name="FilterClips"     Content="▶ Clips"
-                                  Margin="0,0,3,0" Padding="8,3" FontSize="11" Click="Filter_Click" Tag="clip"/>
+                                  Style="{StaticResource FilterChipStyle}"
+                                  Margin="0,0,3,0" Click="Filter_Click" Tag="clip"/>
                     <ToggleButton x:Name="FilterStates"    Content="🔳 States"
-                                  Margin="0,0,3,0" Padding="8,3" FontSize="11" Click="Filter_Click" Tag="state"/>
+                                  Style="{StaticResource FilterChipStyle}"
+                                  Margin="0,0,3,0" Click="Filter_Click" Tag="state"/>
                     <ToggleButton x:Name="FilterVariables" Content="⚙ Variables"
-                                  Margin="0,0,3,0" Padding="8,3" FontSize="11" Click="Filter_Click" Tag="var"/>
+                                  Style="{StaticResource FilterChipStyle}"
+                                  Margin="0,0,3,0" Click="Filter_Click" Tag="var"/>
                     <ToggleButton x:Name="FilterObjects"   Content="# Objects"
-                                  Margin="0,0,3,0" Padding="8,3" FontSize="11" Click="Filter_Click" Tag="obj"/>
+                                  Style="{StaticResource FilterChipStyle}"
+                                  Margin="0,0,3,0" Click="Filter_Click" Tag="obj"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <CheckBox x:Name="ChkCaseSensitive" Content="Case" VerticalAlignment="Center"
-                              Margin="0,0,8,0" FontSize="11"/>
-                    <CheckBox x:Name="ChkRegex" Content="Regex" VerticalAlignment="Center"
-                              Margin="0,0,8,0" FontSize="11"/>
+                    <CheckBox x:Name="ChkCaseSensitive" Content="Case"
+                              Foreground="{DynamicResource TextPrimaryBrush}"
+                              VerticalAlignment="Center" Margin="0,0,8,0" FontSize="11"/>
+                    <CheckBox x:Name="ChkRegex" Content="Regex"
+                              Foreground="{DynamicResource TextPrimaryBrush}"
+                              VerticalAlignment="Center" Margin="0,0,8,0" FontSize="11"/>
                     <ToggleButton x:Name="BtnToggleReplace" Content="± Replace"
-                                  Padding="8,3" FontSize="11" Click="BtnToggleReplace_Click"/>
+                                  Style="{StaticResource FilterChipStyle}"
+                                  Click="BtnToggleReplace_Click"/>
                 </StackPanel>
             </Grid>
 
@@ -115,15 +164,52 @@
             <ListView x:Name="ResultsList" Grid.Row="4"
                       SelectionChanged="ResultsList_SelectionChanged"
                       MouseDoubleClick="ResultsList_DoubleClick"
-                      BorderBrush="{StaticResource BorderBrush}"
-                      Background="{StaticResource BgMidBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}"
+                      Background="{DynamicResource BgMidBrush}"
+                      Foreground="{DynamicResource TextPrimaryBrush}"
                       SelectionMode="Extended">
+                <ListView.Resources>
+                    <!-- Override ListViewItem so selected rows are readable in both themes -->
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                        <Setter Property="Padding" Value="2"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListViewItem">
+                                    <Border x:Name="ItemBd"
+                                            Background="{TemplateBinding Background}"
+                                            BorderThickness="0" Padding="{TemplateBinding Padding}">
+                                        <GridViewRowPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ItemBd" Property="Background"
+                                                    Value="{DynamicResource BgHoverBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="ItemBd" Property="Background"
+                                                    Value="{DynamicResource BgSelectedBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListView.Resources>
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Width="75">
-                            <GridViewColumn.Header>
-                                <TextBlock Text="Type" FontWeight="SemiBold"/>
-                            </GridViewColumn.Header>
+                        <GridView.ColumnHeaderContainerStyle>
+                            <Style TargetType="GridViewColumnHeader">
+                                <Setter Property="Background" Value="{DynamicResource BgPanelBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+                                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                <Setter Property="Padding" Value="8,5"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Style>
+                        </GridView.ColumnHeaderContainerStyle>
+                        <GridViewColumn Width="75" Header="Type">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border CornerRadius="3" Padding="4,1"
@@ -135,37 +221,29 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Width="190">
-                            <GridViewColumn.Header>
-                                <TextBlock Text="Name" FontWeight="SemiBold"/>
-                            </GridViewColumn.Header>
+                        <GridViewColumn Width="190" Header="Name">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
                                                TextTrimming="CharacterEllipsis"/>
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Width="100">
-                            <GridViewColumn.Header>
-                                <TextBlock Text="ID" FontWeight="SemiBold"/>
-                            </GridViewColumn.Header>
+                        <GridViewColumn Width="100" Header="ID">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Id}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                FontSize="11"/>
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Width="340">
-                            <GridViewColumn.Header>
-                                <TextBlock Text="Details / Value" FontWeight="SemiBold"/>
-                            </GridViewColumn.Header>
+                        <GridViewColumn Width="340" Header="Details / Value">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Details}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                FontSize="11" TextTrimming="CharacterEllipsis"/>
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
@@ -181,7 +259,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="HintText"
-                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
                            VerticalAlignment="Center"
                            Text="↵ Jump   •   Double-click to navigate   •   ± Replace to edit values"/>
                 <Button Grid.Column="1" Content="Close" Click="BtnClose_Click" Padding="12,5"/>

@@ -269,6 +269,37 @@ namespace SkyrimHavokEditor
         }
 
 
+        private void OpenDoc(string section)
+        {
+            // Switch to the Guide tab and scroll to the section
+            foreach (TabItem tab in MainTabControl.Items)
+                if (tab.Content is DocumentationView) { tab.IsSelected = true; break; }
+            DocView.ScrollToSection(section);
+        }
+
+        private void BtnGraphHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_graph");
+        private void BtnVariablesHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_variables");
+        private void BtnEventsHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_events");
+        private void BtnTransitionsHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_transitions");
+        private void BtnClipsHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_clips");
+        private void BtnSMInspectorHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_sm_inspector");
+        private void BtnBindingsHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_bindings");
+        private void BtnProjectHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_project");
+        private void BtnCharacterHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_character");
+        private void BtnDebuggerHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_debugger");
+        private void BtnBookmarksHelp_Click(object sender, RoutedEventArgs e)
+            => OpenDoc("tab_bookmarks");
+
         private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             if (e.ClickCount == 2)
@@ -971,6 +1002,106 @@ namespace SkyrimHavokEditor
     Workspace?.BehaviorFile?.OriginalPath ?? "")
             { Owner = this };
             preview.ShowDialog();
+        }
+
+        private async void BtnPatchFromFiles_Click(object sender, RoutedEventArgs e)
+        {
+            // Pick "base" file (vanilla)
+            var dlgA = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select Base File (e.g. vanilla)",
+                Filter = "Havok files|*.hkx;*.xml|All files|*.*"
+            };
+            if (dlgA.ShowDialog() != true) return;
+
+            // Pick "modified" file (the mod)
+            var dlgB = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select Modified File (e.g. mod version)",
+                Filter = "Havok files|*.hkx;*.xml|All files|*.*"
+            };
+            if (dlgB.ShowDialog() != true) return;
+
+            StatusText.Text = "⏳ Comparing files…";
+
+            try
+            {
+                // Load base file into a temporary manager and snapshot it
+                var baseManager = new HavokManager();
+                var basePath = dlgA.FileName;
+                var modPath = dlgB.FileName;
+
+                // Convert HKX to XML if needed
+                string baseXml = basePath;
+                string modXml = modPath;
+
+                var baseResult = await _hkxConv.PrepareXmlAsync(basePath);
+                if (!baseResult.Success) { MessageBox.Show($"Failed to load base file:\n{baseResult.Error}"); return; }
+                baseXml = baseResult.XmlPath;
+
+                var modResult = await _hkxConv.PrepareXmlAsync(modPath);
+                if (!modResult.Success) { MessageBox.Show($"Failed to load mod file:\n{modResult.Error}"); return; }
+                modXml = modResult.XmlPath;
+
+                // Load base
+                var baseSerializer = new System.Xml.Serialization.XmlSerializer(typeof(HkPackfile));
+                using (var fs = File.OpenRead(baseXml))
+                {
+                    var packfile = (HkPackfile)baseSerializer.Deserialize(fs);
+                    baseManager.BuildGraph(packfile);
+                }
+                var baseSnapshot = PatchGenerator.TakeSnapshot(baseManager);
+
+                // Get base events and variables for comparison
+                var baseEvents = baseManager.ObjectMap.Values
+                    .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData")
+                    ?.Params.FirstOrDefault(p => p.Name == "eventNames")
+                    ?.Strings ?? new List<string>();
+
+                var baseVars = baseManager.ObjectMap.Values
+                    .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData")
+                    ?.Params.FirstOrDefault(p => p.Name == "variableNames")
+                    ?.Strings ?? new List<string>();
+
+                // Load modified file into a fresh manager
+                var modManager = new HavokManager();
+                using (var fs = File.OpenRead(modXml))
+                {
+                    var packfile = (HkPackfile)baseSerializer.Deserialize(fs);
+                    modManager.BuildGraph(packfile);
+                }
+
+                // Clean up temp files
+                if (baseXml != basePath && File.Exists(baseXml)) File.Delete(baseXml);
+                if (modXml != modPath && File.Exists(modXml)) File.Delete(modXml);
+
+                // Generate patch: base snapshot + mod as "current"
+                var gen = new PatchGenerator(modManager, baseSnapshot, baseEvents, baseVars);
+                var patch = gen.Generate(
+                    baseFileName: Path.GetFileNameWithoutExtension(basePath),
+                    author: "",
+                    description: $"Patch from {Path.GetFileName(modPath)} onto {Path.GetFileName(basePath)}");
+
+                if (patch.Operations.Count == 0)
+                {
+                    MessageBox.Show("No differences found between the two files.",
+                        "No Changes", MessageBoxButton.OK, MessageBoxImage.Information);
+                    StatusText.Text = "No differences found";
+                    return;
+                }
+
+                StatusText.Text = $"✓ Found {patch.Operations.Count} differences";
+
+                var preview = new PatchPreviewDialog(patch, modManager, baseSnapshot,
+                    modPath)
+                { Owner = this };
+                preview.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error comparing files:\n{ex.Message}");
+                StatusText.Text = "Compare failed";
+            }
         }
 
 

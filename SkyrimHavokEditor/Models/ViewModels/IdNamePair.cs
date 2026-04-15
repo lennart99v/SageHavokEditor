@@ -104,14 +104,14 @@ namespace SkyrimHavokEditor.Models.ViewModels
 
         public string TypeColor => VariableType switch
         {
-            "VARIABLE_TYPE_BOOL" => "#1A3A5C",
+            "VARIABLE_TYPE_BOOL" => "#2E6DA4",
             "VARIABLE_TYPE_INT8"
                 or "VARIABLE_TYPE_INT16"
-                or "VARIABLE_TYPE_INT32" => "#1A3A1A",
+                or "VARIABLE_TYPE_INT32" => "#2E7D32",
             "VARIABLE_TYPE_REAL"
-                or "VARIABLE_TYPE_FLOAT" => "#3A2A00",
-            "VARIABLE_TYPE_POINTER" => "#3A1A3A",
-            _ => "#2A2A2A"
+                or "VARIABLE_TYPE_FLOAT" => "#7B5800",
+            "VARIABLE_TYPE_POINTER" => "#6A1E6A",
+            _ => "#555555"
         };
 
 

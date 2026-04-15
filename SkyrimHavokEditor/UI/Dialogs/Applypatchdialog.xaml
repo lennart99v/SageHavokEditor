@@ -88,6 +88,7 @@
                        Foreground="{StaticResource TextSecondaryBrush}"
                        FontSize="11" Margin="0,0,0,4"/>
             <ListBox Grid.Row="1" x:Name="ResultsList"
+                     SelectionMode="Extended" VirtualizingPanel.IsVirtualizing="True"
                      Background="{StaticResource BgMidBrush}"
                      BorderBrush="{StaticResource BorderBrush}"
                      FontSize="11">

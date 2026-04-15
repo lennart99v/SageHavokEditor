@@ -27,6 +27,7 @@ namespace SkyrimHavokEditor.UI
         private readonly DrawingVisual _overlayLayer = new();
         private readonly List<NodeVisual> _nodeVisuals = new();
         private readonly VisualCollection _visuals;
+        private double _currentZoom = 1.0;  // updated by StateMachineGraphView via UpdateMapTransform
 
         // ── Graph state ───────────────────────────────────────────────────────
         private List<GraphNode> _nodes = new();
@@ -101,23 +102,23 @@ namespace SkyrimHavokEditor.UI
         private static readonly Dictionary<GraphNodeType, NodePalette> _palette = new()
         {
             [GraphNodeType.StateMachine] = new(
-                Color.FromRgb(0x4A, 0x2F, 0x7A), Color.FromRgb(0xD4, 0xD4, 0xD4),
-                Color.FromRgb(0x1E, 0x14, 0x2E), Color.FromRgb(0x7C, 0x4D, 0xBB)),
+        Color.FromRgb(0x5C, 0x3A, 0x99), Color.FromRgb(0xE8, 0xE8, 0xFF),
+        Color.FromRgb(0x28, 0x1A, 0x42), Color.FromRgb(0xA0, 0x70, 0xFF)),
             [GraphNodeType.State] = new(
-                Color.FromRgb(0x0D, 0x47, 0x85), Color.FromRgb(0xD4, 0xD4, 0xD4),
-                Color.FromRgb(0x0B, 0x28, 0x42), Color.FromRgb(0x1A, 0x7A, 0xCC)),
+        Color.FromRgb(0x0D, 0x65, 0xBB), Color.FromRgb(0xE8, 0xF4, 0xFF),
+        Color.FromRgb(0x0A, 0x32, 0x5A), Color.FromRgb(0x4F, 0xC3, 0xF7)),
             [GraphNodeType.Clip] = new(
-                Color.FromRgb(0x1A, 0x5C, 0x2A), Color.FromRgb(0xD4, 0xD4, 0xD4),
-                Color.FromRgb(0x0D, 0x2E, 0x14), Color.FromRgb(0x2E, 0xA0, 0x4A)),
+        Color.FromRgb(0x1E, 0x7A, 0x38), Color.FromRgb(0xE8, 0xFF, 0xEC),
+        Color.FromRgb(0x0E, 0x3D, 0x1C), Color.FromRgb(0x4C, 0xD9, 0x6E)),
             [GraphNodeType.Modifier] = new(
-                Color.FromRgb(0x7A, 0x3D, 0x0A), Color.FromRgb(0xD4, 0xD4, 0xD4),
-                Color.FromRgb(0x3A, 0x1E, 0x06), Color.FromRgb(0xCC, 0x6E, 0x1A)),
+        Color.FromRgb(0xA0, 0x52, 0x0C), Color.FromRgb(0xFF, 0xF0, 0xE0),
+        Color.FromRgb(0x4A, 0x26, 0x08), Color.FromRgb(0xFF, 0x99, 0x44)),
             [GraphNodeType.Blender] = new(
-                Color.FromRgb(0x0A, 0x5A, 0x5A), Color.FromRgb(0xD4, 0xD4, 0xD4),
-                Color.FromRgb(0x06, 0x2E, 0x2E), Color.FromRgb(0x1A, 0xAA, 0xAA)),
+        Color.FromRgb(0x0C, 0x7A, 0x7A), Color.FromRgb(0xE0, 0xFF, 0xFF),
+        Color.FromRgb(0x08, 0x3C, 0x3C), Color.FromRgb(0x22, 0xDD, 0xDD)),
             [GraphNodeType.Unknown] = new(
-                Color.FromRgb(0x3A, 0x3A, 0x3E), Color.FromRgb(0xBB, 0xBB, 0xBB),
-                Color.FromRgb(0x1E, 0x1E, 0x21), Color.FromRgb(0x5A, 0x5A, 0x60)),
+        Color.FromRgb(0x4A, 0x4A, 0x50), Color.FromRgb(0xCC, 0xCC, 0xCC),
+        Color.FromRgb(0x26, 0x26, 0x2A), Color.FromRgb(0x88, 0x88, 0x99)),
         };
 
         // ── Shared frozen resources ───────────────────────────────────────────
@@ -337,6 +338,35 @@ namespace SkyrimHavokEditor.UI
                               node.Y + node.Height - 13));
             }
 
+            // ── Zoomed-out mode: float label above node ───────────────────────
+            if (_currentZoom < 0.6)
+            {
+                // Draw minimal node body
+                dc.DrawRoundedRectangle(new SolidColorBrush(pal.Header), borderPen, fullRect, 6, 6);
+
+                if (isLive)
+                {
+                    byte alpha = (byte)(80 + 120 * Math.Abs(Math.Sin(_pulsePhase)));
+                    dc.DrawRoundedRectangle(null,
+                        new Pen(new SolidColorBrush(Color.FromArgb(alpha, 0x00, 0xFF, 0x80)), 3),
+                        new Rect(node.X - 3, node.Y - 3, node.Width + 6, node.Height + 6), 8, 8);
+                }
+
+                // Label floats above, unconstrained by node width
+                double fontSize = Math.Max(9.0, 10.0 / Math.Max(_currentZoom, 0.1));
+                var floatLabel = MakeText(node.Name, fontSize,
+                    new SolidColorBrush(Colors.White), FontWeights.SemiBold);
+                // Center above node
+                double lx = node.X + node.Width / 2.0 - floatLabel.Width / 2.0;
+                double ly = node.Y - floatLabel.Height - 4;
+                // Small dark backing so text is readable over anything
+                dc.DrawRoundedRectangle(
+                    new SolidColorBrush(Color.FromArgb(180, 0x10, 0x10, 0x18)), null,
+                    new Rect(lx - 4, ly - 2, floatLabel.Width + 8, floatLabel.Height + 4), 3, 3);
+                dc.DrawText(floatLabel, new Point(lx, ly));
+                return;
+            }
+
             // ── Body ──────────────────────────────────────────────────────────
             dc.DrawRoundedRectangle(new SolidColorBrush(pal.Body), borderPen, fullRect, 6, 6);
 
@@ -354,7 +384,9 @@ namespace SkyrimHavokEditor.UI
                           new Size(6, 6), 0, false, SweepDirection.Clockwise, true, false);
             }
             headerGeo.Freeze();
+            dc.PushClip(new RectangleGeometry(fullRect, 6, 6));
             dc.DrawGeometry(new SolidColorBrush(pal.Header), null, headerGeo);
+            dc.Pop();
 
             // ── Header divider ────────────────────────────────────────────────
             dc.DrawLine(new Pen(new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)), 1),
@@ -375,9 +407,11 @@ namespace SkyrimHavokEditor.UI
                 new Point(node.X + 5, node.Y + 4));
 
             // ── Header name ───────────────────────────────────────────────────
-            var nameText = MakeText(node.Name, 10,
+            double nameFontSize = Math.Max(8.5, 10.0 / Math.Max(_currentZoom, 0.35));
+            var nameText = MakeText(node.Name, nameFontSize,
                 new SolidColorBrush(pal.HeaderText), FontWeights.SemiBold);
             nameText.MaxTextWidth = node.Width - 30;
+            nameText.MaxLineCount = 1;
             nameText.Trimming = TextTrimming.CharacterEllipsis;
             dc.DrawText(nameText, new Point(node.X + 19, node.Y + 4));
 
@@ -1086,6 +1120,11 @@ namespace SkyrimHavokEditor.UI
         public void UpdateMapTransform(double scale, double tx, double ty)
         {
             _mapScale = scale; _mapTranslateX = tx; _mapTranslateY = ty;
+            if (_currentZoom != scale)
+            {
+                _currentZoom = scale;
+                DrawAllNodes();
+            }
             DrawMiniMap();
         }
 

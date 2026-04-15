@@ -159,6 +159,7 @@ namespace SkyrimHavokEditor.UI
         private Point _panStart;
         private bool _isPanning;
         private double _zoom = 1.0;
+        private bool _fitPending = false;
 
         // ── Graph bookmarks (Ctrl+1-9 = save, 1-9 = jump) ────────────────────
         private readonly (double scale, double tx, double ty, string label)?[] _graphBookmarks
@@ -289,6 +290,16 @@ namespace SkyrimHavokEditor.UI
             tg.Children.Add(_scale);
             tg.Children.Add(_translate);
             GraphCanvas.RenderTransform = tg;
+            // Fit to view as soon as the canvas becomes visible (e.g. user switches to Graph tab)
+            IsVisibleChanged += (_, e) =>
+            {
+                if ((bool)e.NewValue && _fitPending && _nodes.Count > 0)
+                {
+                    _fitPending = false;
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render,
+                        new Action(() => { FitToView(); RedrawMinimapOverlay(); }));
+                }
+            };
         }
 
         // ── Public API ────────────────────────────────────────────────────────
@@ -1041,7 +1052,6 @@ namespace SkyrimHavokEditor.UI
         private void ApplyActorTheme(DebugActorType type, string actorName = null)
         {
             if (!_actorTheme.TryGetValue(type, out var theme)) return;
-            DebugVM.HeaderBg = new SolidColorBrush(theme.bg);
             DebugVM.DotFill = new SolidColorBrush(theme.accent);
             DebugVM.AccentBrush = new SolidColorBrush(theme.accent);
             DebugVM.ActorIcon = theme.icon;
@@ -1295,7 +1305,9 @@ namespace SkyrimHavokEditor.UI
                             IsStart = stateId == startStateId,
                             // Double-click hint — show drill indicator if has generator
                             CanDrillDown = !string.IsNullOrEmpty(genRef) && genRef != "null",
-                            Tag = stateObj
+                            Tag = stateObj,
+                            Width = Math.Clamp(name.Length * 7.2 + 36, 160, 240),
+                            Height = 68
                         };
                         localNodes.Add(node);
                         stateIdToNode[stateId] = node;
@@ -1354,17 +1366,9 @@ namespace SkyrimHavokEditor.UI
 
             _visualHost.SetGraph(_nodes, _edges);
             RebuildStateLookup();
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
-    new Action(() =>
-    {
-        if (CanvasBorder.ActualWidth > 0)
-        {
             FitToView();
             RedrawMinimapOverlay();
             PanToNodeIfPending();
-        }
-        else CanvasBorder.SizeChanged += OnFirstResize;
-    }));
         }
 
         private void RebuildStateLookup()
@@ -1427,12 +1431,8 @@ namespace SkyrimHavokEditor.UI
             _nodes = localNodes;
             _edges = localEdges;
             _visualHost.SetGraph(_nodes, _edges);
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
-    new Action(() =>
-    {
-        if (CanvasBorder.ActualWidth > 0) FitToView();
-        else CanvasBorder.SizeChanged += OnFirstResize;
-    }));
+            FitToView();
+            RedrawMinimapOverlay();
         }
 
         private void OnFirstResize(object sender, SizeChangedEventArgs e)
@@ -2345,23 +2345,60 @@ namespace SkyrimHavokEditor.UI
         private void FitToView()
         {
             if (_nodes.Count == 0) return;
-            double minX = _nodes.Min(n => n.X), minY = _nodes.Min(n => n.Y);
-            double maxX = _nodes.Max(n => n.X + n.Width), maxY = _nodes.Max(n => n.Y + n.Height);
-            double gW = maxX - minX + 80, gH = maxY - minY + 80;
-            double cW = CanvasBorder.ActualWidth > 0 ? CanvasBorder.ActualWidth : 800;
-            double cH = CanvasBorder.ActualHeight > 0 ? CanvasBorder.ActualHeight : 500;
-            _zoom = Math.Clamp(Math.Min(cW / gW, cH / gH) * 0.9, 0.1, 2.0);
-            _scale.ScaleX = _zoom; _scale.ScaleY = _zoom;
-            _translate.X = (cW - gW * _zoom) / 2 - minX * _zoom;
-            _translate.Y = (cH - gH * _zoom) / 2 - minY * _zoom;
+
+            double cW = CanvasBorder.ActualWidth;
+            double cH = CanvasBorder.ActualHeight;
+
+            if (cW <= 0 || cH <= 0)
+            {
+                _fitPending = true; 
+                return;
+            }
+
+            _fitPending = false;
+
+            double minX = _nodes.Min(n => n.X);
+            double minY = _nodes.Min(n => n.Y);
+            double maxX = _nodes.Max(n => n.X + n.Width);
+            double maxY = _nodes.Max(n => n.Y + n.Height);
+
+            double graphW = maxX - minX;
+            double graphH = maxY - minY;
+
+            double scaleX = (cW - 80) / Math.Max(graphW, 1);
+            double scaleY = (cH - 80) / Math.Max(graphH, 1);
+            _zoom = Math.Clamp(Math.Min(scaleX, scaleY), 0.05, 2.0);
+
+            _translate.X = (cW - graphW * _zoom) / 2.0 - minX * _zoom;
+            _translate.Y = (cH - graphH * _zoom) / 2.0 - minY * _zoom;
+
+            ApplyTransform();
             SyncMinimap();
         }
 
         private void Canvas_MouseWheel(object sender, MouseWheelEventArgs e)
         {
-            _zoom = Math.Clamp(_zoom * (e.Delta > 0 ? 1.1 : 0.9), 0.1, 5.0);
-            _scale.ScaleX = _zoom; _scale.ScaleY = _zoom;
+            double factor = e.Delta > 0 ? 1.15 : 1.0 / 1.15;
+            double newZoom = Math.Clamp(_zoom * factor, 0.05, 4.0);
+
+            var pos = e.GetPosition(CanvasBorder);
+            double mouseX = (pos.X - _translate.X) / _zoom;
+            double mouseY = (pos.Y - _translate.Y) / _zoom;
+
+            _zoom = newZoom;
+            _translate.X = pos.X - mouseX * _zoom;
+            _translate.Y = pos.Y - mouseY * _zoom;
+
+            ApplyTransform();
             SyncMinimap();
+            e.Handled = true;
+        }
+
+        private void ApplyTransform()
+        {
+            _scale.ScaleX = _zoom;
+            _scale.ScaleY = _zoom;
+            // _translate is already bound to the TransformGroup, no extra set needed
         }
 
         private void Canvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

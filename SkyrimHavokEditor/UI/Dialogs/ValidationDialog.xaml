@@ -5,7 +5,7 @@
         Title="File Integrity Validation"
         Height="550" Width="800"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource BgDarkBrush}"
+        Background="{DynamicResource BgDarkBrush}"
         WindowStyle="SingleBorderWindow"
         ResizeMode="CanResize">
 
@@ -17,46 +17,100 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Summary -->
+        <!-- Summary badges -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-            <Border CornerRadius="4" Padding="10,4" Margin="0,0,8,0">
+            <!-- Errors badge -->
+            <Border CornerRadius="4" Padding="10,4" Margin="0,0,8,0"
+                    Background="{DynamicResource BadgePurpleBrush}"
+                    BorderBrush="{DynamicResource BadgePurpleTextBrush}"
+                    BorderThickness="1">
                 <Border.Style>
                     <Style TargetType="Border">
-                        <Setter Property="Background" Value="#3A1A1A"/>
+                        <Setter Property="Background" Value="{DynamicResource BadgePurpleBrush}"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource BadgePurpleTextBrush}"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ErrorCount}" Value="0">
-                                <Setter Property="Background" Value="#1A3A1A"/>
+                                <Setter Property="Background" Value="{DynamicResource BadgeGreenBrush}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource BadgeGreenTextBrush}"/>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
                 </Border.Style>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="✕ " Foreground="#FF6B6B" FontWeight="Bold"/>
-                    <TextBlock x:Name="ErrorCountText" FontWeight="SemiBold" Foreground="#FF6B6B"/>
-                    <TextBlock Text=" Errors" Foreground="#FF6B6B"/>
+                    <TextBlock Text="✕ " FontWeight="Bold"
+                               Foreground="{DynamicResource BadgePurpleTextBrush}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource BadgePurpleTextBrush}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ErrorCount}" Value="0">
+                                        <Setter Property="Foreground" Value="{DynamicResource BadgeGreenTextBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock x:Name="ErrorCountText" FontWeight="SemiBold">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource BadgePurpleTextBrush}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ErrorCount}" Value="0">
+                                        <Setter Property="Foreground" Value="{DynamicResource BadgeGreenTextBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text=" Errors">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource BadgePurpleTextBrush}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ErrorCount}" Value="0">
+                                        <Setter Property="Foreground" Value="{DynamicResource BadgeGreenTextBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
             </Border>
-            <Border CornerRadius="4" Padding="10,4" Background="#3A2A00">
+
+            <!-- Warnings badge -->
+            <Border CornerRadius="4" Padding="10,4"
+                    Background="{DynamicResource BadgeYellowBrush}"
+                    BorderBrush="{DynamicResource BadgeYellowTextBrush}"
+                    BorderThickness="1">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="⚠ " Foreground="Orange" FontWeight="Bold"/>
-                    <TextBlock x:Name="WarningCountText" FontWeight="SemiBold" Foreground="Orange"/>
-                    <TextBlock Text=" Warnings" Foreground="Orange"/>
+                    <TextBlock Text="⚠ " FontWeight="Bold"
+                               Foreground="{DynamicResource BadgeYellowTextBrush}"/>
+                    <TextBlock x:Name="WarningCountText" FontWeight="SemiBold"
+                               Foreground="{DynamicResource BadgeYellowTextBrush}"/>
+                    <TextBlock Text=" Warnings"
+                               Foreground="{DynamicResource BadgeYellowTextBrush}"/>
                 </StackPanel>
             </Border>
         </StackPanel>
 
         <!-- Filter -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
-            <RadioButton x:Name="FilterAll" Content="All" IsChecked="True" 
+            <RadioButton x:Name="FilterAll"      Content="All"           IsChecked="True"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
                          Margin="0,0,10,0" Checked="Filter_Changed"/>
-            <RadioButton x:Name="FilterErrors" Content="Errors only"
+            <RadioButton x:Name="FilterErrors"   Content="Errors only"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
                          Margin="0,0,10,0" Checked="Filter_Changed"/>
             <RadioButton x:Name="FilterWarnings" Content="Warnings only"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
                          Checked="Filter_Changed"/>
         </StackPanel>
 
         <!-- Issue list -->
         <ListBox x:Name="IssueList" Grid.Row="2"
+                 Background="{DynamicResource BgMidBrush}"
+                 Foreground="{DynamicResource TextPrimaryBrush}"
+                 BorderBrush="{DynamicResource BorderBrush}"
                  SelectionChanged="IssueList_SelectionChanged">
             <ListBox.ItemTemplate>
                 <DataTemplate>
@@ -73,10 +127,10 @@
                                 HorizontalAlignment="Left" VerticalAlignment="Center">
                             <Border.Style>
                                 <Style TargetType="Border">
-                                    <Setter Property="Background" Value="#3A2A00"/>
+                                    <Setter Property="Background" Value="{DynamicResource BadgeYellowBrush}"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsError}" Value="True">
-                                            <Setter Property="Background" Value="#3A1A1A"/>
+                                            <Setter Property="Background" Value="{DynamicResource BadgePurpleBrush}"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -84,10 +138,10 @@
                             <TextBlock Text="{Binding Severity}" FontSize="10" FontWeight="Bold">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="Orange"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource BadgeYellowTextBrush}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsError}" Value="True">
-                                                <Setter Property="Foreground" Value="#FF6B6B"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource BadgePurpleTextBrush}"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -97,17 +151,19 @@
 
                         <!-- Object name -->
                         <TextBlock Grid.Column="1" Text="{Binding ObjectName}"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
                                    FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" Margin="5,0"/>
 
                         <!-- Class -->
                         <TextBlock Grid.Column="2" Text="{Binding ObjectClass}"
-                                   FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" Margin="5,0"/>
 
                         <!-- Description -->
                         <TextBlock Grid.Column="3" Text="{Binding Description}"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
                                    FontSize="11" TextWrapping="Wrap"
                                    VerticalAlignment="Center" Margin="5,0"/>
                     </Grid>
@@ -116,10 +172,10 @@
         </ListBox>
 
         <!-- Footer -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" 
+        <StackPanel Grid.Row="3" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,10,0,0">
-            <TextBlock x:Name="SelectHint" 
-                       Foreground="{StaticResource TextSecondaryBrush}"
+            <TextBlock x:Name="SelectHint"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
                        FontSize="11" VerticalAlignment="Center" Margin="0,0,15,0"
                        Text="Click an issue to navigate to the object"/>
             <Button Content="Close" Click="BtnClose_Click" Padding="14,5"/>

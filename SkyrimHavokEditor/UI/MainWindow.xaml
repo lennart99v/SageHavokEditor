@@ -55,22 +55,44 @@
                 </DataTrigger>
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
+
+        <!-- Shared info-button style used in every tab header -->
+        <Style x:Key="InfoBtnStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                        BorderThickness="0" CornerRadius="3" Padding="3,1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource BgHoverBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
         <Grid Background="{DynamicResource BgDarkBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="38"/>
-                <!-- title bar -->
                 <RowDefinition Height="*"/>
-                <!-- main content -->
                 <RowDefinition Height="Auto"/>
-                <!-- status bar -->
             </Grid.RowDefinitions>
 
-            <!-- ═══════════════════════════════════════════════════════════
-                 TITLE BAR
-            ═══════════════════════════════════════════════════════════ -->
+            <!-- ═══ TITLE BAR ═══ -->
             <Grid Grid.Row="0" Background="{DynamicResource BgPanelBrush}"
                   MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid.ColumnDefinitions>
@@ -79,7 +101,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="Skyrim Havok Editor"
+                <TextBlock Grid.Column="0" Text="Sage Havok Editor"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            FontSize="12" VerticalAlignment="Center" Margin="12,0,20,0"/>
 
@@ -97,33 +119,26 @@
                             IsEnabled="False" ToolTip="Redo (Ctrl+Y)" Margin="0,0,8,0"/>
                     <Button Content="📤 Export" Click="BtnExport_Click"
                             ToolTip="Export CSV (Ctrl+E)" Margin="0,0,5,0"/>
-                    <Button Content="🔎 Validate" Click="BtnValidate_Click"
-                            Margin="0,0,5,0"/>
+                    <Button Content="🔎 Validate" Click="BtnValidate_Click" Margin="0,0,5,0"/>
                     <Button Content="🔭 Search" Click="BtnGlobalSearch_Click"
                             ToolTip="Global search (Ctrl+G)" Margin="0,0,5,0"/>
-                    <Button Content="⇄ Compare" Click="BtnCompare_Click"
-                            Margin="0,0,5,0"/>
-                    <Button x:Name="BtnDebugger"
-        Content="🎮 Live Debug"
-        Click="BtnDebugger_Click"
-        Padding="8,4" Margin="4,0"/>
-                    <Button Content="📦 Patch" Click="BtnGeneratePatch_Click"
-                            Margin="0,0,2,0"/>
-                    <Button Content="🔧 Apply Patch" Click="BtnApplyPatch_Click"
-                            Margin="0,0,8,0"/>
+                    <Button Content="⇄ Compare" Click="BtnCompare_Click" Margin="0,0,5,0"/>
+                    <Button x:Name="BtnDebugger" Content="🎮 Live Debug"
+                            Click="BtnDebugger_Click" Padding="8,4" Margin="4,0"/>
+                    <Button Content="📦 Patch" Click="BtnGeneratePatch_Click" Margin="0,0,2,0"/>
+                    <Button Content="🔀 Patch from Files" Click="BtnPatchFromFiles_Click" Margin="0,0,2,0"/>
+                    <Button Content="🔧 Apply Patch" Click="BtnApplyPatch_Click" Margin="0,0,8,0"/>
                     <Button x:Name="BtnTheme" Content="☀ Light" Click="BtnTheme_Click"/>
                 </StackPanel>
 
-                <!-- Window controls -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="─" Width="46" Height="38" Padding="0"
-                            Click="BtnMinimize_Click">
+                    <Button Content="─" Width="46" Height="38" Padding="0" Click="BtnMinimize_Click">
                         <Button.Style>
                             <Style TargetType="Button">
-                                <Setter Property="Background"   Value="Transparent"/>
+                                <Setter Property="Background" Value="Transparent"/>
                                 <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="Foreground"   Value="{DynamicResource TextSecondaryBrush}"/>
-                                <Setter Property="FontSize"     Value="14"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                                <Setter Property="FontSize" Value="14"/>
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
@@ -141,14 +156,13 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button x:Name="BtnMaximize" Content="□" Width="46" Height="38" Padding="0"
-                            Click="BtnMaximize_Click">
+                    <Button x:Name="BtnMaximize" Content="□" Width="46" Height="38" Padding="0" Click="BtnMaximize_Click">
                         <Button.Style>
                             <Style TargetType="Button">
-                                <Setter Property="Background"   Value="Transparent"/>
+                                <Setter Property="Background" Value="Transparent"/>
                                 <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="Foreground"   Value="{DynamicResource TextSecondaryBrush}"/>
-                                <Setter Property="FontSize"     Value="14"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                                <Setter Property="FontSize" Value="14"/>
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
@@ -166,14 +180,13 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Content="✕" Width="46" Height="38" Padding="0"
-                            Click="BtnClose_Click">
+                    <Button Content="✕" Width="46" Height="38" Padding="0" Click="BtnClose_Click">
                         <Button.Style>
                             <Style TargetType="Button">
-                                <Setter Property="Background"   Value="Transparent"/>
+                                <Setter Property="Background" Value="Transparent"/>
                                 <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="Foreground"   Value="{DynamicResource TextSecondaryBrush}"/>
-                                <Setter Property="FontSize"     Value="14"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                                <Setter Property="FontSize" Value="14"/>
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
@@ -195,34 +208,21 @@
                 </StackPanel>
             </Grid>
 
-            <!-- ═══════════════════════════════════════════════════════════
-                 MAIN CONTENT — three columns
-            ═══════════════════════════════════════════════════════════ -->
+            <!-- ═══ MAIN CONTENT ═══ -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="220" MinWidth="120"/>
-                    <!-- tree -->
                     <ColumnDefinition Width="5"/>
-                    <!-- splitter -->
-                    <ColumnDefinition Width="*"   MinWidth="300"/>
-                    <!-- tabs -->
+                    <ColumnDefinition Width="*" MinWidth="300"/>
                     <ColumnDefinition Width="5"/>
-                    <!-- splitter -->
                     <ColumnDefinition Width="280" MinWidth="180"/>
-                    <!-- object data -->
                 </Grid.ColumnDefinitions>
 
-                <!-- ── COL 0: Tree ──────────────────────────────────────── -->
-                <DockPanel Grid.Column="0"
-                           Background="{DynamicResource BgMidBrush}">
-
-                    <!-- Tree search -->
-                    <Border DockPanel.Dock="Top"
-                            BorderBrush="{DynamicResource BorderBrush}"
+                <!-- COL 0: Tree -->
+                <DockPanel Grid.Column="0" Background="{DynamicResource BgMidBrush}">
+                    <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="0,0,0,1" Padding="6,5">
-                        <TextBox x:Name="TxtSearch"
-                                 Padding="3"
-                                 TextChanged="TxtSearch_TextChanged">
+                        <TextBox x:Name="TxtSearch" Padding="3" TextChanged="TxtSearch_TextChanged">
                             <TextBox.Style>
                                 <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                                     <Style.Triggers>
@@ -244,11 +244,8 @@
                             </TextBox.Style>
                         </TextBox>
                     </Border>
-
-                    <TreeView x:Name="ObjectTree"
-                              SelectedItemChanged="ObjectTree_SelectedItemChanged"
-                              Background="Transparent"
-                              BorderThickness="0">
+                    <TreeView x:Name="ObjectTree" SelectedItemChanged="ObjectTree_SelectedItemChanged"
+                              Background="Transparent" BorderThickness="0">
                         <TreeView.Resources>
                             <Style TargetType="TreeViewItem">
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -260,8 +257,7 @@
                                         <ControlTemplate TargetType="TreeViewItem">
                                             <StackPanel>
                                                 <Border x:Name="ItemBorder" Background="Transparent" Padding="2,1">
-                                                    <ContentPresenter x:Name="PART_Header"
-                                                                      ContentSource="Header"
+                                                    <ContentPresenter x:Name="PART_Header" ContentSource="Header"
                                                                       HorizontalAlignment="Left"/>
                                                 </Border>
                                                 <ItemsPresenter x:Name="ItemsHost" Margin="14,0,0,0"/>
@@ -287,34 +283,44 @@
                     </TreeView>
                 </DockPanel>
 
-                <GridSplitter Grid.Column="1"
-                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                              Background="{DynamicResource BorderBrush}"
-                              ResizeDirection="Columns" Cursor="SizeWE"/>
+                <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                              Background="{DynamicResource BorderBrush}" ResizeDirection="Columns" Cursor="SizeWE"/>
 
-                <!-- ── COL 2: Tabs (Graph first, no Object Data tab) ─────── -->
+                <!-- COL 2: Tabs -->
                 <TabControl x:Name="MainTabControl" Grid.Column="2"
                             Background="{DynamicResource BgDarkBrush}">
 
-                    <!-- ─── Graph ────────────────────────────────────────── -->
-                    <TabItem Header="⚙ Graph">
+                    <!-- Graph -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚙ Graph" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnGraphHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <ui:StateMachineGraphView x:Name="GraphView"/>
                     </TabItem>
 
-                    <!-- ─── Variables ────────────────────────────────────── -->
-                    <!-- ─── Variables ────────────────────────────────────── -->
-                    <TabItem Header="Variables">
+                    <!-- Variables -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Variables" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnVariablesHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <DockPanel Margin="0,5,0,0">
                             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,4,6">
-                                <Button Content="+ Add Variable" Click="BtnAddVariable_Click"
-                    Padding="8,4" Margin="0,0,6,0"/>
+                                <Button Content="+ Add Variable" Click="BtnAddVariable_Click" Padding="8,4" Margin="0,0,6,0"/>
                                 <Button x:Name="BtnDeleteVariable" Content="− Delete Variable"
-                    Click="BtnDeleteVariable_Click"
-                    Padding="8,4" IsEnabled="False"/>
+                                        Click="BtnDeleteVariable_Click" Padding="8,4" IsEnabled="False"/>
                             </StackPanel>
-                            <TextBox DockPanel.Dock="Top" Margin="4,0,4,5" Padding="3"
-                 x:Name="VarSearchBox"
-                 Text="{Binding VariableFilter, UpdateSourceTrigger=PropertyChanged}">
+                            <TextBox DockPanel.Dock="Top" Margin="4,0,4,5" Padding="3" x:Name="VarSearchBox"
+                                     Text="{Binding VariableFilter, UpdateSourceTrigger=PropertyChanged}">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                                         <Style.Triggers>
@@ -324,8 +330,7 @@
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
                                                                 <TextBlock Text="🔍 Filter variables…"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       Margin="5,3"/>
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
                                                     </Setter.Value>
@@ -335,23 +340,19 @@
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
-
-                            <!-- Usage panel -->
-                            <Border DockPanel.Dock="Bottom"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,1,0,0" MaxHeight="180">
+                            <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="0,1,0,0" MaxHeight="180">
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Top" Margin="5,5,0,3" FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           Text="Select a variable to see usages"
-                           Visibility="{Binding SelectedVariable, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Text="Select a variable to see usages"
+                                               Visibility="{Binding SelectedVariable, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
                                     <TextBlock DockPanel.Dock="Top" Margin="5,5,0,3" FontSize="11"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"
-                           Visibility="{Binding SelectedVariable, Converter={StaticResource NullToVisibilityConverter}}">
-                    <Run Text="Usages of: "/>
-                    <Run Text="{Binding SelectedVariable.Name}" FontWeight="Bold"
-                         Foreground="{DynamicResource AccentBlueBrush}"/>
+                                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Visibility="{Binding SelectedVariable, Converter={StaticResource NullToVisibilityConverter}}">
+                                        <Run Text="Usages of: "/>
+                                        <Run Text="{Binding SelectedVariable.Name}" FontWeight="Bold"
+                                             Foreground="{DynamicResource AccentBlueBrush}"/>
                                     </TextBlock>
                                     <ListBox ItemsSource="{Binding UsageView}" FontSize="11">
                                         <ListBox.ItemTemplate>
@@ -364,18 +365,18 @@
                                                     <StackPanel Orientation="Horizontal">
                                                         <TextBlock Text="{Binding UsedBy}" FontWeight="SemiBold" Margin="0,0,6,0"/>
                                                         <Border CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
-                                            Background="{DynamicResource BadgeBlueBrush}">
+                                                                Background="{DynamicResource BadgeBlueBrush}">
                                                             <TextBlock Text="{Binding BindingType}" FontSize="10"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
                                                         </Border>
                                                     </StackPanel>
                                                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,1,0,0">
                                                         <TextBlock Text="{Binding ClassName}" FontSize="10"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,6,0"/>
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,6,0"/>
                                                         <TextBlock Text="→" FontSize="10"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,6,0"/>
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,6,0"/>
                                                         <TextBlock Text="{Binding Property}" FontSize="10"
-                                               Foreground="{DynamicResource AccentBlueBrush}"/>
+                                                                   Foreground="{DynamicResource AccentBlueBrush}"/>
                                                     </StackPanel>
                                                 </Grid>
                                             </DataTemplate>
@@ -383,9 +384,8 @@
                                     </ListBox>
                                 </DockPanel>
                             </Border>
-
                             <ListBox x:Name="VariablesList" ItemsSource="{Binding VariablesView}"
-                 SelectionChanged="VariablesList_SelectionChanged">
+                                     SelectionChanged="VariablesList_SelectionChanged">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="0,3">
@@ -395,33 +395,25 @@
                                                 <ColumnDefinition Width="60"/>
                                                 <ColumnDefinition Width="90"/>
                                             </Grid.ColumnDefinitions>
-
                                             <TextBlock Grid.Column="0" Text="{Binding Index}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   Padding="4,1" FontSize="10" VerticalAlignment="Center"/>
-
-                                            <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                   FontSize="11" VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding Name}"/>
-
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Padding="4,1" FontSize="10" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Name}"/>
                                             <Border Grid.Column="2" CornerRadius="3" Padding="4,1"
-                                Margin="4,0,4,0" VerticalAlignment="Center"
-                                Background="{Binding TypeColor}">
-                                                <TextBlock Text="{Binding TypeShort}"
-                                       FontSize="9" FontWeight="Bold"
-                                       Foreground="#CCCCCC"
-                                       HorizontalAlignment="Center"/>
+                                                    Margin="4,0,4,0" VerticalAlignment="Center"
+                                                    Background="{Binding TypeColor}">
+                                                <TextBlock Text="{Binding TypeShort}" FontSize="9" FontWeight="Bold"
+                                                           Foreground="#CCCCCC" HorizontalAlignment="Center"/>
                                             </Border>
-
-                                            <!-- TextBox for non-bool -->
                                             <TextBox Grid.Column="3"
-                                 Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                 Padding="4,2" FontSize="11"
-                                 VerticalAlignment="Center">
+                                                     Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                     Padding="4,2" FontSize="11" VerticalAlignment="Center">
                                                 <TextBox.Style>
                                                     <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                                                         <Setter Property="Background" Value="{DynamicResource BgInputBrush}"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource InputTextBrush}"/>
                                                         <Setter Property="Visibility" Value="Visible"/>
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding VariableType}" Value="VARIABLE_TYPE_BOOL">
@@ -431,15 +423,12 @@
                                                     </Style>
                                                 </TextBox.Style>
                                             </TextBox>
-
-                                            <!-- ComboBox for bool — properties set directly to force dark theme -->
                                             <ComboBox Grid.Column="3"
-                                  SelectedItem="{Binding BoolDisplayValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                  FontSize="11" Padding="4,2"
-                                  VerticalAlignment="Center"
-                                  Background="{DynamicResource BgInputBrush}"
-                                  Foreground="{DynamicResource TextPrimaryBrush}"
-                                  BorderBrush="{DynamicResource BorderBrush}">
+                                                      SelectedItem="{Binding BoolDisplayValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      FontSize="11" Padding="4,2" VerticalAlignment="Center"
+                                                      Background="{DynamicResource BgInputBrush}"
+                                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                                      BorderBrush="{DynamicResource BorderBrush}">
                                                 <ComboBox.Items>
                                                     <system:String>true</system:String>
                                                     <system:String>false</system:String>
@@ -462,11 +451,18 @@
                         </DockPanel>
                     </TabItem>
 
-                    <!-- ─── Clips ─────────────────────────────────────────── -->
-                    <TabItem Header="Clips">
+                    <!-- Clips -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Clips" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnClipsHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <DockPanel Margin="0,5,0,0">
-                            <TextBox DockPanel.Dock="Top" Margin="5,0,5,5" Padding="3"
-                                     x:Name="ClipSearchBox"
+                            <TextBox DockPanel.Dock="Top" Margin="5,0,5,5" Padding="3" x:Name="ClipSearchBox"
                                      Text="{Binding ClipFilter, UpdateSourceTrigger=PropertyChanged}">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
@@ -477,8 +473,7 @@
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
                                                                 <TextBlock Text="🔍 Filter clips…"
-                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                           Margin="5,3"/>
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
                                                     </Setter.Value>
@@ -488,10 +483,7 @@
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
-
-                            <!-- Trigger panel -->
-                            <Border DockPanel.Dock="Bottom"
-                                    BorderBrush="{DynamicResource BorderBrush}"
+                            <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="0,1,0,0" MaxHeight="180">
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Top" Margin="5,5,0,3" FontSize="11"
@@ -499,8 +491,7 @@
                                                Text="Select a clip to see its triggers"
                                                Visibility="{Binding SelectedClip, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
                                     <TextBlock DockPanel.Dock="Top" Margin="5,5,0,3" FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
                                                Visibility="{Binding SelectedClip, Converter={StaticResource NullToVisibilityConverter}}">
                                         <Run Text="Triggers: "/>
                                         <Run Text="{Binding SelectedClip.Name}" FontWeight="Bold"
@@ -520,7 +511,6 @@
                                     </ListBox>
                                 </DockPanel>
                             </Border>
-
                             <ListBox x:Name="ClipsList" ItemsSource="{Binding ClipsView}"
                                      SelectionChanged="ClipsList_SelectionChanged">
                                 <ListBox.ItemTemplate>
@@ -562,34 +552,32 @@
                         </DockPanel>
                     </TabItem>
 
-                    <!-- ─── Events ────────────────────────────────────────── -->
-                    <TabItem Header="Events">
+                    <!-- Events -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Events" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnEventsHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
-                                <!-- toolbar -->
                                 <RowDefinition Height="Auto"/>
-                                <!-- search -->
                                 <RowDefinition Height="*"/>
-                                <!-- list -->
                                 <RowDefinition Height="4"/>
-                                <!-- splitter -->
                                 <RowDefinition Height="180"/>
-                                <!-- usages -->
                             </Grid.RowDefinitions>
-
-                            <!-- Toolbar -->
                             <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,4,4,2">
                                 <Button x:Name="BtnAddEvent" Content="+ Add" Width="64" Height="26"
-                    Click="BtnAddEvent_Click" Margin="0,0,4,0"/>
+                                        Click="BtnAddEvent_Click" Margin="0,0,4,0"/>
                                 <Button x:Name="BtnDeleteEvent" Content="🗑 Delete" Width="72" Height="26"
-                    Click="BtnDeleteEvent_Click" IsEnabled="False"/>
+                                        Click="BtnDeleteEvent_Click" IsEnabled="False"/>
                             </StackPanel>
-
-                            <!-- Search -->
-                            <TextBox Grid.Row="1" Margin="4,2,4,4" Padding="3"
-                 x:Name="EventSearchBox"
-                 Text="{Binding EventFilter, UpdateSourceTrigger=PropertyChanged}">
+                            <TextBox Grid.Row="1" Margin="4,2,4,4" Padding="3" x:Name="EventSearchBox"
+                                     Text="{Binding EventFilter, UpdateSourceTrigger=PropertyChanged}">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                                         <Style.Triggers>
@@ -599,8 +587,7 @@
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
                                                                 <TextBlock Text="🔍 Filter events…"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       Margin="5,3"/>
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
                                                     </Setter.Value>
@@ -610,78 +597,54 @@
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
-
-                            <!-- Events list -->
-                            <ListBox Grid.Row="2" x:Name="EventsListBox"
-                 ItemsSource="{Binding EventsView}"
-                 SelectionChanged="EventsListBox_SelectionChanged"
-                 Margin="4,0,4,0">
+                            <ListBox Grid.Row="2" x:Name="EventsListBox" ItemsSource="{Binding EventsView}"
+                                     SelectionChanged="EventsListBox_SelectionChanged" Margin="4,0,4,0">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="0,3">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="36"/>
-                                                <!-- index -->
                                                 <ColumnDefinition Width="*"/>
-                                                <!-- name -->
                                                 <ColumnDefinition Width="26"/>
-                                                <!-- delete button -->
                                             </Grid.ColumnDefinitions>
-
-                                            <!-- Index badge -->
                                             <Border Grid.Column="0" CornerRadius="3" Padding="4,1"
-                                Margin="0,0,6,0" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Id}"
-                                       FontSize="9" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       HorizontalAlignment="Center"/>
+                                                    Margin="0,0,6,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Id}" FontSize="9" FontWeight="Bold"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           HorizontalAlignment="Center"/>
                                             </Border>
-
-                                            <!-- Editable name -->
                                             <TextBox Grid.Column="1"
-                                 Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                 Padding="4,2" FontSize="11"
-                                 Background="{DynamicResource BgInputBrush}"
-                                 BorderThickness="0,0,0,1"
-                                 VerticalAlignment="Center"
-                                 LostFocus="EventName_LostFocus"
-                                 Tag="{Binding}"/>
-
-                                            <!-- Inline delete -->
-                                            <Button Grid.Column="2" Content="✕"
-                                FontSize="10" Padding="3,1"
-                                Background="Transparent" BorderThickness="0"
-                                Foreground="#FF6B6B"
-                                Tag="{Binding}"
-                                Click="BtnDeleteEventInline_Click"
-                                VerticalAlignment="Center"/>
+                                                     Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                     Padding="4,2" FontSize="11"
+                                                     Background="{DynamicResource BgInputBrush}"
+                                                     BorderThickness="0,0,0,1" VerticalAlignment="Center"
+                                                     LostFocus="EventName_LostFocus" Tag="{Binding}"/>
+                                            <Button Grid.Column="2" Content="✕" FontSize="10" Padding="3,1"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Foreground="#FF6B6B" Tag="{Binding}"
+                                                    Click="BtnDeleteEventInline_Click" VerticalAlignment="Center"/>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
-
-                            <!-- Splitter -->
                             <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch"
-                      Background="{DynamicResource BorderBrush}" Margin="4,0"/>
-
-                            <!-- Usages panel — unchanged -->
+                                          Background="{DynamicResource BorderBrush}" Margin="4,0"/>
                             <Border Grid.Row="4" BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,1,0,0" Margin="4,0,4,4">
+                                    BorderThickness="0,1,0,0" Margin="4,0,4,4">
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Top" Margin="0,5,0,3" FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           Text="Select an event to see usages"
-                           Visibility="{Binding SelectedEvent, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Text="Select an event to see usages"
+                                               Visibility="{Binding SelectedEvent, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
                                     <TextBlock DockPanel.Dock="Top" Margin="0,5,0,3" FontSize="11"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"
-                           Visibility="{Binding SelectedEvent, Converter={StaticResource NullToVisibilityConverter}}">
-                    <Run Text="Usages of: "/>
-                    <Run Text="{Binding SelectedEvent.Name}" FontWeight="Bold"
-                         Foreground="{DynamicResource AccentBlueBrush}"/>
+                                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Visibility="{Binding SelectedEvent, Converter={StaticResource NullToVisibilityConverter}}">
+                                        <Run Text="Usages of: "/>
+                                        <Run Text="{Binding SelectedEvent.Name}" FontWeight="Bold"
+                                             Foreground="{DynamicResource AccentBlueBrush}"/>
                                     </TextBlock>
                                     <ListBox ItemsSource="{Binding EventUsageList}" FontSize="11"
-                         SelectionChanged="EventUsagesList_SelectionChanged">
+                                             SelectionChanged="EventUsagesList_SelectionChanged">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid Margin="0,3">
@@ -690,36 +653,34 @@
                                                         <RowDefinition Height="Auto"/>
                                                     </Grid.RowDefinitions>
                                                     <StackPanel Orientation="Horizontal">
-                                                        <Border CornerRadius="3" Padding="4,1"
-        Margin="0,0,6,0" VerticalAlignment="Center">
-    <Border.Style>
-        <Style TargetType="Border">
-            <Setter Property="Background" Value="#2A2A3A"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding UsageType}" Value="Transition">
-                    <Setter Property="Background" Value="#1A3A5C"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding UsageType}" Value="Wildcard">
-                    <Setter Property="Background" Value="#3A1A5C"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding UsageType}" Value="Trigger">
-                    <Setter Property="Background" Value="#1A3A1A"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding UsageType}" Value="Property">
-                    <Setter Property="Background" Value="#3A2A00"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-    </Border.Style>
-    <TextBlock Text="{Binding UsageType}" FontSize="10" FontWeight="SemiBold"
-               Foreground="{DynamicResource TextPrimaryBrush}"/>
-</Border>
-                                                        <TextBlock Text="{Binding Description}"
-                                               FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                        <Border CornerRadius="3" Padding="4,1" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Background" Value="#2A2A3A"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding UsageType}" Value="Transition">
+                                                                            <Setter Property="Background" Value="#1A3A5C"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding UsageType}" Value="Wildcard">
+                                                                            <Setter Property="Background" Value="#3A1A5C"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding UsageType}" Value="Trigger">
+                                                                            <Setter Property="Background" Value="#1A3A1A"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding UsageType}" Value="Property">
+                                                                            <Setter Property="Background" Value="#3A2A00"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock Text="{Binding UsageType}" FontSize="10" FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                        </Border>
+                                                        <TextBlock Text="{Binding Description}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                                     </StackPanel>
                                                     <TextBlock Grid.Row="1" Text="{Binding ClassName}"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           FontSize="10" Margin="0,1,0,0"/>
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               FontSize="10" Margin="0,1,0,0"/>
                                                 </Grid>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
@@ -729,8 +690,16 @@
                         </Grid>
                     </TabItem>
 
-                    <!-- ─── Transitions ───────────────────────────────────── -->
-                    <TabItem Header="Transitions">
+                    <!-- Transitions -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Transitions" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnTransitionsHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -749,8 +718,7 @@
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
                                                                 <TextBlock Text="🔍 Filter by state or event…"
-                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                           Margin="5,3"/>
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
                                                     </Setter.Value>
@@ -780,13 +748,11 @@
                                                     <TextBlock Text="{Binding EventName}" FontSize="10"
                                                                Foreground="{DynamicResource BadgePurpleTextBrush}"/>
                                                 </Border>
-                                                <Border CornerRadius="3" Padding="4,1"
-                                                        Background="{DynamicResource BadgeBlueBrush}">
+                                                <Border CornerRadius="3" Padding="4,1" Background="{DynamicResource BadgeBlueBrush}">
                                                     <StackPanel Orientation="Horizontal">
                                                         <TextBlock Text="blend: " FontSize="10"
                                                                    Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                        <TextBlock Text="{Binding BlendDuration}" FontSize="10"
-                                                                   FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding BlendDuration}" FontSize="10" FontWeight="SemiBold"/>
                                                     </StackPanel>
                                                 </Border>
                                             </StackPanel>
@@ -804,8 +770,7 @@
                                                Text="Select a transition to see details"
                                                Visibility="{Binding SelectedTransition, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
                                     <TextBlock DockPanel.Dock="Top" Margin="0,5,0,3" FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
                                                Visibility="{Binding SelectedTransition, Converter={StaticResource NullToVisibilityConverter}}">
                                         <Run Text="Details: "/>
                                         <Run Text="{Binding SelectedTransition.FromState}" FontWeight="Bold"
@@ -824,8 +789,7 @@
                                                         <ColumnDefinition Width="*"/>
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Grid.ColumnSpan="2" FontSize="10" FontWeight="SemiBold"
-                                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               Margin="0,4,0,2">
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,2">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock">
                                                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -873,16 +837,23 @@
                         </Grid>
                     </TabItem>
 
-                    <!-- ─── SM Inspector ──────────────────────────────────── -->
-                    <TabItem Header="SM Inspector">
+                    <!-- SM Inspector -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="SM Inspector" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnSMInspectorHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
-                            <ComboBox Grid.Row="0" Margin="4"
-                                      ItemsSource="{Binding SmList}"
+                            <ComboBox Grid.Row="0" Margin="4" ItemsSource="{Binding SmList}"
                                       SelectedItem="{Binding SelectedSM, Mode=TwoWay}">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
@@ -895,8 +866,8 @@
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
                             <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="4,2">
-                                <Button Content="+ Add Transition" Width="120" Height="28" Margin="0,0,6,0"
-                                        Click="BtnAddSmTransition_Click"/>
+                                <Button Content="+ Add Transition" Width="120" Height="28"
+                                        Margin="0,0,6,0" Click="BtnAddSmTransition_Click"/>
                                 <Button x:Name="BtnEditSmTransition" Content="✏ Edit" Width="72" Height="28"
                                         Margin="0,0,6,0" IsEnabled="False" Click="BtnEditSmTransition_Click"/>
                                 <Button x:Name="BtnDeleteSmTransition" Content="🗑 Delete" Width="80" Height="28"
@@ -919,8 +890,16 @@
                         </Grid>
                     </TabItem>
 
-                    <!-- ─── Bindings ──────────────────────────────────────── -->
-                    <TabItem Header="Bindings">
+                    <!-- Bindings -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Bindings" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnBindingsHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <DockPanel Margin="0,5,0,0">
                             <TextBox DockPanel.Dock="Top" Margin="5,0,5,5" Padding="3"
                                      Text="{Binding BindingFilter, UpdateSourceTrigger=PropertyChanged}">
@@ -933,8 +912,7 @@
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
                                                                 <TextBlock Text="🔍 Filter bindings…"
-                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                           Margin="5,3"/>
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
                                                     </Setter.Value>
@@ -955,8 +933,7 @@
                                             </Grid.RowDefinitions>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding OwnerName}" FontWeight="SemiBold" Margin="0,0,6,0"/>
-                                                <Border CornerRadius="3" Padding="4,1"
-                                                        Background="{DynamicResource BadgeGrayBrush}">
+                                                <Border CornerRadius="3" Padding="4,1" Background="{DynamicResource BadgeGrayBrush}">
                                                     <TextBlock Text="{Binding OwnerClass}" FontSize="10"
                                                                Foreground="{DynamicResource TextSecondaryBrush}"/>
                                                 </Border>
@@ -979,41 +956,36 @@
                         </DockPanel>
                     </TabItem>
 
-                    <!-- ─── Project ───────────────────────────────────────────────── -->
-                    <TabItem Header="📦 Project">
+                    <!-- Project -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📦 Project" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnProjectHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <DockPanel Margin="0,6,0,0">
-
-                            <!-- Header info -->
-                            <Border DockPanel.Dock="Top"
-                Background="{DynamicResource BgPanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,0,0,1" Padding="8,6" Margin="0,0,0,8">
+                            <Border DockPanel.Dock="Top" Background="{DynamicResource BgPanelBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="0,0,0,1" Padding="8,6" Margin="0,0,0,8">
                                 <StackPanel>
                                     <TextBlock Text="Project File" FontWeight="Bold" FontSize="12"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock x:Name="ProjectFilePath"
-                           Text="No project loaded"
-                           FontSize="10"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock x:Name="ProjectFilePath" Text="No project loaded" FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                                 </StackPanel>
                             </Border>
-
-                            <!-- Toolbar -->
                             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5,0,0,8">
-                                <Button Content="📂 Open Project" Click="BtnOpenProject_Click"
-                    Padding="8,4" Margin="0,0,6,0"/>
-                                <Button Content="💾 Save Project" Click="BtnSaveProject_Click"
-                    Padding="8,4" Margin="0,0,6,0"/>
-                                <Button Content="🆕 New Project" Click="BtnNewProject_Click"
-                    Padding="8,4"/>
+                                <Button Content="📂 Open Project" Click="BtnOpenProject_Click" Padding="8,4" Margin="0,0,6,0"/>
+                                <Button Content="💾 Save Project" Click="BtnSaveProject_Click" Padding="8,4" Margin="0,0,6,0"/>
+                                <Button Content="🆕 New Project" Click="BtnNewProject_Click" Padding="8,4"/>
                             </StackPanel>
-
-                            <!-- World settings -->
-                            <Border DockPanel.Dock="Top"
-                Background="{DynamicResource BgMidBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,0,0,1" Padding="8,6" Margin="0,0,0,8">
+                            <Border DockPanel.Dock="Top" Background="{DynamicResource BgMidBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="0,0,0,1" Padding="8,6" Margin="0,0,0,8">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="130"/>
@@ -1023,36 +995,26 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-
                                     <TextBlock Text="World Up" FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           VerticalAlignment="Center" Margin="0,0,0,4"/>
-                                    <TextBox Grid.Column="1" x:Name="TxtWorldUpWS"
-                         FontSize="11" Padding="3,2" Margin="0,0,0,4"
-                         Text="(0.000000 0.000000 1.000000 0.000000)"/>
-
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center" Margin="0,0,0,4"/>
+                                    <TextBox Grid.Column="1" x:Name="TxtWorldUpWS" FontSize="11" Padding="3,2"
+                                             Margin="0,0,0,4" Text="(0.000000 0.000000 1.000000 0.000000)"/>
                                     <TextBlock Grid.Row="1" Text="Default Event Mode" FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           VerticalAlignment="Center"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
                                     <TextBox Grid.Row="1" Grid.Column="1" x:Name="TxtDefaultEventMode"
-                         FontSize="11" Padding="3,2"
-                         Text="EVENT_MODE_IGNORE_FROM_GENERATOR"/>
+                                             FontSize="11" Padding="3,2" Text="EVENT_MODE_IGNORE_FROM_GENERATOR"/>
                                 </Grid>
                             </Border>
-
-                            <!-- Characters list header -->
                             <DockPanel DockPanel.Dock="Top" Margin="5,0,5,4" LastChildFill="False">
                                 <TextBlock Text="Characters" FontWeight="SemiBold" FontSize="11"
-                       Foreground="{DynamicResource TextPrimaryBrush}"
-                       VerticalAlignment="Center"/>
+                                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
                                 <Button DockPanel.Dock="Right" Content="+ Add" Padding="6,2"
-                    Click="BtnAddCharacterRef_Click"/>
+                                        Click="BtnAddCharacterRef_Click"/>
                             </DockPanel>
-
-                            <!-- Characters list -->
                             <ListBox x:Name="ProjectCharactersList"
-                 ItemsSource="{Binding Workspace.Project.Characters}"
-                 SelectionChanged="ProjectCharactersList_SelectionChanged">
+                                     ItemsSource="{Binding Workspace.Project.Characters}"
+                                     SelectionChanged="ProjectCharactersList_SelectionChanged">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="0,4">
@@ -1062,10 +1024,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-
-                                            <!-- Status dot -->
-                                            <Ellipse Width="8" Height="8" Margin="0,0,8,0"
-                                 VerticalAlignment="Center">
+                                            <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center">
                                                 <Ellipse.Style>
                                                     <Style TargetType="Ellipse">
                                                         <Setter Property="Fill" Value="#888"/>
@@ -1077,94 +1036,73 @@
                                                     </Style>
                                                 </Ellipse.Style>
                                             </Ellipse>
-
                                             <StackPanel Grid.Column="1">
-                                                <TextBlock Text="{Binding Name}"
-                                       FontWeight="SemiBold" FontSize="11"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                                <TextBlock Text="{Binding File.OriginalPath}"
-                                       FontSize="10"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="11"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="{Binding File.OriginalPath}" FontSize="10"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>
-
                                             <Button Grid.Column="2" Content="Open ↗" Padding="5,2"
-                                Margin="6,0,0,0" FontSize="10"
-                                Tag="{Binding}"
-                                Click="BtnOpenCharacterFromProject_Click"/>
+                                                    Margin="6,0,0,0" FontSize="10" Tag="{Binding}"
+                                                    Click="BtnOpenCharacterFromProject_Click"/>
                                             <Button Grid.Column="3" Content="✕" Padding="5,2"
-                                Margin="4,0,0,0" FontSize="10"
-                                Foreground="#FF6B6B"
-                                Background="Transparent" BorderThickness="0"
-                                Tag="{Binding}"
-                                Click="BtnRemoveCharacterRef_Click"/>
+                                                    Margin="4,0,0,0" FontSize="10" Foreground="#FF6B6B"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Tag="{Binding}" Click="BtnRemoveCharacterRef_Click"/>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
-
                         </DockPanel>
                     </TabItem>
 
-                    <!-- ─── Character ─────────────────────────────────────────────── -->
-                    <TabItem Header="🧑 Character">
+                    <!-- Character -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🧑 Character" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnCharacterHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel Margin="8,6,8,12">
-
-                                <!-- Header -->
                                 <Border Background="{DynamicResource BgPanelBrush}"
-                    BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="0,0,0,1" Padding="8,6" Margin="0,0,0,10">
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="0,0,0,1" Padding="8,6" Margin="0,0,0,10">
                                     <StackPanel>
                                         <TextBlock Text="Character File" FontWeight="Bold" FontSize="12"
-                               Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                        <TextBlock x:Name="CharacterFilePath"
-                               Text="No character loaded"
-                               FontSize="10"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="CharacterFilePath" Text="No character loaded" FontSize="10"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                                     </StackPanel>
                                 </Border>
-
-                                <!-- Toolbar -->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                    <Button Content="📂 Open Character" Click="BtnOpenCharacter_Click"
-                        Padding="8,4" Margin="0,0,6,0"/>
-                                    <Button Content="💾 Save Character" Click="BtnSaveCharacter_Click"
-                        Padding="8,4"/>
+                                    <Button Content="📂 Open Character" Click="BtnOpenCharacter_Click" Padding="8,4" Margin="0,0,6,0"/>
+                                    <Button Content="💾 Save Character" Click="BtnSaveCharacter_Click" Padding="8,4"/>
                                 </StackPanel>
-
-                                <!-- Section: Identity -->
                                 <TextBlock Text="IDENTITY" FontSize="10" FontWeight="Bold"
-                       Foreground="{DynamicResource TextSecondaryBrush}"
-                       Margin="0,0,0,4"/>
-                                <Border Background="{DynamicResource BgMidBrush}"
-                    BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="130"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
                                         <TextBlock Text="Character Name" FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="1" x:Name="TxtCharacterName"
-                             FontSize="11" Padding="3,2"
-                             TextChanged="CharacterField_Changed"/>
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="1" x:Name="TxtCharacterName" FontSize="11" Padding="3,2"
+                                                 TextChanged="CharacterField_Changed"/>
                                     </Grid>
                                 </Border>
-
-                                <!-- Section: Physics -->
                                 <TextBlock Text="PHYSICS CAPSULE" FontSize="10" FontWeight="Bold"
-                       Foreground="{DynamicResource TextSecondaryBrush}"
-                       Margin="0,0,0,4"/>
-                                <Border Background="{DynamicResource BgMidBrush}"
-                    BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="130"/>
@@ -1173,27 +1111,20 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="Capsule Height" FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="1" x:Name="TxtCapsuleHeight"
-                             FontSize="11" Padding="3,2" Margin="0,0,8,0"
-                             TextChanged="CharacterField_Changed"/>
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="1" x:Name="TxtCapsuleHeight" FontSize="11" Padding="3,2"
+                                                 Margin="0,0,8,0" TextChanged="CharacterField_Changed"/>
                                         <TextBlock Grid.Column="2" Text="Capsule Radius" FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                        <TextBox Grid.Column="3" x:Name="TxtCapsuleRadius"
-                             FontSize="11" Padding="3,2"
-                             TextChanged="CharacterField_Changed"/>
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                        <TextBox Grid.Column="3" x:Name="TxtCapsuleRadius" FontSize="11" Padding="3,2"
+                                                 TextChanged="CharacterField_Changed"/>
                                     </Grid>
                                 </Border>
-
-                                <!-- Section: Paths -->
                                 <TextBlock Text="FILE PATHS" FontSize="10" FontWeight="Bold"
-                       Foreground="{DynamicResource TextSecondaryBrush}"
-                       Margin="0,0,0,4"/>
-                                <Border Background="{DynamicResource BgMidBrush}"
-                    BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="130"/>
@@ -1207,59 +1138,40 @@
                                             <RowDefinition Height="8"/>
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
-
-                                        <!-- Skeleton -->
                                         <TextBlock Text="Skeleton" FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="1" x:Name="TxtSkeletonPath"
-                             FontSize="11" Padding="3,2"
-                             TextChanged="CharacterField_Changed"/>
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="1" x:Name="TxtSkeletonPath" FontSize="11" Padding="3,2"
+                                                 TextChanged="CharacterField_Changed"/>
                                         <Button Grid.Column="2" Content="📂" Padding="5,2" Margin="4,0,0,0"
-                            Click="BtnBrowseSkeleton_Click"/>
-
-                                        <!-- Ragdoll -->
+                                                Click="BtnBrowseSkeleton_Click"/>
                                         <TextBlock Grid.Row="2" Text="Ragdoll" FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               VerticalAlignment="Center"/>
-                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="TxtRagdollPath"
-                             FontSize="11" Padding="3,2"
-                             TextChanged="CharacterField_Changed"/>
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="TxtRagdollPath" FontSize="11" Padding="3,2"
+                                                 TextChanged="CharacterField_Changed"/>
                                         <Button Grid.Row="2" Grid.Column="2" Content="📂" Padding="5,2"
-                            Margin="4,0,0,0" Click="BtnBrowseRagdoll_Click"/>
-
-                                        <!-- Behavior -->
+                                                Margin="4,0,0,0" Click="BtnBrowseRagdoll_Click"/>
                                         <TextBlock Grid.Row="4" Text="Behavior" FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               VerticalAlignment="Center"/>
-                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtBehaviorPath"
-                             FontSize="11" Padding="3,2"
-                             TextChanged="CharacterField_Changed"/>
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtBehaviorPath" FontSize="11" Padding="3,2"
+                                                 TextChanged="CharacterField_Changed"/>
                                         <StackPanel Grid.Row="4" Grid.Column="2" Orientation="Horizontal">
                                             <Button Content="📂" Padding="5,2" Margin="4,0,0,0"
-                                Click="BtnBrowseBehavior_Click"/>
-                                            <Button Content="Open ↗" Padding="5,2" Margin="4,0,0,0"
-                                FontSize="10"
-                                Click="BtnOpenLinkedBehavior_Click"
-                                ToolTip="Open this behavior file"/>
+                                                    Click="BtnBrowseBehavior_Click"/>
+                                            <Button Content="Open ↗" Padding="5,2" Margin="4,0,0,0" FontSize="10"
+                                                    Click="BtnOpenLinkedBehavior_Click" ToolTip="Open this behavior file"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
-
-                                <!-- Section: Animations -->
                                 <DockPanel Margin="0,0,0,4" LastChildFill="False">
                                     <TextBlock Text="ANIMATION NAMES" FontSize="10" FontWeight="Bold"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           VerticalAlignment="Center"/>
-                                    <Button DockPanel.Dock="Right" Content="+ Add"
-                        Padding="6,2" Click="BtnAddAnimationName_Click"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                    <Button DockPanel.Dock="Right" Content="+ Add" Padding="6,2"
+                                            Click="BtnAddAnimationName_Click"/>
                                 </DockPanel>
-                                <Border Background="{DynamicResource BgMidBrush}"
-                    BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="4" Padding="4" Margin="0,0,0,12">
+                                <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1" CornerRadius="4" Padding="4" Margin="0,0,0,12">
                                     <ListBox x:Name="AnimationNamesList"
-                         ItemsSource="{Binding Workspace.Character.AnimationNames}"
-                         MaxHeight="200">
+                                             ItemsSource="{Binding Workspace.Character.AnimationNames}" MaxHeight="200">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid Margin="0,2">
@@ -1268,56 +1180,62 @@
                                                         <ColumnDefinition Width="Auto"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBox Text="{Binding ., Mode=TwoWay,
-                                               UpdateSourceTrigger=LostFocus}"
-                                         FontSize="11" Padding="3,2"
-                                         Foreground="{DynamicResource AccentBlueBrush}"
-                                         BorderThickness="0,0,0,1"/>
-                                                    <Button Grid.Column="1" Content="📂"
-                                        Padding="4,2" Margin="4,0,0,0"
-                                        FontSize="10"
-                                        Tag="{Binding}"
-                                        Click="BtnBrowseAnimName_Click"/>
-                                                    <Button Grid.Column="2" Content="✕"
-                                        Padding="4,2" Margin="2,0,0,0"
-                                        FontSize="10" Foreground="#FF6B6B"
-                                        Background="Transparent" BorderThickness="0"
-                                        Tag="{Binding}"
-                                        Click="BtnRemoveAnimName_Click"/>
+                                                    <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                             FontSize="11" Padding="3,2"
+                                                             Foreground="{DynamicResource AccentBlueBrush}"
+                                                             BorderThickness="0,0,0,1"/>
+                                                    <Button Grid.Column="1" Content="📂" Padding="4,2" Margin="4,0,0,0"
+                                                            FontSize="10" Tag="{Binding}" Click="BtnBrowseAnimName_Click"/>
+                                                    <Button Grid.Column="2" Content="✕" Padding="4,2" Margin="2,0,0,0"
+                                                            FontSize="10" Foreground="#FF6B6B"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Tag="{Binding}" Click="BtnRemoveAnimName_Click"/>
                                                 </Grid>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
                                     </ListBox>
                                 </Border>
-
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>
-                    <!-- ─── Live Debugger ──────────────────────────────────────── -->
-                    <TabItem x:Name="DebuggerTab" Header="🎮 Debugger">
-                        <DockPanel Background="#0F0F1A">
-                            <Border DockPanel.Dock="Top"
-                Background="#1A1A2E"
-                BorderBrush="#3F3F55" BorderThickness="0,0,0,1"
-                Padding="8,5">
+
+                    <!-- Debugger -->
+                    <TabItem x:Name="DebuggerTab">
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🎮 Debugger" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnDebuggerHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
+                        <DockPanel Background="{DynamicResource BgDarkBrush}">
+                            <Border DockPanel.Dock="Top" Background="{DynamicResource BgPanelBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="0,0,0,1" Padding="8,5">
                                 <DockPanel>
-                                    <Button x:Name="BtnDetachDebugger"
-                        Content="⧉ Pop Out"
-                        DockPanel.Dock="Right"
-                        Click="BtnDetachDebugger_Click"
-                        Padding="6,3" FontSize="11"/>
-                                    <TextBlock Text="Live Debugger"
-                           FontSize="11" FontWeight="SemiBold"
-                           Foreground="#9D9D9D"
-                           VerticalAlignment="Center"/>
+                                    <Button x:Name="BtnDetachDebugger" Content="⧉ Pop Out"
+                                            DockPanel.Dock="Right" Click="BtnDetachDebugger_Click"
+                                            Padding="6,3" FontSize="11"/>
+                                    <TextBlock Text="Live Debugger" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Border>
-                            <!-- Binds to GraphView's shared VM -->
                             <dialogs:DebugPanelView x:Name="DebugTabPanel"/>
                         </DockPanel>
                     </TabItem>
-                    <!-- ─── Bookmarks ─────────────────────────────────────── -->
-                    <TabItem Header="🔖 Bookmarks">
+
+                    <!-- Bookmarks -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🔖 Bookmarks" VerticalAlignment="Center"/>
+                                <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
+                                        Margin="5,0,0,0" Click="BtnBookmarksHelp_Click"
+                                        ToolTip="Open documentation for this tab"/>
+                            </StackPanel>
+                        </TabItem.Header>
                         <DockPanel Margin="0,5,0,0">
                             <TextBlock DockPanel.Dock="Top" Text="Bookmarks" FontWeight="Bold" Margin="5,0,0,8"/>
                             <ListBox x:Name="BookmarksList" ItemsSource="{Binding Bookmarks}"
@@ -1348,23 +1266,21 @@
                         </DockPanel>
                     </TabItem>
 
+                    <!-- Guide / Documentation -->
+                    <TabItem Header="📖 Guide">
+                        <dialogs:DocumentationView x:Name="DocView"/>
+                    </TabItem>
+
                 </TabControl>
 
-                <GridSplitter Grid.Column="3"
-                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                              Background="{DynamicResource BorderBrush}"
-                              ResizeDirection="Columns" Cursor="SizeWE"/>
+                <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                              Background="{DynamicResource BorderBrush}" ResizeDirection="Columns" Cursor="SizeWE"/>
 
-                <!-- ── COL 4: Object Data — always visible ───────────────── -->
-                <Border Grid.Column="4"
-                        Background="{DynamicResource BgMidBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1,0,0,0">
+                <!-- COL 4: Object Data -->
+                <Border Grid.Column="4" Background="{DynamicResource BgMidBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0">
                     <DockPanel>
-
-                        <!-- Header bar -->
-                        <Border DockPanel.Dock="Top"
-                                Background="{DynamicResource BgPanelBrush}"
+                        <Border DockPanel.Dock="Top" Background="{DynamicResource BgPanelBrush}"
                                 BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="0,0,0,1" Padding="6,5">
                             <Grid>
@@ -1373,36 +1289,22 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <Button x:Name="BtnBackNavigation"
-                                        Content="← Back" IsEnabled="False"
-                                        Click="BtnBackNavigation_Click"
-                                        Padding="5,2" FontSize="11"/>
-                                <TextBlock Grid.Column="1"
-                                           x:Name="SelectedClassName"
-                                           Text="Object Data"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           FontSize="11" VerticalAlignment="Center"
-                                           Margin="6,0" TextTrimming="CharacterEllipsis"/>
-                                <Button Grid.Column="2"
-                                        x:Name="BtnBookmarkToggle"
-                                        Content="🔖" Padding="4,2" FontSize="13"
-                                        ToolTip="Bookmark this object"
-                                        Click="BtnBookmarkToggle_Click"
-                                        Background="Transparent" BorderThickness="0"/>
+                                <Button x:Name="BtnBackNavigation" Content="← Back" IsEnabled="False"
+                                        Click="BtnBackNavigation_Click" Padding="5,2" FontSize="11"/>
+                                <TextBlock Grid.Column="1" x:Name="SelectedClassName" Text="Object Data"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
+                                           VerticalAlignment="Center" Margin="6,0" TextTrimming="CharacterEllipsis"/>
+                                <Button Grid.Column="2" x:Name="BtnBookmarkToggle" Content="🔖"
+                                        Padding="4,2" FontSize="13" ToolTip="Bookmark this object"
+                                        Click="BtnBookmarkToggle_Click" Background="Transparent" BorderThickness="0"/>
                             </Grid>
                         </Border>
-
-                        <!-- Object name / class -->
-                        <TextBlock DockPanel.Dock="Top"
-                                   x:Name="ObjectNameLabel"
-                                   Padding="7,4" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock DockPanel.Dock="Top" x:Name="ObjectNameLabel" Padding="7,4"
+                                   FontSize="11" FontWeight="SemiBold"
                                    Foreground="{DynamicResource AccentBlueBrush}"
                                    TextTrimming="CharacterEllipsis"
                                    Background="{DynamicResource BgDarkBrush}"/>
-
-                        <!-- Params list -->
-                        <ListBox x:Name="ParamsEditor"
-                                 HorizontalContentAlignment="Stretch"
+                        <ListBox x:Name="ParamsEditor" HorizontalContentAlignment="Stretch"
                                  TextElement.Foreground="{DynamicResource InputTextBrush}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -1411,8 +1313,7 @@
                                             <ColumnDefinition Width="110"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Name}"
-                                                   FontWeight="SemiBold" FontSize="11"
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="11"
                                                    VerticalAlignment="Top" Margin="0,4,0,0"
                                                    TextTrimming="CharacterEllipsis"/>
                                         <StackPanel Grid.Column="1">
@@ -1450,7 +1351,6 @@
                                                     </Style>
                                                 </Button.Style>
                                             </Button>
-                                            <!-- Inline children -->
                                             <ItemsControl ItemsSource="{Binding Children}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
@@ -1494,12 +1394,9 @@
                         </ListBox>
                     </DockPanel>
                 </Border>
-
             </Grid>
 
-            <!-- ═══════════════════════════════════════════════════════════
-                 STATUS BAR
-            ═══════════════════════════════════════════════════════════ -->
+            <!-- ═══ STATUS BAR ═══ -->
             <Border Grid.Row="2" Background="{DynamicResource BgPanelBrush}"
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
                 <Grid Margin="10,4">
@@ -1513,17 +1410,13 @@
                         <TextBlock Text="{Binding Stats.FileName}" FontSize="11" FontWeight="SemiBold"
                                    Foreground="{DynamicResource AccentBlueBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock Grid.Column="1" Text="{Binding Stats.Summary}"
-                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                    <TextBlock Grid.Column="1" Text="{Binding Stats.Summary}" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal">
-                        <TextBlock x:Name="StatusText" FontSize="11"
-                                   Foreground="{DynamicResource AccentGreenBrush}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
+                    <TextBlock Grid.Column="2" x:Name="StatusText" FontSize="11"
+                               Foreground="{DynamicResource AccentGreenBrush}" VerticalAlignment="Center"/>
                 </Grid>
             </Border>
-
         </Grid>
     </Border>
 </Window>

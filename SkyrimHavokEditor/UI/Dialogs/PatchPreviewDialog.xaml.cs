@@ -84,10 +84,10 @@ namespace SkyrimHavokEditor.UI.Dialogs
             var sfd = new Microsoft.Win32.SaveFileDialog
             {
                 Title = "Save Behavior Patch",
-                Filter = "Behavior Patch|*.behaviorpatch|XML|*.xml",
+                Filter = "Sage Patch|*.sagepatch|XML|*.xml",
                 FileName = string.IsNullOrEmpty(_patch.BaseFile)
-                    ? "my_patch"
-                    : _patch.BaseFile + "_patch"
+    ? "my_patch"
+    : _patch.BaseFile + "_patch"
             };
 
             if (sfd.ShowDialog() != true) return;

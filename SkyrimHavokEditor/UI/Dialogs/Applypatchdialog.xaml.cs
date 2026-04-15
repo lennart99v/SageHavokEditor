@@ -25,6 +25,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
             InitializeComponent();
             _manager = manager;
             ResultsList.ItemsSource = _log;
+            ResultsList.KeyDown += ResultsList_KeyDown;
         }
 
         private void BtnBrowsePatch_Click(object sender, RoutedEventArgs e)
@@ -32,7 +33,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
                 Title = "Open Behavior Patch",
-                Filter = "Behavior Patch|*.behaviorpatch|XML|*.xml"
+                Filter = "Sage Patch|*.sagepatch|XML Patch|*.xml|All files|*.*"
             };
             if (dlg.ShowDialog() != true) return;
 
@@ -240,6 +241,24 @@ namespace SkyrimHavokEditor.UI.Dialogs
 
                 default:
                     return ("?", op.Note, "#9D9D9D");
+            }
+        }
+
+        private void ResultsList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.C &&
+                System.Windows.Input.Keyboard.Modifiers.HasFlag(
+                    System.Windows.Input.ModifierKeys.Control))
+            {
+                var lines = ResultsList.SelectedItems
+                    .OfType<LogEntry>()
+                    .Select(l => $"{l.Icon} {l.Message}");
+
+                var text = string.Join("\n", lines);
+                if (!string.IsNullOrEmpty(text))
+                    Clipboard.SetText(text);
+
+                e.Handled = true;
             }
         }
 
