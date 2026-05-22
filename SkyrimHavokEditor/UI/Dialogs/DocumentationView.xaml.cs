@@ -8,7 +8,6 @@ namespace SkyrimHavokEditor.UI.Dialogs
 {
     public partial class DocumentationView : UserControl
     {
-        private readonly Dictionary<string, FrameworkElement> _anchors = new();
 
         public DocumentationView()
         {
@@ -16,21 +15,40 @@ namespace SkyrimHavokEditor.UI.Dialogs
             Loaded += (_, __) => Build();
         }
 
+        private readonly Dictionary<string, Block> _anchors = new();
+        private RichTextBox _docBox;
+
         public void ScrollToSection(string key)
         {
-            if (!_anchors.TryGetValue(key, out var el)) return;
-            el.BringIntoView();
+            if (_anchors.TryGetValue(key, out var block))
+                block.BringIntoView();
         }
 
         private void Build()
         {
-            ContentPanel.Children.Clear();
             NavPanel.Children.Clear();
             _anchors.Clear();
 
+            _docBox = new RichTextBox
+            {
+                IsReadOnly = true,
+                IsDocumentEnabled = true,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                Padding = new Thickness(0),
+                IsTabStop = false
+            };
+            _docBox.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty,
+                ScrollBarVisibility.Disabled);          // outer ScrollViewer handles scrolling
+            _docBox.Document.Blocks.Clear();
+            _docBox.Document.PagePadding = new Thickness(0);
+
+            ContentPanel.Children.Clear();
+            ContentPanel.Children.Add(_docBox);
+
             AddNavHeader("Overview");
             AddSection("overview", "Overview",
-                "Sage Havok Editor is a WPF-based desktop editor for Skyrim (and other Paradox-engine) " +
+                "Sage Havok Editor is a WPF-based desktop editor for Skyrim " +
                 "Havok behaviour files (.hkx / .xml). It lets you view, edit, and export behaviour graphs " +
                 "without hand-editing XML. The editor parses the Havok object graph into a typed data model " +
                 "and lets you navigate every object, edit parameters, manage variables and events, and " +
@@ -86,8 +104,16 @@ namespace SkyrimHavokEditor.UI.Dialogs
                 "• Middle-mouse drag — pan the canvas.\n" +
                 "• Left-click a node — select it and open its data in the Object Data panel.\n" +
                 "• Left-click drag on empty space — lasso-select multiple nodes.\n" +
+                "• Hover a node or transition — a tooltip card shows its key details (state ID, " +
+                "generator, animation path, blend duration). Hovering a transition also enlarges its " +
+                "event label so it stays readable when zoomed out.\n" +
+                "• Drag a node — moving it shows pink alignment guides and snaps to other nodes' edges " +
+                "and centres. Hold Alt to disable snapping.\n" +
                 "• Double-click a state node — drill down into its generator hierarchy.\n" +
-                "• Drag from the right port of a node to another node — create a transition.\n\n" +
+                "• Drag from the right port of a node to another state — create a transition. Valid " +
+                "targets are ringed in green and invalid ones dimmed while you drag.\n" +
+                "• Drag the arrowhead end of a transition onto a different state — re-target the " +
+                "transition's destination without recreating it.\n\n" +
                 "Toolbar\n" +
                 "• Machine selector — choose which hkbStateMachine to display.\n" +
                 "• ← Back — return from a drill-down level.\n" +
@@ -107,6 +133,9 @@ namespace SkyrimHavokEditor.UI.Dialogs
                 "• Ctrl+1-9 — save a viewport bookmark.\n" +
                 "• 1-9 — jump to a saved bookmark.\n" +
                 "• Escape — clear selection and search highlight.\n\n" +
+                "Live debugging\n" +
+                "• Active states glow with an animated green outline.\n" +
+                "• When a transition fires, its edge pulses green so you can trace the flow as it happens.\n\n" +
                 "Right-click context menus are available on nodes, edges, and empty canvas space " +
                 "for additional actions including Add State, Add State Machine, and Re-layout.");
 
@@ -243,14 +272,14 @@ namespace SkyrimHavokEditor.UI.Dialogs
 
         private void AddSection(string key, string title, string body)
         {
-            Brush primaryBrush = TryFindResource("TextPrimaryBrush") is Brush p
-                ? p : new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4));
-            Brush secondaryBrush = TryFindResource("TextSecondaryBrush") is Brush s
-                ? s : new SolidColorBrush(Color.FromRgb(0x9D, 0x9D, 0x9D));
-            Brush borderBrush = TryFindResource("BorderBrush") is Brush b
-                ? b : new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x55));
+            Brush primaryBrush = TryFindResource("TextPrimaryBrush") is Brush pr
+                ? pr : new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4));
+            Brush secondaryBrush = TryFindResource("TextSecondaryBrush") is Brush se
+                ? se : new SolidColorBrush(Color.FromRgb(0x9D, 0x9D, 0x9D));
+            Brush borderBrush = TryFindResource("BorderBrush") is Brush bo
+                ? bo : new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x55));
 
-            // Nav button
+            // Nav button (sidebar — not part of the selectable document)
             var navBtn = new Button
             {
                 Content = title,
@@ -265,58 +294,44 @@ namespace SkyrimHavokEditor.UI.Dialogs
             navBtn.Click += (_, __) => ScrollToSection(key);
             NavPanel.Children.Add(navBtn);
 
-            // Anchor
-            var anchor = new Border { Height = 1, Margin = new Thickness(0, 16, 0, 0) };
-            _anchors[key] = anchor;
-            ContentPanel.Children.Add(anchor);
-
-            // Heading
-            ContentPanel.Children.Add(new TextBlock
+            // Heading paragraph — doubles as the scroll anchor
+            var heading = new Paragraph(new Run(title))
             {
-                Text = title,
                 FontSize = 18,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = primaryBrush,
-                Margin = new Thickness(0, 0, 0, 10)
-            });
+                Margin = new Thickness(0, 16, 0, 6)
+            };
+            _anchors[key] = heading;
+            _docBox.Document.Blocks.Add(heading);
 
             // Rule
-            ContentPanel.Children.Add(new Border
+            _docBox.Document.Blocks.Add(new BlockUIContainer(new Border
             {
                 Height = 1,
                 Background = borderBrush,
-                Margin = new Thickness(0, 0, 0, 14)
-            });
+                Margin = new Thickness(0, 0, 0, 8)
+            }));
 
             // Body paragraphs
             foreach (var para in body.Split("\n\n"))
             {
-                var tb = new TextBlock
-                {
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10),
-                    Foreground = secondaryBrush,
-                    FontSize = 13,
-                    LineHeight = 20
-                };
-
+                var pg = new Paragraph { Margin = new Thickness(0, 0, 0, 10), LineHeight = 20, FontSize = 13 };
                 bool first = true;
                 foreach (var line in para.Split('\n'))
                 {
-                    if (!first) tb.Inlines.Add(new LineBreak());
+                    if (!first) pg.Inlines.Add(new LineBreak());
                     first = false;
-
                     bool isBullet = line.StartsWith("•");
                     bool isSub = !isBullet && !char.IsDigit(line.FirstOrDefault()) &&
                                  para.Contains("•") && line.Length > 0;
-
-                    tb.Inlines.Add(new Run(isBullet ? "    " + line : line)
+                    pg.Inlines.Add(new Run(isBullet ? "    " + line : line)
                     {
                         FontWeight = isSub ? FontWeights.SemiBold : FontWeights.Normal,
                         Foreground = isSub ? primaryBrush : secondaryBrush
                     });
                 }
-                ContentPanel.Children.Add(tb);
+                _docBox.Document.Blocks.Add(pg);
             }
         }
     }

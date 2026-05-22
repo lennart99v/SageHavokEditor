@@ -97,6 +97,12 @@ namespace SkyrimHavokEditor.UI
         private bool _panToActive = false;
         private string _pendingPanToNodeId = null;
 
+        private Border _hoverCard;
+        private System.Windows.Threading.DispatcherTimer _hoverTimer;
+        private GraphNode _pendingHoverNode;
+        private GraphEdge _pendingHoverEdge;
+        private Point _pendingHoverPos;
+
         // ── Actor type detection ──────────────────────────────────────────────────────
         public enum DebugActorType { Player, HumanoidNPC, Dragon, Horse, Creature, Unknown }
 
@@ -173,6 +179,7 @@ namespace SkyrimHavokEditor.UI
         public event Action<HkObject, HkObject> NodeAddedToGraph;
         public event Action<HkObject, HkObject, string> NodeDeletedFromGraph;
         public event Action<string> StatusText_;
+        public event Action<HkObject, string, string> TransitionRetargetedFromGraph; // (trChild, oldToStateId, newToStateId)
 
         // ── Graphviz ──────────────────────────────────────────────────────────
         private static readonly string GraphvizDotPath = Path.Combine(
@@ -247,6 +254,17 @@ namespace SkyrimHavokEditor.UI
             _visualHost.Width = 50000;
             _visualHost.Height = 50000;
 
+            _visualHost.NodeHoverChanged += OnNodeHoverChanged;
+            _visualHost.EdgeHoverChanged += OnEdgeHoverChanged;
+            _hoverTimer = new System.Windows.Threading.DispatcherTimer
+            { Interval = TimeSpan.FromMilliseconds(350) };
+            _hoverTimer.Tick += (_, __) =>
+            {
+                _hoverTimer.Stop();
+                if (_pendingHoverNode != null) BuildNodeCard(_pendingHoverNode);
+                else if (_pendingHoverEdge != null) BuildEdgeCard(_pendingHoverEdge);
+            };
+
             // Single click → inspect in Object Data
             _visualHost.NodeSelected += node => StateSelected?.Invoke(node.Id);
 
@@ -278,6 +296,7 @@ namespace SkyrimHavokEditor.UI
                 RedrawMinimapOverlay();
             };
             _visualHost.MapTransformChanged += () => RedrawMinimapOverlay();
+            _visualHost.EdgeRewireRequested += RewireEdge;
 
             GraphCanvas.Children.Clear();
             GraphCanvas.Children.Add(_visualHost);
@@ -300,6 +319,27 @@ namespace SkyrimHavokEditor.UI
                         new Action(() => { FitToView(); RedrawMinimapOverlay(); }));
                 }
             };
+        }
+
+        private void RewireEdge(GraphEdge edge, GraphNode newTarget)
+        {
+            if (edge.Tag is not (HkObject trChild, HkObject transArray, HkObject ownerState))
+            { StatusText_?.Invoke("Cannot re-wire: missing backing data"); return; }
+
+            var toParam = trChild.Params.FirstOrDefault(p => p.Name == "toStateId");
+            if (toParam == null) return;
+
+            var oldTo = toParam.Value;
+            var newTo = newTarget.StateId;
+            if (oldTo == newTo) return;          // dropped on current target — no-op
+
+            toParam.Value = newTo;
+            TransitionRetargetedFromGraph?.Invoke(trChild, oldTo, newTo);
+
+            StatusText_?.Invoke($"✓ Re-wired {edge.From?.Name ?? "?"} → {newTarget.Name}");
+
+            var filter = MachineSelector.SelectedItem as string ?? "-- All Machines --";
+            BuildStateMachineGraph(filter);
         }
 
         // ── Public API ────────────────────────────────────────────────────────
@@ -588,6 +628,180 @@ namespace SkyrimHavokEditor.UI
             menu.PlacementTarget = this;
             menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
             menu.IsOpen = true;
+        }
+
+
+        private void OnNodeHoverChanged(GraphNode node, Point graphPos)
+        {
+            _pendingHoverNode = node; _pendingHoverEdge = null; _pendingHoverPos = graphPos;
+            _hoverTimer.Stop();
+            if (node == null) { HideHoverCard(); return; }
+            _hoverTimer.Start();
+        }
+
+        private void OnEdgeHoverChanged(GraphEdge edge, Point graphPos)
+        {
+            if (_pendingHoverNode != null) return;          // node wins
+            _pendingHoverEdge = edge; _pendingHoverPos = graphPos;
+            _hoverTimer.Stop();
+            if (edge == null) { HideHoverCard(); return; }
+            _hoverTimer.Start();
+        }
+
+        private void HideHoverCard()
+        {
+            _hoverTimer.Stop();
+            if (_hoverCard != null) _hoverCard.Visibility = Visibility.Collapsed;
+        }
+
+        private void EnsureHoverCard()
+        {
+            EnsureMinimapCanvas();                           // creates _minimapOverlayHost
+            if (_hoverCard != null) return;
+            _hoverCard = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(0xF2, 0x18, 0x18, 0x20)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x4F, 0xC3, 0xF7)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(8, 6, 8, 6),
+                IsHitTestVisible = false,
+                MaxWidth = 320,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5, Color = Colors.Black }
+            };
+            _minimapOverlayHost.Children.Add(_hoverCard);
+        }
+
+        private void RenderCard(string title, string subtitle,
+            List<(string k, string v)> rows, Point graphPos)
+        {
+            EnsureHoverCard();
+            var panel = new StackPanel();
+            panel.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xF4, 0xFF))
+            });
+            if (!string.IsNullOrEmpty(subtitle))
+                panel.Children.Add(new TextBlock
+                {
+                    Text = subtitle,
+                    FontSize = 10,
+                    Margin = new Thickness(0, 0, 0, 4),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x99, 0xAA))
+                });
+            foreach (var (k, v) in rows)
+            {
+                var g = new Grid { Margin = new Thickness(0, 1, 0, 1) };
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var kt = new TextBlock
+                {
+                    Text = k,
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x9D, 0x9D, 0x9D))
+                };
+                var vt = new TextBlock
+                {
+                    Text = v,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4))
+                };
+                Grid.SetColumn(vt, 1);
+                g.Children.Add(kt); g.Children.Add(vt);
+                panel.Children.Add(g);
+            }
+            _hoverCard.Child = panel;
+            _hoverCard.Visibility = Visibility.Visible;
+            _hoverCard.UpdateLayout();
+
+            double bx = graphPos.X * _zoom + _translate.X + 16;
+            double by = graphPos.Y * _zoom + _translate.Y + 12;
+            double hw = _minimapOverlayHost.ActualWidth, hh = _minimapOverlayHost.ActualHeight;
+            if (hw > 0 && bx + _hoverCard.ActualWidth > hw) bx = hw - _hoverCard.ActualWidth - 4;
+            if (hh > 0 && by + _hoverCard.ActualHeight > hh) by = hh - _hoverCard.ActualHeight - 4;
+            System.Windows.Controls.Canvas.SetLeft(_hoverCard, Math.Max(4, bx));
+            System.Windows.Controls.Canvas.SetTop(_hoverCard, Math.Max(4, by));
+        }
+
+        private void BuildNodeCard(GraphNode node)
+        {
+            if (_manager == null || !_manager.ObjectMap.TryGetValue(node.Id, out var obj)) return;
+            RenderCard(node.Name, $"{obj.ClassName}  ·  {node.Id}", NodeTooltipRows(obj), _pendingHoverPos);
+        }
+
+        private List<(string, string)> NodeTooltipRows(HkObject obj)
+        {
+            var rows = new List<(string, string)>();
+            string Get(string n) => obj.Params.FirstOrDefault(p => p.Name == n)?.Value;
+            void Add(string label, string name)
+            { var v = Get(name); if (!string.IsNullOrWhiteSpace(v) && v != "null") rows.Add((label, v)); }
+
+            switch (obj.ClassName)
+            {
+                case "hkbStateMachineStateInfo":
+                    Add("State ID", "stateId");
+                    Add("Probability", "probability");
+                    Add("Enabled", "enable");
+                    var gen = Get("generator");
+                    if (!string.IsNullOrEmpty(gen) && gen != "null" && _manager.TryResolve(gen, out var g))
+                    {
+                        rows.Add(("Generator", g.ClassName));
+                        var anim = g.Params.FirstOrDefault(p => p.Name == "animationName")?.Value;
+                        if (!string.IsNullOrEmpty(anim)) rows.Add(("Animation", anim));
+                    }
+                    var trf = Get("transitions");
+                    if (!string.IsNullOrEmpty(trf) && trf != "null" && _manager.TryResolve(trf, out var ta))
+                        rows.Add(("Transitions",
+                            (ta.Params.FirstOrDefault(p => p.Name == "transitions")?.Children?.Count ?? 0).ToString()));
+                    break;
+                case "hkbClipGenerator":
+                    Add("Animation", "animationName");
+                    Add("Mode", "mode");
+                    Add("Speed", "playbackSpeed");
+                    break;
+                case "hkbStateMachine":
+                    Add("Start State", "startStateId");
+                    var st = Get("states");
+                    if (!string.IsNullOrEmpty(st))
+                        rows.Add(("States", st.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length.ToString()));
+                    break;
+                case "hkbBlenderGenerator":
+                    Add("Ref. Weight", "referencePoseWeightThreshold");
+                    var ch = Get("children");
+                    if (!string.IsNullOrEmpty(ch))
+                        rows.Add(("Children", ch.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length.ToString()));
+                    break;
+                default:
+                    foreach (var p in obj.Params.Where(p =>
+                        !string.IsNullOrWhiteSpace(p.Value) && p.Value != "null"
+                        && (p.Children == null || p.Children.Count == 0)).Take(5))
+                        rows.Add((p.Name, p.Value));
+                    break;
+            }
+            return rows;
+        }
+
+        private void BuildEdgeCard(GraphEdge edge)
+        {
+            var rows = new List<(string, string)> { ("Event", edge.EventName ?? "—") };
+            if (!string.IsNullOrEmpty(edge.Flags)) rows.Add(("Flags", edge.Flags));
+
+            // edge.Tag is (transitionChild, transitionArray, ownerState) in the SM view
+            if (edge.Tag is (HkObject trChild, HkObject _, HkObject _))
+            {
+                var eff = trChild?.Params.FirstOrDefault(p => p.Name == "transition")?.Value;
+                if (!string.IsNullOrEmpty(eff) && eff != "null" && _manager.TryResolve(eff, out var effObj))
+                {
+                    var dur = effObj.Params.FirstOrDefault(p => p.Name == "duration")?.Value;
+                    if (!string.IsNullOrEmpty(dur)) rows.Add(("Blend", dur + "s"));
+                }
+            }
+            RenderCard($"{edge.From?.Name} → {edge.To?.Name}", "Transition", rows, _pendingHoverPos);
         }
 
         // ── Canvas context menu (empty space right-click) ───────────────────
@@ -1365,6 +1579,10 @@ namespace SkyrimHavokEditor.UI
             }
 
             _visualHost.SetGraph(_nodes, _edges);
+            _visualHost.ConnectionValidator = (from, to) =>
+    from.NodeType == GraphNodeType.State &&
+    to.NodeType == GraphNodeType.State &&
+    (from.Machine ?? "") == (to.Machine ?? "");
             RebuildStateLookup();
             FitToView();
             RedrawMinimapOverlay();
@@ -1431,6 +1649,7 @@ namespace SkyrimHavokEditor.UI
             _nodes = localNodes;
             _edges = localEdges;
             _visualHost.SetGraph(_nodes, _edges);
+            _visualHost.ConnectionValidator = (_, __) => false; // generators don't take transitions
             FitToView();
             RedrawMinimapOverlay();
         }
@@ -2530,6 +2749,152 @@ namespace SkyrimHavokEditor.UI
             using var stream = File.OpenWrite(sfd.FileName);
             enc.Save(stream);
             MessageBox.Show($"Exported to {sfd.FileName}");
+        }
+
+        /// <summary>
+        /// Reveal a clip generator: select its owning state machine, drill into the
+        /// owning state, then highlight the clip node. Falls back to highlighting the
+        /// owning state if the clip can't be located in the generator graph.
+        /// </summary>
+        public void RevealClipNode(string clipObjectId)
+        {
+            if (_manager == null || string.IsNullOrEmpty(clipObjectId)) return;
+            if (!_manager.ObjectMap.ContainsKey(clipObjectId)) return;
+
+            // 1. Find the state whose generator hierarchy contains this clip.
+            var (smName, stateObj) = FindOwningStateMachineAndState(clipObjectId);
+            if (stateObj == null)
+            {
+                StatusText_?.Invoke("Clip isn't reachable from any state machine.");
+                return;
+            }
+
+            // 2. Make sure that SM is the one displayed (auto-follow without recursion).
+            if (!string.IsNullOrEmpty(smName) &&
+                MachineSelector.Items.Contains(smName) &&
+                (MachineSelector.SelectedItem as string) != smName)
+            {
+                MachineSelector.SelectionChanged -= MachineSelector_SelectionChanged;
+                MachineSelector.SelectedItem = smName;
+                MachineSelector.SelectionChanged += MachineSelector_SelectionChanged;
+                _navStack.Clear();
+                _currentLevel = null;
+                BuildStateMachineGraph(smName);
+            }
+
+            // 3. Drill into the owning state, then highlight the clip once the
+            //    generator graph has built (BuildGeneratorGraph is async/fire-and-forget,
+            //    so defer the highlight to after it populates _nodes).
+            var stateName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
+            var stateNode = _nodes.FirstOrDefault(n => n.Id == stateObj.Id);
+
+            if (stateNode != null)
+            {
+                DrillInto(stateNode);   // triggers BuildGeneratorGraph(genRef, stateName)
+
+                // Defer: wait for the generator graph to finish, then center the clip.
+                Dispatcher.InvokeAsync(() =>
+                {
+                    var clipNode = _nodes.FirstOrDefault(n => n.Id == clipObjectId);
+                    if (clipNode != null)
+                    {
+                        CenterOnNode(clipNode);
+                        _visualHost.HighlightNode(clipNode.Id);
+                        StatusText_?.Invoke($"📍 {clipNode.Name}");
+                    }
+                    else
+                    {
+                        // fallback: at least we drilled into the right state
+                        StatusText_?.Invoke($"📍 {stateName} (clip node not found in generator view)");
+                    }
+                }, System.Windows.Threading.DispatcherPriority.Background);
+            }
+            else
+            {
+                // SM view didn't have the state node yet — fall back to A: highlight the state
+                SearchAndGoTo(stateName);
+            }
+        }
+
+        /// <summary>Center + zoom the viewport on a node (works at any drill level).</summary>
+        private void CenterOnNode(GraphNode node)
+        {
+            double cW = CanvasBorder.ActualWidth > 0 ? CanvasBorder.ActualWidth : 800;
+            double cH = CanvasBorder.ActualHeight > 0 ? CanvasBorder.ActualHeight : 500;
+
+            _translate.BeginAnimation(TranslateTransform.XProperty, null);
+            _translate.BeginAnimation(TranslateTransform.YProperty, null);
+
+            double s = _zoom;
+            double tx = cW / 2 - (node.X + node.Width / 2) * s;
+            double ty = cH / 2 - (node.Y + node.Height / 2) * s;
+
+            var animX = new System.Windows.Media.Animation.DoubleAnimation(_translate.X, tx, TimeSpan.FromMilliseconds(350))
+            { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut } };
+            var animY = new System.Windows.Media.Animation.DoubleAnimation(_translate.Y, ty, TimeSpan.FromMilliseconds(350))
+            { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut } };
+            animX.Completed += (_, __) => { _translate.BeginAnimation(TranslateTransform.XProperty, null); _translate.X = tx; };
+            animY.Completed += (_, __) => { _translate.BeginAnimation(TranslateTransform.YProperty, null); _translate.Y = ty; };
+            _translate.BeginAnimation(TranslateTransform.XProperty, animX);
+            _translate.BeginAnimation(TranslateTransform.YProperty, animY);
+
+            _visualHost.UpdateMapTransform(s, tx, ty);
+        }
+
+        /// <summary>
+        /// Walk every state machine's states; for each, walk its generator hierarchy
+        /// looking for the target object id. Returns (smName, owningStateObj).
+        /// </summary>
+        private (string smName, HkObject stateObj) FindOwningStateMachineAndState(string targetId)
+        {
+            foreach (var sm in _manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
+            {
+                var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
+                var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
+                if (statesParam == null) continue;
+
+                foreach (var stateRef in (statesParam.Value ?? "")
+                         .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!_manager.TryResolve(stateRef, out var stateObj)) continue;
+                    var genRef = stateObj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
+                    if (string.IsNullOrEmpty(genRef) || genRef == "null") continue;
+
+                    if (GeneratorChainContains(genRef, targetId, new HashSet<string>(), 0))
+                        return (smName, stateObj);
+                }
+            }
+            return (null, null);
+        }
+
+        /// <summary>DFS through a generator chain (same traversal as WalkGenerator) for a target id.</summary>
+        private bool GeneratorChainContains(string objRef, string targetId, HashSet<string> visited, int depth)
+        {
+            if (string.IsNullOrEmpty(objRef) || objRef == "null") return false;
+            if (objRef == targetId) return true;
+            if (!visited.Add(objRef) || depth > 12) return false;
+            if (!_manager.TryResolve(objRef, out var obj)) return false;
+            if (obj.Id == targetId) return true;
+
+            bool Check(string r) => GeneratorChainContains(r, targetId, visited, depth + 1);
+
+            var gen = obj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
+            if (gen != null && Check(gen)) return true;
+
+            var children = obj.Params.FirstOrDefault(p => p.Name == "children")?.Value;
+            if (children != null)
+                foreach (var c in children.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    if (Check(c)) return true;
+
+            var gens = obj.Params.FirstOrDefault(p => p.Name == "generators")?.Value;
+            if (gens != null)
+                foreach (var g in gens.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    if (Check(g)) return true;
+
+            var mod = obj.Params.FirstOrDefault(p => p.Name == "modifier")?.Value;
+            if (mod != null && Check(mod)) return true;
+
+            return false;
         }
 
         // ── BuildGraph (called from MachineSelector) ──────────────────────────

@@ -443,4 +443,28 @@
         <Setter Property="BorderThickness" Value="0"/>
     </Style>
 
+    <!-- Tooltip -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Background" Value="#22242C"/>
+        <Setter Property="Foreground" Value="#F0F0F0"/>
+        <Setter Property="BorderBrush" Value="#4F4F5A"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="8,5"/>
+        <Setter Property="HasDropShadow" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="4"
+                        Padding="{TemplateBinding Padding}">
+                        <ContentPresenter/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

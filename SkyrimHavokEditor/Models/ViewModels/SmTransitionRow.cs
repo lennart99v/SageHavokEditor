@@ -34,7 +34,32 @@ namespace SkyrimHavokEditor.Models.ViewModels
             set { if (_eventName != value) { _eventName = value; OnPropertyChanged(); } }
         }
         public string Flags { get; set; }
-        public string BlendDuration { get; set; }
+        // Add this property to SmTransitionRow
+        public HkObject TransitionEffectObj { get; set; }  // hkbBlendingTransitionEffect
+
+        // Replace the BlendDuration property:
+        private string _blendDuration = "";
+        public string BlendDuration
+        {
+            get => _blendDuration;
+            set
+            {
+                if (_blendDuration == value) return;
+                _blendDuration = value;
+                OnPropertyChanged();
+
+                // Write through to the actual effect object's duration param
+                if (TransitionEffectObj != null)
+                {
+                    var durParam = TransitionEffectObj.Params
+                        .FirstOrDefault(p => p.Name == "duration");
+                    if (durParam != null)
+                        durParam.Value = value;
+                }
+            }
+        }
+
+
 
         // Editable backing fields — write through to the HkObject on change
         private string _eventId;

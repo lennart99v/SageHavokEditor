@@ -8,6 +8,13 @@ using System.Threading.Tasks;
 
 namespace SkyrimHavokEditor.Models.ViewModels
 {
+
+    public sealed class PreviewTrigger
+    {
+        public float Time;       // seconds (parsed from localTime)
+        public string EventName;
+        public bool RelativeToEnd;
+    }
     public class ClipInfo : INotifyPropertyChanged
     {
         public string Id { get; set; }

@@ -55,8 +55,7 @@ namespace SkyrimHavokEditor
             GraphView.StateSelected += (id) =>
             {
                 if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
-                SelectedClassName.Text = $"Class: {obj.ClassName}";
-                ParamsEditor.ItemsSource = obj.Params;
+                LoadObjectIntoEditor(obj);   // ← was the two direct lines
             };
             _originalSnapshot = TakeSnapshot();
             _snapshotEvents = EventList.Select(e => e.Name).ToList();
@@ -91,6 +90,7 @@ namespace SkyrimHavokEditor
             ProjectFilePath.Text = pvm.File?.OriginalPath ?? "";
             TxtWorldUpWS.Text = pvm.WorldUpWS ?? "(0.000000 0.000000 1.000000 0.000000)";
             TxtDefaultEventMode.Text = pvm.DefaultEventMode ?? "";
+            ProjectCharactersList.ItemsSource = Workspace?.Project?.Characters;
 
             // Refresh binding — Characters list is bound to Workspace.Project.Characters
             OnPropertyChanged(nameof(Workspace));
@@ -219,6 +219,7 @@ namespace SkyrimHavokEditor
             TxtSkeletonPath.Text = cvm.SkeletonPath ?? "";
             TxtRagdollPath.Text = cvm.RagdollPath ?? "";
             TxtBehaviorPath.Text = cvm.BehaviorPath ?? "";
+            AnimationNamesList.ItemsSource = Workspace?.Character?.AnimationNames;
 
             // Animation names list refreshed via binding
             OnPropertyChanged(nameof(Workspace));
@@ -359,8 +360,32 @@ namespace SkyrimHavokEditor
 
         private void BtnBrowseAnimName_Click(object sender, RoutedEventArgs e)
         {
-            // Tag holds the string value — we need the index
-            // Simplest: refresh after user edits in the TextBox
+            var cvm = Workspace?.Character;
+            if (cvm == null) return;
+            if ((sender as System.Windows.Controls.Button)?.Tag is not string oldAnim) return;
+
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select Animation File",
+                Filter = "Havok Animation|*.hkx;*.xml|All files|*.*"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var charDir = Path.GetDirectoryName(cvm.File?.OriginalPath ?? "") ?? "";
+            var rel = MakeRelative(charDir, dlg.FileName);
+
+            int idx = cvm.AnimationNames.IndexOf(oldAnim);
+            if (idx >= 0) cvm.AnimationNames[idx] = rel;   // replace in place by index
+            SyncAnimNamesToModel(cvm);
+        }
+
+        private void BtnPreviewAnimName_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as System.Windows.Controls.Button)?.Tag is not string anim) return;
+            if (string.IsNullOrEmpty(anim)) return;
+            // Build a throwaway ClipInfo so we reuse the existing preview path.
+            var name = System.IO.Path.GetFileNameWithoutExtension(anim);
+            PreviewClip(new ClipInfo { Id = "(character-anim)", Name = name, AnimationPath = anim });
         }
 
         private void BtnRemoveAnimName_Click(object sender, RoutedEventArgs e)

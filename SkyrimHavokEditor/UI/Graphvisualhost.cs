@@ -39,6 +39,7 @@ namespace SkyrimHavokEditor.UI
         private GraphNode _hoveredNode;
         private GraphEdge _hoveredEdge;
         private GraphNode _connectingFrom;
+        private GraphNode _connectHoverNode;
         private Point _connectingTo;
         private Point _dragOffset;
         private string _searchQuery = "";
@@ -48,6 +49,10 @@ namespace SkyrimHavokEditor.UI
         private List<VariableValue> _liveVars = new();
         private double _pulsePhase = 0;
         private readonly System.Windows.Threading.DispatcherTimer _pulseTimer;
+        private readonly Dictionary<GraphEdge, double> _firedEdges = new();
+        private readonly DrawingVisual _guideLayer = new();
+        private const double SnapBase = 8; // screen px at zoom 1.0
+        private GraphEdge _rewiringEdge;
 
         // ── Lasso selection ────────────────────────────────────────────────
         private bool _isLassoing;
@@ -94,6 +99,11 @@ namespace SkyrimHavokEditor.UI
         public event Action<GraphComment> CommentContextMenuRequested;
         public event Action<double, double> PanDelta;      // dx, dy from empty-space drag
         public event Action MapTransformChanged;
+        public event Action<GraphNode, Point> NodeHoverChanged;
+        public event Action<GraphEdge, Point> EdgeHoverChanged;
+        public event Action<GraphEdge, GraphNode> EdgeRewireRequested;
+
+        public Func<GraphNode, GraphNode, bool> ConnectionValidator;
         public void RaiseCommentAdded(GraphComment c) => CommentAdded?.Invoke(c);
 
         // ── Node palette ──────────────────────────────────────────────────────
@@ -146,6 +156,7 @@ namespace SkyrimHavokEditor.UI
             _visuals.Add(_edgeLayer);
             _visuals.Add(_labelLayer);
             _visuals.Add(_commentLayer);
+            _visuals.Add(_guideLayer);
             _visuals.Add(_draftLayer);
             _visuals.Add(_overlayLayer);
 
@@ -155,6 +166,13 @@ namespace SkyrimHavokEditor.UI
             MouseRightButtonDown += OnRightClick;
             MouseDown += OnAnyMouseDown;   // middle-button pan
             MouseUp += OnAnyMouseUp;
+            MouseLeave += (_, __) =>
+            {
+                if (_hoveredNode != null) { var n = _hoveredNode; _hoveredNode = null; RedrawNode(n); }
+                _hoveredEdge = null;
+                NodeHoverChanged?.Invoke(null, default);
+                EdgeHoverChanged?.Invoke(null, default);
+            };
             _pulseTimer = new System.Windows.Threading.DispatcherTimer
             {
                 Interval = TimeSpan.FromMilliseconds(33)
@@ -162,10 +180,20 @@ namespace SkyrimHavokEditor.UI
             // Pulse timer tick — redraw all live nodes
             _pulseTimer.Tick += (_, __) =>
             {
-                if (_liveStateIds.Count == 0) return;
-                _pulsePhase = (_pulsePhase + 0.08) % (2 * Math.PI);
-                foreach (var id in _liveStateIds)
-                    RedrawNode(_nodes.FirstOrDefault(n => n.Id == id));
+                if (_liveStateIds.Count > 0)
+                {
+                    _pulsePhase = (_pulsePhase + 0.08) % (2 * Math.PI);
+                    foreach (var id in _liveStateIds)
+                        RedrawNode(_nodes.FirstOrDefault(n => n.Id == id));
+                }
+                if (_firedEdges.Count > 0)
+                {
+                    foreach (var e in _firedEdges.Keys.ToList())
+                    { _firedEdges[e] -= 0.05; if (_firedEdges[e] <= 0) _firedEdges.Remove(e); }
+                    DrawAllEdges();
+                }
+                if (_liveStateIds.Count == 0 && _firedEdges.Count == 0)
+                    _pulseTimer.Stop();
             };
         }
 
@@ -180,6 +208,7 @@ namespace SkyrimHavokEditor.UI
             _hoveredEdge = null;
             _hoveredNode = null;
             _isLassoing = false;
+            _firedEdges.Clear();
             _dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
             RebuildNodeVisuals();
             DrawAllEdges();
@@ -236,20 +265,26 @@ namespace SkyrimHavokEditor.UI
         public void SetLiveStates(List<string> activeIds, List<VariableValue> vars)
         {
             var prev = _liveStateIds;
-            _liveStateIds = new HashSet<string>(activeIds ?? new List<string>());
+            var next = new HashSet<string>(activeIds ?? new List<string>());
+
+            var exited = prev.Where(id => !next.Contains(id)).ToHashSet();
+            var entered = next.Where(id => !prev.Contains(id)).ToHashSet();
+            if (exited.Count > 0 && entered.Count > 0)
+                foreach (var ed in _edges)
+                    if (ed.From != null && ed.To != null &&
+                        exited.Contains(ed.From.Id) && entered.Contains(ed.To.Id))
+                        _firedEdges[ed] = 1.0;
+
+            _liveStateIds = next;
             _liveVars = vars ?? new();
 
-            // Redraw previously live nodes to clear glow
-            foreach (var id in prev)
-                RedrawNode(_nodes.FirstOrDefault(n => n.Id == id));
+            foreach (var id in prev) RedrawNode(_nodes.FirstOrDefault(n => n.Id == id));
+            foreach (var id in _liveStateIds) RedrawNode(_nodes.FirstOrDefault(n => n.Id == id));
+            if (_firedEdges.Count > 0) DrawAllEdges();
 
-            // Redraw newly live nodes
-            foreach (var id in _liveStateIds)
-                RedrawNode(_nodes.FirstOrDefault(n => n.Id == id));
-
-            if (_liveStateIds.Count > 0 && !_pulseTimer.IsEnabled)
+            if ((_liveStateIds.Count > 0 || _firedEdges.Count > 0) && !_pulseTimer.IsEnabled)
                 _pulseTimer.Start();
-            else if (_liveStateIds.Count == 0)
+            else if (_liveStateIds.Count == 0 && _firedEdges.Count == 0)
                 _pulseTimer.Stop();
         }
 
@@ -292,6 +327,11 @@ namespace SkyrimHavokEditor.UI
             var pal = _palette[node.NodeType];
 
             using var dc = nv.RenderOpen();
+
+            bool connecting = _connectingFrom != null;
+            bool validTarget = connecting && IsValidConnectionTarget(node);
+            bool dim = connecting && node != _connectingFrom && !validTarget;
+            if (dim) dc.PushOpacity(0.28);
 
             var fullRect = new Rect(node.X, node.Y, node.Width, node.Height);
 
@@ -364,6 +404,7 @@ namespace SkyrimHavokEditor.UI
                     new SolidColorBrush(Color.FromArgb(180, 0x10, 0x10, 0x18)), null,
                     new Rect(lx - 4, ly - 2, floatLabel.Width + 8, floatLabel.Height + 4), 3, 3);
                 dc.DrawText(floatLabel, new Point(lx, ly));
+                if (dim) dc.Pop();
                 return;
             }
 
@@ -387,6 +428,7 @@ namespace SkyrimHavokEditor.UI
             dc.PushClip(new RectangleGeometry(fullRect, 6, 6));
             dc.DrawGeometry(new SolidColorBrush(pal.Header), null, headerGeo);
             dc.Pop();
+
 
             // ── Header divider ────────────────────────────────────────────────
             dc.DrawLine(new Pen(new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)), 1),
@@ -467,6 +509,75 @@ namespace SkyrimHavokEditor.UI
             // Input (left)
             dc.DrawEllipse(portBrush, _portPen,
                 new Point(node.X, node.Y + node.Height / 2), PortR, PortR);
+
+            // ── Valid connection target ring (outside the header clip) ──
+            if (validTarget)
+            {
+                bool hot = node == _connectHoverNode;
+                var ring = new Pen(new SolidColorBrush(
+                    Color.FromArgb(hot ? (byte)0xFF : (byte)0xAA, 0x4C, 0xD9, 0x6E)), hot ? 3 : 2);
+                dc.DrawRoundedRectangle(null, ring,
+                    new Rect(node.X - 2, node.Y - 2, node.Width + 4, node.Height + 4), 8, 8);
+            }
+            if (dim) dc.Pop();
+        }
+
+
+        private bool IsValidConnectionTarget(GraphNode target)
+        {
+            if (_connectingFrom == null || target == null || target == _connectingFrom)
+                return false;
+            return ConnectionValidator?.Invoke(_connectingFrom, target)
+                   ?? ((target.Machine ?? "") == (_connectingFrom.Machine ?? ""));
+        }
+
+
+        private void ClearGuides() { using var _ = _guideLayer.RenderOpen(); }
+
+        private void DrawGuide(double? gx, double? gy,
+            double minY, double maxY, double minX, double maxX)
+        {
+            using var dc = _guideLayer.RenderOpen();
+            var pen = new Pen(new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0x3D, 0x7F)), 1)
+            { DashStyle = DashStyles.Dash };
+            if (gx.HasValue) dc.DrawLine(pen, new Point(gx.Value, minY), new Point(gx.Value, maxY));
+            if (gy.HasValue) dc.DrawLine(pen, new Point(minX, gy.Value), new Point(maxX, gy.Value));
+        }
+
+        private void ApplySnap(GraphNode dragged, ref double tx, ref double ty)
+        {
+            double snap = SnapBase / Math.Max(_currentZoom, 0.1);
+            double w = dragged.Width, h = dragged.Height;
+
+            double bestX = snap, bestY = snap, dX = 0, dY = 0;
+            double? guideX = null, guideY = null;
+            GraphNode matchX = null, matchY = null;
+
+            var dxLines = new[] { tx, tx + w / 2, tx + w };
+            var dyLines = new[] { ty, ty + h / 2, ty + h };
+
+            foreach (var n in _nodes)
+            {
+                if (n == dragged || _selectedNodes.Contains(n)) continue;
+                var txL = new[] { n.X, n.X + n.Width / 2, n.X + n.Width };
+                var tyL = new[] { n.Y, n.Y + n.Height / 2, n.Y + n.Height };
+
+                foreach (var dl in dxLines) foreach (var tl in txL)
+                { double d = Math.Abs(dl - tl); if (d < bestX) { bestX = d; dX = tl - dl; guideX = tl; matchX = n; } }
+                foreach (var dl in dyLines) foreach (var tl in tyL)
+                { double d = Math.Abs(dl - tl); if (d < bestY) { bestY = d; dY = tl - dl; guideY = tl; matchY = n; } }
+            }
+
+            tx += dX; ty += dY;
+
+            if (guideX.HasValue || guideY.HasValue)
+            {
+                double minY = ty, maxY = ty + h, minX = tx, maxX = tx + w;
+                if (matchX != null) { minY = Math.Min(minY, matchX.Y); maxY = Math.Max(maxY, matchX.Y + matchX.Height); }
+                if (matchY != null) { minX = Math.Min(minX, matchY.X); maxX = Math.Max(maxX, matchY.X + matchY.Width); }
+                DrawGuide(guideX, guideY, minY - 20, maxY + 20, minX - 20, maxX + 20);
+            }
+            else ClearGuides();
         }
 
         // ── Edge rendering ─────────────────────────────────────────────────────
@@ -482,7 +593,9 @@ namespace SkyrimHavokEditor.UI
         private void DrawEdge(GraphEdge edge, DrawingContext edgeDc, DrawingContext labelDc)
         {
             if (edge.From == null || edge.To == null) return;
+            if (edge == _rewiringEdge) return;
 
+            _firedEdges.TryGetValue(edge, out double fire);
             bool isHovered = edge == _hoveredEdge;
             var pen = isHovered
                 ? new Pen(new SolidColorBrush(Color.FromRgb(0xC5, 0x86, 0xC0)), 3)
@@ -490,7 +603,7 @@ namespace SkyrimHavokEditor.UI
             var arrowFill = isHovered ? _arrowHover : _arrowFill;
 
             if (edge.From.Id == edge.To.Id)
-            { DrawSelfLoop(edge, edgeDc, labelDc, pen, arrowFill); return; }
+            { DrawSelfLoop(edge, edgeDc, labelDc, pen, arrowFill, fire); return; }
 
             // Port-to-port: right side of From → left side of To
             double x1 = edge.From.X + edge.From.Width;
@@ -526,17 +639,24 @@ namespace SkyrimHavokEditor.UI
             }
             geo.Freeze();
             edgeDc.DrawGeometry(null, pen, geo);
-            DrawArrow(edgeDc, arrowFill, new Point(x2, y2),
-                Math.Atan2(y2 - cy2, x2 - cx2));
+            DrawArrow(edgeDc,
+    fire > 0 ? new SolidColorBrush(Color.FromArgb((byte)(255 * fire), 0x00, 0xFF, 0x88)) : arrowFill,
+    new Point(x2, y2), Math.Atan2(y2 - cy2, x2 - cx2));
 
             if (!string.IsNullOrEmpty(edge.EventName))
-                DrawEdgeLabel(labelDc, edge.EventName,
-                    (cx1 + cx2) / 2, (cy1 + cy2) / 2 - 16,
-                    isHovered);
+                DrawEdgeLabel(labelDc, edge.EventName, (cx1 + cx2) / 2, (cy1 + cy2) / 2 - 16,
+                    isHovered || fire > 0, enlarge: isHovered);
+
+            if (fire > 0)
+            {
+                byte a = (byte)(230 * fire);
+                edgeDc.DrawGeometry(null,
+                    new Pen(new SolidColorBrush(Color.FromArgb(a, 0x00, 0xFF, 0x88)), 2 + 4 * fire), geo);
+            }
         }
 
         private void DrawSelfLoop(GraphEdge edge,
-            DrawingContext edgeDc, DrawingContext labelDc, Pen pen, Brush arrowFill)
+            DrawingContext edgeDc, DrawingContext labelDc, Pen pen, Brush arrowFill, double fire = 0)
         {
             double lx = edge.From.X + edge.From.Width / 2;
             double ty = edge.From.Y;
@@ -552,7 +672,7 @@ namespace SkyrimHavokEditor.UI
             edgeDc.DrawGeometry(null, pen, geo);
             if (!string.IsNullOrEmpty(edge.EventName))
                 DrawEdgeLabel(labelDc, edge.EventName, lx + 30, ty - 45,
-                    edge == _hoveredEdge);
+                    edge == _hoveredEdge, enlarge: edge == _hoveredEdge);
         }
 
         private static void DrawArrow(DrawingContext dc, Brush fill, Point tip, double angle)
@@ -572,7 +692,7 @@ namespace SkyrimHavokEditor.UI
         }
 
         private void DrawEdgeLabel(DrawingContext dc, string text,
-            double x, double y, bool highlighted = false)
+    double x, double y, bool highlighted = false, bool enlarge = false)
         {
             // Dim when not hovered — still visible but not intrusive
             var textBrush = highlighted
@@ -583,11 +703,25 @@ namespace SkyrimHavokEditor.UI
                 : FB(new SolidColorBrush(Color.FromArgb(0x55, 0x18, 0x18, 0x22)));
             var borderPen = highlighted ? _labelBorder : null;
 
-            var ft = MakeText(text, 9, textBrush, FontWeights.Normal);
+            // Same zoom-compensation as node names, but only when enlarging (hover)
+            double size = enlarge
+                ? Math.Max(9.0, 10.0 / Math.Max(_currentZoom, 0.1))
+                : 9.0;
+            var ft = MakeText(text, size, textBrush, FontWeights.Normal);
             double w = ft.Width + 10, h = ft.Height + 4;
             dc.DrawRoundedRectangle(bgBrush, borderPen,
                 new Rect(x - w / 2, y - h / 2, w, h), 3, 3);
             dc.DrawText(ft, new Point(x - ft.Width / 2, y - ft.Height / 2));
+        }
+
+        private bool HitTestEdgeEndpoint(Point p, out GraphEdge edge)
+        {
+            edge = _hoveredEdge;
+            if (edge == null || edge.LastBezier == default) return false;
+            if (edge.Tag == null) return false;            // only real SM transitions, not generator edges
+            var tip = edge.LastBezier.p3;                  // arrowhead = left port of To node
+            double dx = p.X - tip.X, dy = p.Y - tip.Y;
+            return Math.Sqrt(dx * dx + dy * dy) < PortR + 6;
         }
 
         // ── Draft connection ───────────────────────────────────────────────────
@@ -718,12 +852,27 @@ namespace SkyrimHavokEditor.UI
                 return;
             }
 
+            // ── Grab the END of a hovered edge → re-wire its destination ──────────────
+            if (HitTestEdgeEndpoint(p, out var grabbed))
+            {
+                _rewiringEdge = grabbed;
+                _connectingFrom = grabbed.From;   // draft + validity reuse the connect path
+                _connectingTo = p;
+                CaptureMouse();
+                DrawAllEdges();        // hide the edge being re-wired
+                DrawAllNodes();        // dim invalid targets
+                DrawDraftConnection();
+                e.Handled = true;
+                return;
+            }
+
             // ── Output port → start connection ──────────────────────────────────────
             if (HitTestOutputPort(p, out var portNode))
             {
                 _connectingFrom = portNode;
                 _connectingTo = p;
                 CaptureMouse();
+                DrawAllNodes();
                 e.Handled = true;
                 return;
             }
@@ -770,17 +919,28 @@ namespace SkyrimHavokEditor.UI
             if (_connectingFrom != null)
             {
                 var target = HitTestNode(p);
-                if (target != null && target != _connectingFrom)
+                if (_rewiringEdge != null)
+                {
+                    if (target != null && target != _rewiringEdge.To && IsValidConnectionTarget(target))
+                        EdgeRewireRequested?.Invoke(_rewiringEdge, target);
+                    _rewiringEdge = null;          // dropped on empty/same/invalid → cancel, edge reappears
+                }
+                else if (target != null && IsValidConnectionTarget(target))
+                {
                     ConnectionRequested?.Invoke(_connectingFrom, target);
+                }
+
                 _connectingFrom = null;
+                _connectHoverNode = null;
                 ClearDraftConnection();
+                DrawAllNodes();
+                DrawAllEdges();                    // restore the hidden edge
             }
 
-            if (_draggingNode != null) { NodeMoved?.Invoke(_draggingNode); _draggingNode = null; }
+            if (_draggingNode != null) { NodeMoved?.Invoke(_draggingNode); _draggingNode = null; ClearGuides(); }
             if (_draggingComment != null) { _draggingComment = null; _commentDraggedNodes.Clear(); }
             if (_resizingComment != null) { _resizingComment = null; }
             if (_isPanningFromHost) _isPanningFromHost = false;
-
             if (_isLassoing)
             {
                 _isLassoing = false;
@@ -801,7 +961,14 @@ namespace SkyrimHavokEditor.UI
 
             // ── Draft connection ─────────────────────────────────────────────────────
             if (_connectingFrom != null)
-            { _connectingTo = p; DrawDraftConnection(); e.Handled = true; return; }
+            {
+                _connectingTo = p;
+                DrawDraftConnection();
+                var t = HitTestNode(p);
+                if (t != _connectHoverNode)
+                { var prev = _connectHoverNode; _connectHoverNode = t; RedrawNode(prev); RedrawNode(t); }
+                e.Handled = true; return;
+            }
 
             // ── Comment drag ─────────────────────────────────────────────────────────
             if (_draggingComment != null)
@@ -860,12 +1027,19 @@ namespace SkyrimHavokEditor.UI
             // ── Node drag ────────────────────────────────────────────────────────────
             if (_draggingNode != null)
             {
-                double dx = p.X - _dragOffset.X - _draggingNode.X;
-                double dy = p.Y - _dragOffset.Y - _draggingNode.Y;
+                double tx = p.X - _dragOffset.X;
+                double ty = p.Y - _dragOffset.Y;
+
+                if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+                    ApplySnap(_draggingNode, ref tx, ref ty);   // hold Alt to disable snapping
+                else
+                    ClearGuides();
+
+                double dx = tx - _draggingNode.X;
+                double dy = ty - _draggingNode.Y;
                 foreach (var n in _selectedNodes) { n.X += dx; n.Y += dy; }
-                if (!_selectedNodes.Contains(_draggingNode))
-                { _draggingNode.X += dx; _draggingNode.Y += dy; }
-                _dragOffset = new Point(p.X - _draggingNode.X, p.Y - _draggingNode.Y);
+                if (!_selectedNodes.Contains(_draggingNode)) { _draggingNode.X += dx; _draggingNode.Y += dy; }
+
                 DrawAllNodes(); DrawAllEdges(); DrawMiniMap();
                 e.Handled = true; return;
             }
@@ -886,11 +1060,20 @@ namespace SkyrimHavokEditor.UI
             // ── Hover: node ──────────────────────────────────────────────────────────
             var hoverNode = HitTestNode(p);
             if (hoverNode != _hoveredNode)
-            { var prev = _hoveredNode; _hoveredNode = hoverNode; RedrawNode(prev); RedrawNode(hoverNode); }
+            {
+                var prev = _hoveredNode; _hoveredNode = hoverNode; RedrawNode(prev); RedrawNode(hoverNode);
+                NodeHoverChanged?.Invoke(hoverNode, p);
+            }
 
-            // ── Hover: edge ──────────────────────────────────────────────────────────
             var edge = HitTestEdge(p);
-            if (edge != _hoveredEdge) { _hoveredEdge = edge; DrawAllEdges(); }
+            if (edge != _hoveredEdge)
+            {
+                _hoveredEdge = edge; DrawAllEdges();
+                EdgeHoverChanged?.Invoke(edge, p);
+            }
+
+            if (_connectingFrom == null && _draggingNode == null && !_isLassoing)
+                Cursor = HitTestEdgeEndpoint(p, out _) ? Cursors.SizeAll : Cursors.Arrow;
 
             // ── Hover: comment ───────────────────────────────────────────────────────
             var commentHover = HitTestCommentAny(p);
@@ -1124,6 +1307,7 @@ namespace SkyrimHavokEditor.UI
             {
                 _currentZoom = scale;
                 DrawAllNodes();
+                if (_hoveredEdge != null) DrawAllEdges();   // ← keep hovered label pinned while zooming
             }
             DrawMiniMap();
         }

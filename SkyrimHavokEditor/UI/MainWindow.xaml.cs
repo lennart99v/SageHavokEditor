@@ -1,9 +1,13 @@
 ﻿using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Core.Animation;
+using SkyrimHavokEditor.Core.Animation.SkyrimHavokEditor.UI;
 using SkyrimHavokEditor.Core.Patching;
 using SkyrimHavokEditor.Core.Services;
+using SkyrimHavokEditor.Core.Skeletons;
 using SkyrimHavokEditor.Core.Validation;
 using SkyrimHavokEditor.Models;
 using SkyrimHavokEditor.Models.ViewModels;
+using SkyrimHavokEditor.Tools;
 using SkyrimHavokEditor.UI;
 using SkyrimHavokEditor.UI.Converters;
 using SkyrimHavokEditor.UI.Dialogs;
@@ -11,18 +15,19 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.AccessControl;
 using System.Text;
+using System.Threading.Tasks; 
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Xml.Serialization;
-using System.IO;
-using System.Threading.Tasks; 
 
 namespace SkyrimHavokEditor
 {
@@ -205,6 +210,12 @@ namespace SkyrimHavokEditor
         private string _originalHkxPath = null;
 
         private bool _debuggerRunning = false;
+        private readonly YamlBehaviorImporter _yamlImporter = new();
+        private string _creatureRoot;
+
+        private ClipPreviewService _clipPreview;
+        private ClipPreviewWindow _previewWindow;
+        private HkObject _previewableClipObj;
 
         public MainWindow()
         {
@@ -234,6 +245,7 @@ namespace SkyrimHavokEditor
                  b.OwnerName.Contains(_bindingFilter, StringComparison.OrdinalIgnoreCase) ||
                  b.VariableName.Contains(_bindingFilter, StringComparison.OrdinalIgnoreCase) ||
                  b.MemberPath.Contains(_bindingFilter, StringComparison.OrdinalIgnoreCase));
+            ApplyTheme(AppSettings.IsDarkMode);
             // Recent files + drag drop
             RefreshRecentFilesMenu();
             AllowDrop = true;
@@ -266,6 +278,9 @@ namespace SkyrimHavokEditor
                 OpenTransitionDialog(isAdd: true,
                     preselectedFromState: manager.ObjectMap[fromObjectId]);
             };
+            LoadBundledSkeletons();
+            InitializeSkeletonRegistry();
+            LoadBookmarks();
         }
 
 
@@ -359,6 +374,7 @@ namespace SkyrimHavokEditor
             BtnBackNavigation.IsEnabled = _navigationHistory.Count > 0;
         }
 
+
         private void LoadObjectIntoEditor(HkObject obj)
         {
             SelectedClassName.Text = $"Class: {obj.ClassName}";
@@ -367,8 +383,45 @@ namespace SkyrimHavokEditor
             ObjectNameLabel.Text = $"{obj.Id}  {name}  ·  {obj.ClassName}";
             BtnBackNavigation.Tag = obj.Id;
 
+            // Prime the bookmark toggle for THIS object (every load path runs through here now)
+            BtnBookmarkToggle.Tag = obj;
+            bool isBookmarked = Bookmarks.Any(b => b.Id == obj.Id);
+            BtnBookmarkToggle.Content = isBookmarked ? "★" : "🔖";
+            BtnBookmarkToggle.Foreground = isBookmarked
+                ? new SolidColorBrush(Colors.Goldenrod)
+                : (SolidColorBrush)Application.Current.Resources["TextSecondaryBrush"];
+            BtnBookmarkToggle.ToolTip = isBookmarked ? "Remove bookmark" : "Bookmark this object";
+
+            // Show preview button only for clip generators
+            if (obj.ClassName == "hkbClipGenerator")
+            {
+                _previewableClipObj = obj;
+                BtnPreviewClipObj.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                _previewableClipObj = null;
+                BtnPreviewClipObj.Visibility = Visibility.Collapsed;
+            }
+
             foreach (var param in obj.Params)
                 SubscribeParamUndo(param, obj.ClassName, name);
+        }
+
+        private void BtnPreviewClipObj_Click(object sender, RoutedEventArgs e)
+        {
+            if (_previewableClipObj == null) return;
+            // Find the matching ClipInfo so PreviewClip gets the right triggers/name.
+            var clip = ClipList.FirstOrDefault(c => c.Id == _previewableClipObj.Id);
+            if (clip != null) PreviewClip(clip);
+            else
+            {
+                // Object isn't in ClipList (rare) — build a minimal ClipInfo on the fly
+                var animName = _previewableClipObj.Params.FirstOrDefault(p => p.Name == "animationName")?.Value;
+                var nm = _previewableClipObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? _previewableClipObj.Id;
+                if (!string.IsNullOrEmpty(animName))
+                    PreviewClip(new ClipInfo { Id = _previewableClipObj.Id, Name = nm, AnimationPath = animName });
+            }
         }
 
         private void BtnBackNavigation_Click(object sender, RoutedEventArgs e)
@@ -480,45 +533,100 @@ namespace SkyrimHavokEditor
 
         private bool _isDarkMode = true;
 
-        private void ToggleTheme()
-        {
-            _isDarkMode = !_isDarkMode;
-            var dict = new ResourceDictionary
-            {
-                Source = new Uri(
-                    _isDarkMode ? "UI/Themes/DarkTheme.xaml" : "UI/Themes/LightTheme.xaml",
-                    UriKind.Relative)
-            };
-            Application.Current.Resources.MergedDictionaries[0] = dict;
-            Background = (SolidColorBrush)Application.Current.Resources["BgDarkBrush"];
-            BtnTheme.Content = _isDarkMode ? "☀ Light" : "🌙 Dark";
-            UpdateCanvasBackground();
-        }
-
         private void UpdateCanvasBackground()
         {
             var dotColor = ((SolidColorBrush)Application.Current.Resources["CanvasDotBrush"]).Color;
             GraphView.UpdateCanvasBackground(dotColor);
         }
 
-        private void BtnTheme_Click(object sender, RoutedEventArgs e)
-        {
-            ToggleTheme();
-            BtnTheme.Content = _isDarkMode ? "☀ Light" : "🌙 Dark";
-        }
-
         private async void BtnLoad_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new Microsoft.Win32.OpenFileDialog
+            // Offer choice: file or folder
+            var menu = new ContextMenu();
+
+            var openFile = new MenuItem { Header = "📄 Open .hkx / .xml file…" };
+            openFile.Click += async (s, _) =>
             {
-                Title = "Open Havok Behavior File",
-                Filter = "Havok files|*.hkx;*.xml|" +
-                         "Skyrim SE HKX (64-bit binary)|*.hkx|" +
-                         "Havok XML|*.xml|" +
-                         "All files|*.*"
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "Open Havok Behavior File",
+                    Filter = "Havok files|*.hkx;*.xml|All files|*.*"
+                };
+                if (dlg.ShowDialog() == true)
+                    await LoadFileAsync(dlg.FileName);
             };
-            if (dlg.ShowDialog() == true)
-                await LoadFileAsync(dlg.FileName);
+
+            var openFolder = new MenuItem { Header = "📂 Open YAML behavior folder…" };
+            openFolder.Click += async (s, _) =>
+            {
+                // Use a SaveFileDialog trick to select a folder
+                var dlg = new Microsoft.Win32.SaveFileDialog
+                {
+                    Title = "Navigate to the YAML behavior folder, then click Save",
+                    FileName = "navigate_to_folder_then_click_save",
+                    Filter = "Any|*.*",
+                    CheckFileExists = false,
+                    CheckPathExists = false
+                };
+                if (dlg.ShowDialog() != true) return;
+
+                var folder = Path.GetDirectoryName(dlg.FileName)!;
+                if (IsYamlBehaviorFolder(folder))
+                    await LoadFileAsync(folder);
+                else
+                    MessageBox.Show("That folder doesn't look like a YAML behavior folder.\n" +
+                                    "It should contain a behavior.yaml or subdirectories like clips/, generators/, etc.");
+            };
+
+            var openCreature = new MenuItem { Header = "🐺 Open creature folder…" };
+            openCreature.Click += async (s, _) =>
+            {
+                var dlg = new Microsoft.Win32.SaveFileDialog
+                {
+                    Title = "Navigate into the actor folder (e.g. ...\\actors\\dragon), then click Save",
+                    FileName = "navigate_to_actor_folder_then_click_save",
+                    Filter = "Any|*.*",
+                    CheckFileExists = false,
+                    CheckPathExists = false
+                };
+                if (dlg.ShowDialog() != true) return;
+                var folder = Path.GetDirectoryName(dlg.FileName)!;
+                await LoadCreatureFolderAsync(folder);
+            };
+            menu.Items.Add(openCreature);
+
+            menu.Items.Add(openFile);
+            menu.Items.Add(openFolder);
+            menu.PlacementTarget = BtnLoad;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+
+
+        private async Task LoadCreatureFolderAsync(string actorRoot)
+        {
+            if (!Directory.Exists(actorRoot))
+            {
+                MessageBox.Show("Folder not found:\n" + actorRoot);
+                return;
+            }
+
+            // Project files are named "<race>project.hkx" — try the root, then recurse.
+            var project = Directory.GetFiles(actorRoot, "*project.hkx", SearchOption.TopDirectoryOnly)
+                .FirstOrDefault()
+                ?? Directory.GetFiles(actorRoot, "*project.hkx", SearchOption.AllDirectories)
+                .FirstOrDefault();
+
+            if (project == null)
+            {
+                MessageBox.Show(
+                    "No *project.hkx found under that folder.\n" +
+                    "Pick the actor root (the folder that directly contains <race>project.hkx).");
+                return;
+            }
+
+            _creatureRoot = actorRoot;
+            await LoadFileAsync(project);   // → HkFileType.Project → fills Project + Character tabs
         }
 
         // ── New central load entry point ───────────────────────────────────────────────
@@ -526,6 +634,13 @@ namespace SkyrimHavokEditor
 
         private async Task LoadFileAsync(string path)
         {
+            // ── Handle YAML behavior folders ─────────────────────────────────────────
+            if (IsYamlBehaviorFolder(path))
+            {
+                await LoadYamlFolderAsync(path);
+                return;
+            }
+
             if (!File.Exists(path))
             {
                 MessageBox.Show($"File not found:\n{path}");
@@ -544,17 +659,14 @@ namespace SkyrimHavokEditor
                 {
                     case HkFileType.Project:
                         LoadProjectIntoUI();
-                        // Also load behavior if one was resolved
                         if (Workspace.ActiveBehavior != null)
                             LoadBehaviorIntoApp(Workspace.BehaviorFile!);
                         StatusText.Text = "✓ Project loaded";
                         break;
-
                     case HkFileType.Character:
                         LoadCharacterIntoUI();
                         StatusText.Text = "✓ Character loaded";
                         break;
-
                     case HkFileType.Behavior:
                     default:
                         LoadBehaviorIntoApp(Workspace.BehaviorFile!);
@@ -574,7 +686,71 @@ namespace SkyrimHavokEditor
                 BtnLoad.IsEnabled = true;
             }
         }
+        private async Task LoadYamlFolderAsync(string folderPath)
+        {
+            StatusText.Text = "⏳ Loading YAML behavior…";
+            BtnLoad.IsEnabled = false;
 
+            try
+            {
+                string behaviorName = await Task.Run(() =>
+                {
+                    manager = new HavokManager();
+                    return _yamlImporter.Import(folderPath, manager);
+                });
+
+                Stats.FileName = behaviorName;
+                Stats.ObjectCount = manager.ObjectMap.Count;
+
+                _originalSnapshot = TakeSnapshot();
+                _snapshotEvents = new List<string>();
+                _snapshotVars = new List<string>();
+
+                _validator = new HavokValidator(manager);
+
+                _subscribedParams.Clear();
+                _navigationHistory.Clear();
+                BtnBackNavigation.IsEnabled = false;
+                BtnBackNavigation.Tag = null;
+                _undoRedo.Clear();
+                UpdateUndoRedoButtons();
+
+                RefreshLookups();
+
+                // ← This is the missing call
+                GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                WireGraphEvents();
+
+                _snapshotEvents = EventList.Select(ev => ev.Name).ToList();
+                _snapshotVars = VariableList.Select(v => v.Name).ToList();
+
+                Stats.VariableCount = VariableList.Count;
+                Stats.EventCount = EventList.Count;
+                Stats.ClipCount = ClipList.Count;
+                Stats.TransitionCount = TransitionList.Count;
+
+                var builder = new BehaviorTreeBuilder(manager);
+                ObjectTree.ItemsSource = new List<BehaviorNodeData> { builder.BuildTree("") };
+
+                _sourceWasHkx = false;
+                _originalHkxPath = null;
+
+                AddRecentFile(folderPath);
+
+                StatusText.Text = $"✓ YAML loaded: {behaviorName}  " +
+                                  $"({manager.ObjectMap.Count} objects, " +
+                                  $"{VariableList.Count} vars, {EventList.Count} events)";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading YAML folder:\n{ex.Message}");
+                StatusText.Text = "YAML load failed";
+            }
+            finally
+            {
+                BtnLoad.IsEnabled = true;
+            }
+        }
         private void BtnRecentFiles_Click(object sender, RoutedEventArgs e)
         {
             RefreshRecentFilesMenu();
@@ -843,10 +1019,10 @@ namespace SkyrimHavokEditor
                 ClipList.Add(clipEntry);
             }
 
-            // ------------------------
-            // TRANSITIONS
-            // ------------------------
-            TransitionList.Clear();
+        // ------------------------
+        // TRANSITIONS
+        // ------------------------
+        TransitionList.Clear();
 
             var stateIdToName = new Dictionary<string, string>();
             foreach (var stateObj in manager.ObjectMap.Values
@@ -956,6 +1132,137 @@ namespace SkyrimHavokEditor
                 }
             }
             RefreshSmList();
+        }
+
+
+
+        private void PreviewClip_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;   // don't bubble to the row → no graph jump
+            if ((sender as System.Windows.Controls.Button)?.Tag is ClipInfo clip)
+                PreviewClip(clip);
+        }
+
+        private async void PreviewClip(ClipInfo clip)
+        {
+            var animPath = clip?.AnimationPath;
+            var skelPath = Workspace?.Character?.SkeletonPath;
+            if (string.IsNullOrEmpty(animPath) || string.IsNullOrEmpty(skelPath))
+            { StatusText.Text = "Need a loaded character (skeleton path) to preview."; return; }
+
+            _clipPreview ??= new ClipPreviewService(_hkxConv);
+
+            var charFile = Workspace?.Character?.File?.OriginalPath ?? "";
+            var charDir = System.IO.Path.GetDirectoryName(charFile) ?? "";
+            var actorRoot = System.IO.Path.GetDirectoryName(charDir) ?? charDir;
+            var above = System.IO.Path.GetDirectoryName(actorRoot) ?? actorRoot;
+
+            if (_previewWindow == null || !_previewWindow.IsLoaded)
+            { _previewWindow = new ClipPreviewWindow { Owner = this }; _previewWindow.Show(); }
+            _previewWindow.Title = $"Clip Preview — {clip.Name}";
+            _previewWindow.Activate();
+
+            var res = await _clipPreview.LoadClipAsync(animPath, skelPath, charDir, actorRoot, above, _creatureRoot ?? "");
+            if (!res.Success) { _previewWindow.View.ShowMessage("Couldn't load: " + res.Error); return; }
+
+            // Gather this clip's behavior-side triggers (same resolution as RefreshTriggers)
+            var triggers = GatherClipTriggers(clip, res.Clip.Duration);
+
+            // Let the preview know which bones the clip actually drives, and jump-to-graph
+            _previewWindow.View.OnShowInGraph = () => { _previewWindow.Activate(); RevealClipInGraph(clip); };
+            _previewWindow.View.Show(res.Clip, res.Skeleton, triggers);
+        }
+
+        private List<UI.PreviewTrigger> GatherClipTriggers(ClipInfo clip, float duration)
+        {
+            var list = new List<UI.PreviewTrigger>();
+            if (clip == null || !manager.ObjectMap.TryGetValue(clip.Id, out var clipObj)) return list;
+
+            var triggersRef = clipObj.Params.FirstOrDefault(p => p.Name == "triggers")?.Value;
+            if (string.IsNullOrEmpty(triggersRef) || triggersRef == "null") return list;
+            if (!manager.TryResolve(triggersRef, out var triggerArrayObj)) return list;
+
+            var triggersParam = triggerArrayObj.Params.FirstOrDefault(p => p.Name == "triggers");
+            if (triggersParam?.Children == null) return list;
+
+            var eventNamesLookup = EventList.ToDictionary(ev => ev.Id, ev => ev.Name);
+
+            foreach (var tr in triggersParam.Children)
+            {
+                string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+                var relToEnd = Get("relativeToEndOfClip").ToLower() == "true";
+
+                if (!float.TryParse(Get("localTime"),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var t))
+                    continue;
+
+                // relativeToEndOfClip means the time is measured backward from the end
+                var time = relToEnd ? Math.Max(0, duration + t) : t;
+
+                var eventParam = tr.Params.FirstOrDefault(p => p.Name == "event");
+                var eventId = eventParam?.Children?.Count > 0
+                    ? eventParam.Children[0].Params.FirstOrDefault(p => p.Name == "id")?.Value ?? ""
+                    : "";
+                eventNamesLookup.TryGetValue(eventId, out var evName);
+
+                list.Add(new UI.PreviewTrigger
+                {
+                    Time = time,
+                    EventName = evName ?? $"Event {eventId}",
+                    RelativeToEnd = relToEnd
+                });
+            }
+            return list;
+        }
+
+        private void RevealClipInGraph(ClipInfo clip)
+        {
+            if (clip == null || !manager.ObjectMap.TryGetValue(clip.Id, out var obj)) return;
+
+            MainTabControl.SelectedIndex = 0;          // Graph tab
+            LoadObjectIntoEditor(obj);                  // Object Data panel (right side)
+
+            // Reveal on the canvas — selects SM, drills into owning state, highlights clip.
+            GraphView.RevealClipNode(clip.Id);
+
+            // Also reflect in the tree (left panel), deferred so containers exist.
+            var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+            if (root != null)
+                Dispatcher.InvokeAsync(() =>
+                {
+                    var target = FindNodeById(root, clip.Id);
+                    if (target != null) SelectTreeNode(ObjectTree, target);
+                }, System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private static readonly string SettingsFilePath = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+    "SkyrimHavokEditor", "settings.txt");
+        private void InitializeSkeletonRegistry()
+        {
+            var meshes = AppSettings.MeshesPath;
+            if (string.IsNullOrEmpty(meshes) || !Directory.Exists(meshes)) return;
+
+            Task.Run(() =>
+            {
+                try { SkeletonRegistry.Instance.AutoLoad(meshes); }
+                catch (Exception ex)
+                { System.Diagnostics.Debug.WriteLine($"Skeleton load: {ex.Message}"); }
+            });
+        }
+
+        private void LoadBundledSkeletons()
+        {
+            var skeletonDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                                           "Data", "Skeletons");
+            if (!Directory.Exists(skeletonDir)) return;
+
+            foreach (var json in Directory.GetFiles(skeletonDir, "*.json"))
+            {
+                try { SkeletonRegistry.Instance.LoadFromJson(json); }
+                catch { /* skip bad files */ }
+            }
         }
 
         // ── Patch system ──────────────────────────────────────────────────────────
@@ -1104,6 +1411,18 @@ namespace SkyrimHavokEditor
             }
         }
 
+        /// <summary>
+        /// Returns true if the given path is a Pandora/YAML behavior folder.
+        /// A YAML folder has a behavior.yaml file OR contains YAML subdirectories.
+        /// </summary>
+        private static bool IsYamlBehaviorFolder(string path)
+        {
+            if (!Directory.Exists(path)) return false;
+            if (File.Exists(Path.Combine(path, "behavior.yaml"))) return true;
+
+            var yamlSubdirs = new[] { "clips", "generators", "states", "modifiers", "transitions" };
+            return yamlSubdirs.Any(sub => Directory.Exists(Path.Combine(path, sub)));
+        }
 
         private void BtnApplyPatch_Click(object sender, RoutedEventArgs e)
         {
@@ -1724,8 +2043,7 @@ namespace SkyrimHavokEditor
 
             if (manager.ObjectMap.TryGetValue(clip.Id, out var obj))
             {
-                SelectedClassName.Text = $"Class: {obj.ClassName}";
-                ParamsEditor.ItemsSource = obj.Params;
+                LoadObjectIntoEditor(obj);     // ← replaces SelectedClassName + ParamsEditor lines; shows ▶ Preview
 
                 if (MainTabControl.SelectedIndex != 0)
                     MainTabControl.SelectedIndex = 0;
@@ -2336,6 +2654,36 @@ namespace SkyrimHavokEditor
             set { _eventFilter = value; EventsView?.Refresh(); }
         }
 
+        private void BtnSettings_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new SkyrimHavokEditor.UI.Dialogs.SettingsDialog(this);
+            if (dlg.ShowDialog() != true) return;
+
+            if (dlg.PathsChanged)
+            {
+                InitializeSkeletonRegistry();   // reload skeletons from the new path
+                StatusText.Text = $"✓ Settings saved — game path: {AppSettings.GamePath}";
+            }
+            else StatusText.Text = "✓ Settings saved";
+
+            if (dlg.ThemeChanged)
+                ApplyTheme(AppSettings.IsDarkMode);   // see step 4
+        }
+
+        private void ApplyTheme(bool dark)
+        {
+            _isDarkMode = dark;
+            var dict = new ResourceDictionary
+            {
+                Source = new Uri(
+                    _isDarkMode ? "UI/Themes/DarkTheme.xaml" : "UI/Themes/LightTheme.xaml",
+                    UriKind.Relative)
+            };
+            Application.Current.Resources.MergedDictionaries[0] = dict;
+            Background = (SolidColorBrush)Application.Current.Resources["BgDarkBrush"];
+            UpdateCanvasBackground();
+        }
+
         private void BtnEditStates_Click(object sender, RoutedEventArgs e)
         {
             if ((sender as Button)?.Tag is not HkParam statesParam) return;
@@ -2521,14 +2869,17 @@ namespace SkyrimHavokEditor
         private HavokValidator _validator;
 
 
-        private void BtnValidate_Click(object sender, RoutedEventArgs e)
+        private async void BtnValidate_Click(object sender, RoutedEventArgs e)
         {
-            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
-            {
-                MessageBox.Show("No file loaded.");
-                return;
-            }
-
+            //if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
+            //{
+            //    MessageBox.Show("No file loaded.");
+            //    return;
+            //}
+            await SamplerTest.Run(
+    @"C:\hkxworking_64\skeleton.xml",
+    @"C:\hkxworking_64\mtforwardground.xml");
+            return;
             var issues = _validator.RunValidation();
             var dialog = new ValidationDialog(issues);
             dialog.Owner = this;
@@ -2546,6 +2897,7 @@ namespace SkyrimHavokEditor
                     if (target != null) SelectTreeNode(ObjectTree, target);
                 }
             };
+
             dialog.Show();
         }
 
@@ -2788,10 +3140,14 @@ namespace SkyrimHavokEditor
                     var effect = Get("transition");
 
                     var blendDuration = "";
+                    HkObject resolvedEffect = null;
                     if (!string.IsNullOrEmpty(effect) && effect != "null"
                         && manager.TryResolve(effect, out var effectObj))
+                    { 
                         blendDuration = effectObj.Params
                             .FirstOrDefault(p => p.Name == "duration")?.Value ?? "";
+                    resolvedEffect = effectObj;
+                    }
 
                     stateIdToName.TryGetValue(toStateId, out var toName);
                     eventLookup.TryGetValue(eventId, out var evName);
@@ -2809,6 +3165,7 @@ namespace SkyrimHavokEditor
                         EventId = eventId,
                         EventName = evName ?? $"Event {eventId}",
                         BlendDuration = blendDuration,
+                        TransitionEffectObj = resolvedEffect,
                         Flags = flags
                     });
                 }
@@ -3408,4 +3765,5 @@ namespace SkyrimHavokEditor
             return null;
         }
     }
-}    
+}
+

@@ -128,7 +128,7 @@
                     <Button Content="📦 Patch" Click="BtnGeneratePatch_Click" Margin="0,0,2,0"/>
                     <Button Content="🔀 Patch from Files" Click="BtnPatchFromFiles_Click" Margin="0,0,2,0"/>
                     <Button Content="🔧 Apply Patch" Click="BtnApplyPatch_Click" Margin="0,0,8,0"/>
-                    <Button x:Name="BtnTheme" Content="☀ Light" Click="BtnTheme_Click"/>
+                    <Button Content="⚙ Settings" Click="BtnSettings_Click" Margin="5,0,0,0"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -251,28 +251,67 @@
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                                 <Setter Property="IsExpanded" Value="True"/>
                                 <Setter Property="Visibility"
-                                        Value="{Binding IsVisible, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+            Value="{Binding IsVisible, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="TreeViewItem">
                                             <StackPanel>
                                                 <Border x:Name="ItemBorder" Background="Transparent" Padding="2,1">
-                                                    <ContentPresenter x:Name="PART_Header" ContentSource="Header"
-                                                                      HorizontalAlignment="Left"/>
+                                                    <DockPanel>
+                                                        <ToggleButton x:Name="Expander"
+                                          DockPanel.Dock="Left"
+                                          IsChecked="{Binding IsExpanded,
+                                              RelativeSource={RelativeSource TemplatedParent},
+                                              Mode=TwoWay}"
+                                          Width="16" Height="16"
+                                          Focusable="False"
+                                          Background="Transparent"
+                                          BorderThickness="0">
+                                                            <ToggleButton.Style>
+                                                                <Style TargetType="ToggleButton">
+                                                                    <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                                <Border Background="Transparent">
+                                                                                    <TextBlock x:Name="Arrow"
+                                                                   Text="▶"
+                                                                   FontSize="8"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsChecked" Value="True">
+                                                                                        <Setter TargetName="Arrow" Property="Text" Value="▼"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                </Style>
+                                                            </ToggleButton.Style>
+                                                        </ToggleButton>
+                                                        <ContentPresenter x:Name="PART_Header"
+                                              ContentSource="Header"
+                                              HorizontalAlignment="Left"/>
+                                                    </DockPanel>
                                                 </Border>
-                                                <ItemsPresenter x:Name="ItemsHost" Margin="14,0,0,0"/>
+                                                <ItemsPresenter x:Name="ItemsHost" Margin="16,0,0,0"/>
                                             </StackPanel>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsExpanded" Value="False">
                                                     <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed"/>
                                                 </Trigger>
+                                                <Trigger Property="HasItems" Value="False">
+                                                    <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                                                </Trigger>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="ItemBorder" Property="Background"
-                                                            Value="{DynamicResource BgHoverBrush}"/>
+                                Value="{DynamicResource BgHoverBrush}"/>
                                                 </Trigger>
                                                 <Trigger Property="IsSelected" Value="True">
                                                     <Setter TargetName="ItemBorder" Property="Background"
-                                                            Value="{DynamicResource BgSelectedBrush}"/>
+                                Value="{DynamicResource BgSelectedBrush}"/>
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
@@ -541,14 +580,18 @@
                                                 <TextBox Text="{Binding AnimationPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                          Foreground="{DynamicResource AccentBlueBrush}"
                                                          FontSize="11" BorderThickness="0,0,0,1" Padding="2,1"/>
-                                                <Button Grid.Column="1" Content="📂" FontSize="11"
-                                                        Padding="4,1" Margin="3,0,0,0"
-                                                        Tag="{Binding}" Click="BrowseAnimation_Click"/>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                    <Button Content="▶" FontSize="11" Padding="4,1" Margin="3,0,0,0"
+        Tag="{Binding}" Click="PreviewClip_Click"
+        ToolTip="Preview this clip"/>
+                                                    <Button Content="📂" FontSize="11" Padding="4,1" Margin="3,0,0,0"
+                                                            Tag="{Binding}" Click="BrowseAnimation_Click"/>
+                                                </StackPanel>
                                             </Grid>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
-                            </ListBox>
+                                </ListBox>
                         </DockPanel>
                     </TabItem>
 
@@ -873,18 +916,21 @@
                                 <Button x:Name="BtnDeleteSmTransition" Content="🗑 Delete" Width="80" Height="28"
                                         IsEnabled="False" Click="BtnDeleteSmTransition_Click"/>
                             </StackPanel>
+                            <!-- Remove IsReadOnly="True" from the DataGrid, add it per-column instead -->
                             <DataGrid Grid.Row="2" x:Name="SmTransitionsGrid"
-                                      ItemsSource="{Binding SmTransitionRows}"
-                                      SelectedItem="{Binding SelectedSmRow, Mode=TwoWay}"
-                                      AutoGenerateColumns="False" CanUserAddRows="False"
-                                      CanUserDeleteRows="False" IsReadOnly="True"
-                                      SelectionChanged="SmTransitionsGrid_SelectionChanged"
-                                      Margin="4,0,4,4">
+          ItemsSource="{Binding SmTransitionRows}"
+          SelectedItem="{Binding SelectedSmRow, Mode=TwoWay}"
+          AutoGenerateColumns="False" CanUserAddRows="False"
+          CanUserDeleteRows="False"
+          SelectionChanged="SmTransitionsGrid_SelectionChanged"
+          Margin="4,0,4,4">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="From"  Binding="{Binding FromState}"     Width="*"/>
-                                    <DataGridTextColumn Header="To"    Binding="{Binding ToState}"       Width="*"/>
-                                    <DataGridTextColumn Header="Event" Binding="{Binding EventName}"     Width="*"/>
-                                    <DataGridTextColumn Header="Blend" Binding="{Binding BlendDuration}" Width="55"/>
+                                    <DataGridTextColumn Header="From"  Binding="{Binding FromState}"  Width="*"  IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="To"    Binding="{Binding ToState}"    Width="*"  IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Event" Binding="{Binding EventName}"  Width="*"  IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Blend" 
+                            Binding="{Binding BlendDuration, UpdateSourceTrigger=LostFocus}" 
+                            Width="55" IsReadOnly="False"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
@@ -1013,8 +1059,8 @@
                                         Click="BtnAddCharacterRef_Click"/>
                             </DockPanel>
                             <ListBox x:Name="ProjectCharactersList"
-                                     ItemsSource="{Binding Workspace.Project.Characters}"
-                                     SelectionChanged="ProjectCharactersList_SelectionChanged">
+                                     ItemsSource="{Binding Workspace.Project.Characters}">
+
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="0,4">
@@ -1058,145 +1104,169 @@
                     </TabItem>
 
                     <!-- Character -->
+                    <!-- Character -->
                     <TabItem>
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🧑 Character" VerticalAlignment="Center"/>
                                 <Button Content="ℹ" Style="{StaticResource InfoBtnStyle}"
-                                        Margin="5,0,0,0" Click="BtnCharacterHelp_Click"
-                                        ToolTip="Open documentation for this tab"/>
+                    Margin="5,0,0,0" Click="BtnCharacterHelp_Click"
+                    ToolTip="Open documentation for this tab"/>
                             </StackPanel>
                         </TabItem.Header>
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <StackPanel Margin="8,6,8,12">
-                                <Border Background="{DynamicResource BgPanelBrush}"
-                                        BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="0,0,0,1" Padding="8,6" Margin="0,0,0,10">
-                                    <StackPanel>
-                                        <TextBlock Text="Character File" FontWeight="Bold" FontSize="12"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                        <TextBlock x:Name="CharacterFilePath" Text="No character loaded" FontSize="10"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
-                                    </StackPanel>
-                                </Border>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                    <Button Content="📂 Open Character" Click="BtnOpenCharacter_Click" Padding="8,4" Margin="0,0,6,0"/>
-                                    <Button Content="💾 Save Character" Click="BtnSaveCharacter_Click" Padding="8,4"/>
-                                </StackPanel>
-                                <TextBlock Text="IDENTITY" FontSize="10" FontWeight="Bold"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                                <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="130"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Character Name" FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="1" x:Name="TxtCharacterName" FontSize="11" Padding="3,2"
-                                                 TextChanged="CharacterField_Changed"/>
-                                    </Grid>
-                                </Border>
-                                <TextBlock Text="PHYSICS CAPSULE" FontSize="10" FontWeight="Bold"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                                <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="130"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="130"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Capsule Height" FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="1" x:Name="TxtCapsuleHeight" FontSize="11" Padding="3,2"
-                                                 Margin="0,0,8,0" TextChanged="CharacterField_Changed"/>
-                                        <TextBlock Grid.Column="2" Text="Capsule Radius" FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                        <TextBox Grid.Column="3" x:Name="TxtCapsuleRadius" FontSize="11" Padding="3,2"
-                                                 TextChanged="CharacterField_Changed"/>
-                                    </Grid>
-                                </Border>
-                                <TextBlock Text="FILE PATHS" FontSize="10" FontWeight="Bold"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                                <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="130"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="8"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="8"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Text="Skeleton" FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="1" x:Name="TxtSkeletonPath" FontSize="11" Padding="3,2"
-                                                 TextChanged="CharacterField_Changed"/>
-                                        <Button Grid.Column="2" Content="📂" Padding="5,2" Margin="4,0,0,0"
-                                                Click="BtnBrowseSkeleton_Click"/>
-                                        <TextBlock Grid.Row="2" Text="Ragdoll" FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="TxtRagdollPath" FontSize="11" Padding="3,2"
-                                                 TextChanged="CharacterField_Changed"/>
-                                        <Button Grid.Row="2" Grid.Column="2" Content="📂" Padding="5,2"
-                                                Margin="4,0,0,0" Click="BtnBrowseRagdoll_Click"/>
-                                        <TextBlock Grid.Row="4" Text="Behavior" FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtBehaviorPath" FontSize="11" Padding="3,2"
-                                                 TextChanged="CharacterField_Changed"/>
-                                        <StackPanel Grid.Row="4" Grid.Column="2" Orientation="Horizontal">
-                                            <Button Content="📂" Padding="5,2" Margin="4,0,0,0"
-                                                    Click="BtnBrowseBehavior_Click"/>
-                                            <Button Content="Open ↗" Padding="5,2" Margin="4,0,0,0" FontSize="10"
-                                                    Click="BtnOpenLinkedBehavior_Click" ToolTip="Open this behavior file"/>
+                        <Grid Margin="0">
+               
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <!-- all the settings, scrollable -->
+                                <RowDefinition Height="Auto"/>
+                                <!-- ANIMATION NAMES header -->
+                                <RowDefinition Height="*"/>
+                                <!-- the list — fills to bottom -->
+                            </Grid.RowDefinitions>
+
+                            <!-- Row 0: settings sections in their own scroller, capped so the list gets room -->
+                            <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" MaxHeight="340">
+                                <StackPanel Margin="8,6,8,6">
+                                    <Border Background="{DynamicResource BgPanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,0,0,1" Padding="8,6" Margin="0,0,0,10">
+                                        <StackPanel>
+                                            <TextBlock Text="Character File" FontWeight="Bold" FontSize="12"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock x:Name="CharacterFilePath" Text="No character loaded" FontSize="10"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                    </Grid>
-                                </Border>
-                                <DockPanel Margin="0,0,0,4" LastChildFill="False">
-                                    <TextBlock Text="ANIMATION NAMES" FontSize="10" FontWeight="Bold"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                    <Button DockPanel.Dock="Right" Content="+ Add" Padding="6,2"
-                                            Click="BtnAddAnimationName_Click"/>
-                                </DockPanel>
-                                <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="4" Padding="4" Margin="0,0,0,12">
-                                    <ListBox x:Name="AnimationNamesList"
-                                             ItemsSource="{Binding Workspace.Character.AnimationNames}" MaxHeight="200">
-                                        <ListBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,2">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                                             FontSize="11" Padding="3,2"
-                                                             Foreground="{DynamicResource AccentBlueBrush}"
-                                                             BorderThickness="0,0,0,1"/>
-                                                    <Button Grid.Column="1" Content="📂" Padding="4,2" Margin="4,0,0,0"
-                                                            FontSize="10" Tag="{Binding}" Click="BtnBrowseAnimName_Click"/>
-                                                    <Button Grid.Column="2" Content="✕" Padding="4,2" Margin="2,0,0,0"
-                                                            FontSize="10" Foreground="#FF6B6B"
-                                                            Background="Transparent" BorderThickness="0"
-                                                            Tag="{Binding}" Click="BtnRemoveAnimName_Click"/>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                    </ListBox>
-                                </Border>
-                            </StackPanel>
-                        </ScrollViewer>
+                                    </Border>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <Button Content="📂 Open Character" Click="BtnOpenCharacter_Click" Padding="8,4" Margin="0,0,6,0"/>
+                                        <Button Content="💾 Save Character" Click="BtnSaveCharacter_Click" Padding="8,4"/>
+                                    </StackPanel>
+                                    <TextBlock Text="IDENTITY" FontSize="10" FontWeight="Bold"
+                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Character Name" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            <TextBox Grid.Column="1" x:Name="TxtCharacterName" FontSize="11" Padding="3,2"
+                             TextChanged="CharacterField_Changed"/>
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Text="PHYSICS CAPSULE" FontSize="10" FontWeight="Bold"
+                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Capsule Height" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            <TextBox Grid.Column="1" x:Name="TxtCapsuleHeight" FontSize="11" Padding="3,2"
+                             Margin="0,0,8,0" TextChanged="CharacterField_Changed"/>
+                                            <TextBlock Grid.Column="2" Text="Capsule Radius" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            <TextBox Grid.Column="3" x:Name="TxtCapsuleRadius" FontSize="11" Padding="3,2"
+                             TextChanged="CharacterField_Changed"/>
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Text="FILE PATHS" FontSize="10" FontWeight="Bold"
+                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <Border Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="8"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="8"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Skeleton" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            <TextBox Grid.Column="1" x:Name="TxtSkeletonPath" FontSize="11" Padding="3,2"
+                             TextChanged="CharacterField_Changed"/>
+                                            <Button Grid.Column="2" Content="📂" Padding="5,2" Margin="4,0,0,0"
+                            Click="BtnBrowseSkeleton_Click"/>
+                                            <TextBlock Grid.Row="2" Text="Ragdoll" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="TxtRagdollPath" FontSize="11" Padding="3,2"
+                             TextChanged="CharacterField_Changed"/>
+                                            <Button Grid.Row="2" Grid.Column="2" Content="📂" Padding="5,2"
+                            Margin="4,0,0,0" Click="BtnBrowseRagdoll_Click"/>
+                                            <TextBlock Grid.Row="4" Text="Behavior" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtBehaviorPath" FontSize="11" Padding="3,2"
+                             TextChanged="CharacterField_Changed"/>
+                                            <StackPanel Grid.Row="4" Grid.Column="2" Orientation="Horizontal">
+                                                <Button Content="📂" Padding="5,2" Margin="4,0,0,0"
+                                Click="BtnBrowseBehavior_Click"/>
+                                                <Button Content="Open ↗" Padding="5,2" Margin="4,0,0,0" FontSize="10"
+                                Click="BtnOpenLinkedBehavior_Click" ToolTip="Open this behavior file"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <!-- Row 1: animation list header -->
+                            <DockPanel Grid.Row="1" Margin="8,0,8,4" LastChildFill="False">
+                                <TextBlock Text="ANIMATION NAMES" FontSize="10" FontWeight="Bold"
+                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                <Button DockPanel.Dock="Right" Content="+ Add" Padding="6,2"
+                Click="BtnAddAnimationName_Click"/>
+                            </DockPanel>
+
+                            <!-- Row 2: the list — fills to the bottom -->
+                            <Border Grid.Row="2" Background="{DynamicResource BgMidBrush}" BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1" CornerRadius="4" Padding="4" Margin="8,0,8,12">
+                                <ListBox x:Name="AnimationNamesList"
+                 ItemsSource="{Binding Workspace.Character.AnimationNames}"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                 FontSize="11" Padding="3,2"
+                                 Foreground="{DynamicResource AccentBlueBrush}"
+                                 BorderThickness="0,0,0,1"/>
+                                                <Button Grid.Column="1" Content="▶" Padding="4,2" Margin="4,0,0,0"
+                                FontSize="10" Tag="{Binding}" Click="BtnPreviewAnimName_Click"
+                                ToolTip="Preview this animation"/>
+                                                <Button Grid.Column="2" Content="📂" Padding="4,2" Margin="4,0,0,0"
+                                FontSize="10" Tag="{Binding}" Click="BtnBrowseAnimName_Click"
+                                ToolTip="Change animation file"/>
+                                                <Button Grid.Column="3" Content="✕" Padding="4,2" Margin="2,0,0,0"
+                                FontSize="10" Foreground="#FF6B6B"
+                                Background="Transparent" BorderThickness="0"
+                                Tag="{Binding}" Click="BtnRemoveAnimName_Click"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Border>
+                        </Grid>
                     </TabItem>
 
                     <!-- Debugger -->
@@ -1294,9 +1364,15 @@
                                 <TextBlock Grid.Column="1" x:Name="SelectedClassName" Text="Object Data"
                                            Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center" Margin="6,0" TextTrimming="CharacterEllipsis"/>
-                                <Button Grid.Column="2" x:Name="BtnBookmarkToggle" Content="🔖"
-                                        Padding="4,2" FontSize="13" ToolTip="Bookmark this object"
-                                        Click="BtnBookmarkToggle_Click" Background="Transparent" BorderThickness="0"/>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                    <Button x:Name="BtnPreviewClipObj" Content="▶ Preview" Visibility="Collapsed"
+            Padding="6,2" FontSize="11" Margin="0,0,4,0"
+            ToolTip="Preview this clip's animation"
+            Click="BtnPreviewClipObj_Click"/>
+                                    <Button x:Name="BtnBookmarkToggle" Content="🔖"
+            Padding="4,2" FontSize="13" ToolTip="Bookmark this object"
+            Click="BtnBookmarkToggle_Click" Background="Transparent" BorderThickness="0"/>
+                                </StackPanel>
                             </Grid>
                         </Border>
                         <TextBlock DockPanel.Dock="Top" x:Name="ObjectNameLabel" Padding="7,4"
