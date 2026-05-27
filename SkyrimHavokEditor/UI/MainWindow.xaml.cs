@@ -80,7 +80,7 @@ namespace SkyrimHavokEditor
         public ObservableCollection<VariableUsage> UsageList { get; set; } = new();
         public ICollectionView UsageView { get; private set; }
 
-        private IdNamePair _selectedVariable;
+        private IdNamePair? _selectedVariable;
         public IdNamePair SelectedVariable
         {
             get => _selectedVariable;
@@ -93,7 +93,7 @@ namespace SkyrimHavokEditor
 
         public ObservableCollection<EventUsageEntry> EventUsageList { get; set; } = new();
 
-        private IdNamePair _selectedEvent;
+        private IdNamePair? _selectedEvent;
         public IdNamePair SelectedEvent
         {
             get => _selectedEvent;
@@ -106,7 +106,7 @@ namespace SkyrimHavokEditor
 
         public ObservableCollection<ClipTrigger> TriggerList { get; set; } = new();
 
-        private ClipInfo _selectedClip;
+        private ClipInfo? _selectedClip;
         public ClipInfo SelectedClip
         {
             get => _selectedClip;
@@ -205,15 +205,15 @@ namespace SkyrimHavokEditor
 
         private readonly HkxConversionService _hkxConv = new();
         private bool _sourceWasHkx = false;
-        private string _originalHkxPath = null;
+        private string? _originalHkxPath = null;
 
         private bool _debuggerRunning = false;
         private readonly YamlBehaviorImporter _yamlImporter = new();
-        private string _creatureRoot;
+        private string? _creatureRoot;
 
-        private ClipPreviewService _clipPreview;
-        private ClipPreviewWindow _previewWindow;
-        private HkObject _previewableClipObj;
+        private ClipPreviewService _clipPreview = null!;
+        private ClipPreviewWindow? _previewWindow;
+        private HkObject? _previewableClipObj;
 
         public MainWindow()
         {
@@ -1264,7 +1264,7 @@ namespace SkyrimHavokEditor
         }
 
         // ── Patch system ──────────────────────────────────────────────────────────
-        private Dictionary<string, ObjectSnapshot> _originalSnapshot;
+        private Dictionary<string, ObjectSnapshot>? _originalSnapshot;
         private List<string> _snapshotEvents = new();
         private List<string> _snapshotVars = new();
 
@@ -2368,7 +2368,7 @@ namespace SkyrimHavokEditor
 
         public ObservableCollection<TransitionDetail> TransitionDetailList { get; set; } = new();
 
-        private TransitionInfo _selectedTransition;
+        private TransitionInfo? _selectedTransition;
         public TransitionInfo SelectedTransition
         {
             get => _selectedTransition;
@@ -2551,7 +2551,7 @@ namespace SkyrimHavokEditor
             return false;
         }
 
-        private DebuggerWindow _debuggerWindow;
+        private DebuggerWindow? _debuggerWindow;
 
         private void WireDebugPanel()
         {
@@ -2866,7 +2866,7 @@ namespace SkyrimHavokEditor
             return rawValue; // Fallback
         }
 
-        private HavokValidator _validator;
+        private HavokValidator _validator = null!;
 
 
         private void BtnValidate_Click(object sender, RoutedEventArgs e)
@@ -3049,14 +3049,14 @@ namespace SkyrimHavokEditor
         // States valid in the currently selected SM — used for ToState dropdown
         public ObservableCollection<IdNamePair> SmStateOptions { get; set; } = new();
 
-        private HkObject _selectedSM;
+        private HkObject? _selectedSM;
         public HkObject SelectedSM
         {
             get => _selectedSM;
             set { _selectedSM = value; if (value != null) RefreshSmInspector(value); }
         }
 
-        private SmTransitionRow _selectedSmRow;
+        private SmTransitionRow? _selectedSmRow;
         public SmTransitionRow SelectedSmRow
         {
             get => _selectedSmRow;
@@ -3086,10 +3086,11 @@ namespace SkyrimHavokEditor
         }
 
         // ── Populate the SM Inspector for a chosen state machine ─────────────────
-        private void RefreshSmInspector(HkObject sm)
+        private void RefreshSmInspector(HkObject? sm)
         {
             SmTransitionRows.Clear();
             SmStateOptions.Clear();
+            if (sm == null) return;
 
             var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
             var eventLookup = EventList.ToDictionary(e => e.Id, e => e.Name);

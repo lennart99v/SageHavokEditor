@@ -20,7 +20,7 @@ namespace SkyrimHavokEditor
     public partial class MainWindow
     {
         // ── Workspace ─────────────────────────────────────────────────────────
-        public HavokWorkspace Workspace { get; private set; }
+        public HavokWorkspace? Workspace { get; private set; }
 
         private bool _suppressCharacterFieldSync = false;
 
@@ -455,7 +455,7 @@ namespace SkyrimHavokEditor
         }
 
         // INotifyPropertyChanged (add if not already present)
-        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
         private void OnPropertyChanged(string name)
             => PropertyChanged?.Invoke(this,
                 new System.ComponentModel.PropertyChangedEventArgs(name));
