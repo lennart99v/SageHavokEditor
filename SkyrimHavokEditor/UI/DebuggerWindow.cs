@@ -28,6 +28,6 @@ namespace SkyrimHavokEditor.UI
             };
         }
 
-        public System.Action ReturnToDock { get; set; }
+        public System.Action? ReturnToDock { get; set; }
     }
 }

@@ -11,7 +11,7 @@ namespace SkyrimHavokEditor
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "SkyrimHavokEditor", "settings.txt");
 
-        private static Dictionary<string, string> _cache;
+        private static Dictionary<string, string>? _cache;
 
         private static Dictionary<string, string> Load()
         {

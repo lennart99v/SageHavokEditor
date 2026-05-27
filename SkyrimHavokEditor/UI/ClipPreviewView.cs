@@ -14,7 +14,7 @@ namespace SkyrimHavokEditor.UI
     public sealed class PreviewTrigger
     {
         public float Time;
-        public string EventName;
+        public string EventName = "";
         public bool RelativeToEnd;
     }
 
@@ -36,12 +36,12 @@ namespace SkyrimHavokEditor.UI
         private readonly DispatcherTimer _timer;
         private readonly Stopwatch _watch = new();
         private bool _suppressScrub;
-        private AnimationClip _clip;
+        private AnimationClip? _clip;
         private List<PreviewTrigger> _triggers = new();
         private ViewAxis _view = ViewAxis.Side;
 
         /// <summary>Set by the host so "Show in graph" can jump back to the clip's node.</summary>
-        public Action OnShowInGraph;
+        public Action? OnShowInGraph;
 
         public ClipPreviewView()
         {
@@ -107,7 +107,7 @@ namespace SkyrimHavokEditor.UI
             _graphBtn.IsEnabled = false;
         }
 
-        public void Show(AnimationClip clip, Skeleton skeleton, List<PreviewTrigger> triggers = null)
+        public void Show(AnimationClip clip, Skeleton skeleton, List<PreviewTrigger>? triggers = null)
         {
             Stop();
             _clip = clip;
@@ -155,7 +155,7 @@ namespace SkyrimHavokEditor.UI
             _timer.Stop(); _watch.Stop(); _play.Content = "▶";
         }
 
-        private void OnTick(object sender, EventArgs e)
+        private void OnTick(object? sender, EventArgs e)
         {
             if (_clip == null) return;
             double t = _watch.Elapsed.TotalSeconds;

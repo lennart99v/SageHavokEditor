@@ -29,6 +29,7 @@ namespace SkyrimHavokEditor
         private void LoadBehaviorIntoApp(HkLoadedFile file)
         {
             // Swap the manager the app uses
+            if (file.Manager == null) return;
             manager = file.Manager;
 
             _sourceWasHkx = file.WasHkx;
@@ -96,7 +97,7 @@ namespace SkyrimHavokEditor
             OnPropertyChanged(nameof(Workspace));
 
             // If a character was also loaded, populate that tab too
-            if (Workspace.Character != null) LoadCharacterIntoUI();
+            if (Workspace?.Character != null) LoadCharacterIntoUI();
 
             // Switch to Project tab
             MainTabControl.SelectedIndex = GetTabIndex("📦 Project");

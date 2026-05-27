@@ -19,23 +19,23 @@ namespace SkyrimHavokEditor.UI
     public class GraphBreadcrumb
     {
         public GraphViewLevel Level { get; set; }
-        public string Label { get; set; }  // display in breadcrumb bar
-        public string MachineFilter { get; set; }
-        public string RootObjectId { get; set; }  // state that was drilled into
+        public string Label { get; set; } = "";          // display in breadcrumb bar
+        public string MachineFilter { get; set; } = "";
+        public string RootObjectId { get; set; } = "";   // state that was drilled into
     }
 
     // ── Debug UI models ───────────────────────────────────────────────────────────
     public class HistoryEntry
     {
-        public string Time { get; set; }
-        public string Label { get; set; }
+        public string Time { get; set; } = "";
+        public string Label { get; set; } = "";
     }
 
     public class LiveVariable : System.ComponentModel.INotifyPropertyChanged
     {
-        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
-        public string Name { get; set; }
+        public string Name { get; set; } = "";
 
         private float _value;
         public float Value
@@ -77,7 +77,9 @@ namespace SkyrimHavokEditor.UI
     public partial class StateMachineGraphView : UserControl
     {
         // ── Data ──────────────────────────────────────────────────────────────
-        private HavokManager _manager;
+        // _manager is set by Load() before any other method runs; null! suppresses
+        // the uninitialised warning without forcing null-checks at every use site.
+        private HavokManager _manager = null!;
         private List<IdNamePair> _events = new();
 
         // ── Graph state ───────────────────────────────────────────────────────
@@ -90,17 +92,17 @@ namespace SkyrimHavokEditor.UI
         private HashSet<string> _lastActiveStateKeys = new();
         private bool _debugPaused;
         private bool _debugRecording;
-        private BehaviorDebuggerClient _debugger;
+        private BehaviorDebuggerClient _debugger = null!;
         private Dictionary<(string smName, int stateId), string> _stateLookup = new();
         public string LoadedFileName { get; set; } = "";
-        private GraphVisualHost _visualHost;
+        private GraphVisualHost _visualHost = null!;
         private bool _panToActive = false;
-        private string _pendingPanToNodeId = null;
+        private string? _pendingPanToNodeId = null;
 
-        private Border _hoverCard;
-        private System.Windows.Threading.DispatcherTimer _hoverTimer;
-        private GraphNode _pendingHoverNode;
-        private GraphEdge _pendingHoverEdge;
+        private Border? _hoverCard;
+        private System.Windows.Threading.DispatcherTimer? _hoverTimer;
+        private GraphNode? _pendingHoverNode;
+        private GraphEdge? _pendingHoverEdge;
         private Point _pendingHoverPos;
 
         // ── Actor type detection ──────────────────────────────────────────────────────
@@ -157,7 +159,7 @@ namespace SkyrimHavokEditor.UI
 
         // ── Navigation stack ──────────────────────────────────────────────────
         private readonly Stack<GraphBreadcrumb> _navStack = new();
-        private GraphBreadcrumb _currentLevel;
+        private GraphBreadcrumb? _currentLevel;
 
         // ── Pan / zoom ────────────────────────────────────────────────────────
         private readonly ScaleTransform _scale = new(1, 1);
@@ -172,14 +174,14 @@ namespace SkyrimHavokEditor.UI
             = new (double, double, double, string)?[10];
 
         // ── Events ────────────────────────────────────────────────────────────
-        public event Action<string> StateSelected;
-        public event Action<string, string> AddTransitionRequested;
-        public event Action<HkObject, HkObject, string, string> TransitionDeletedFromGraph;
-        public event Action<string, string, string> NodeRenamedOnGraph;
-        public event Action<HkObject, HkObject> NodeAddedToGraph;
-        public event Action<HkObject, HkObject, string> NodeDeletedFromGraph;
-        public event Action<string> StatusText_;
-        public event Action<HkObject, string, string> TransitionRetargetedFromGraph; // (trChild, oldToStateId, newToStateId)
+        public event Action<string>? StateSelected;
+        public event Action<string, string>? AddTransitionRequested;
+        public event Action<HkObject, HkObject, string, string>? TransitionDeletedFromGraph;
+        public event Action<string, string, string>? NodeRenamedOnGraph;
+        public event Action<HkObject, HkObject>? NodeAddedToGraph;
+        public event Action<HkObject, HkObject, string>? NodeDeletedFromGraph;
+        public event Action<string>? StatusText_;
+        public event Action<HkObject, string, string>? TransitionRetargetedFromGraph; // (trChild, oldToStateId, newToStateId)
 
         // ── Graphviz ──────────────────────────────────────────────────────────
         private static readonly string GraphvizDotPath = Path.Combine(
@@ -631,21 +633,21 @@ namespace SkyrimHavokEditor.UI
         }
 
 
-        private void OnNodeHoverChanged(GraphNode node, Point graphPos)
+        private void OnNodeHoverChanged(GraphNode? node, Point graphPos)
         {
             _pendingHoverNode = node; _pendingHoverEdge = null; _pendingHoverPos = graphPos;
-            _hoverTimer.Stop();
+            _hoverTimer?.Stop();
             if (node == null) { HideHoverCard(); return; }
-            _hoverTimer.Start();
+            _hoverTimer?.Start();
         }
 
-        private void OnEdgeHoverChanged(GraphEdge edge, Point graphPos)
+        private void OnEdgeHoverChanged(GraphEdge? edge, Point graphPos)
         {
             if (_pendingHoverNode != null) return;          // node wins
             _pendingHoverEdge = edge; _pendingHoverPos = graphPos;
-            _hoverTimer.Stop();
+            _hoverTimer?.Stop();
             if (edge == null) { HideHoverCard(); return; }
-            _hoverTimer.Start();
+            _hoverTimer?.Start();
         }
 
         private void HideHoverCard()
@@ -1370,8 +1372,8 @@ namespace SkyrimHavokEditor.UI
 
         // ── Inline node rename ────────────────────────────────────────────────
 
-        private System.Windows.Controls.TextBox _renameBox;
-        private GraphNode _renamingNode;
+        private System.Windows.Controls.TextBox? _renameBox;
+        private GraphNode? _renamingNode;
 
         private void StartInlineRename(GraphNode node)
         {
@@ -2191,9 +2193,9 @@ namespace SkyrimHavokEditor.UI
 
         // ── WPF Minimap overlay (sits outside transform, top-right of panel) ───
 
-        private System.Windows.Controls.Canvas _minimapCanvas;
+        private System.Windows.Controls.Canvas _minimapCanvas = null!;
 
-        private System.Windows.Controls.Canvas _minimapOverlayHost;
+        private System.Windows.Controls.Canvas _minimapOverlayHost = null!;
 
         private void EnsureMinimapCanvas()
         {
