@@ -1,8 +1,8 @@
-﻿using SkyrimHavokEditor.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using SkyrimHavokEditor.Models;
 
 namespace SkyrimHavokEditor.Core
 {
@@ -76,7 +76,7 @@ namespace SkyrimHavokEditor.Core
             _nameToObject.Clear();
             _allObjects.Clear();
 
-               string behaviorName = LoadAllYaml(folderPath);
+            string behaviorName = LoadAllYaml(folderPath);
             ResolveAllReferences();       // object name refs: transition: Name → #ID
             ResolveTransitionFields();    // event: Name → eventId: N, toState: Name → toStateId: N
             WireStateTransitions();       // wrap inline transition lists → TransitionInfoArray objects

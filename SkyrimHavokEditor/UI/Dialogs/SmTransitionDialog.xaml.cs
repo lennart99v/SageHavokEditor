@@ -1,11 +1,11 @@
-﻿using SkyrimHavokEditor.Core;
-using SkyrimHavokEditor.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Models;
 using SkyrimHavokEditor.Models.ViewModels;
 
 namespace SkyrimHavokEditor.UI.Dialogs

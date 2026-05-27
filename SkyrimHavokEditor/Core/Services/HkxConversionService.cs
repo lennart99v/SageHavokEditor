@@ -1,8 +1,8 @@
-﻿using HKX2;
 using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using HKX2;
 
 // ── Credits ────────────────────────────────────────────────────────────────────
 // HKX2Library — MIT License

@@ -1,9 +1,9 @@
-﻿using SkyrimHavokEditor.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using SkyrimHavokEditor.Models;
 
 namespace SkyrimHavokEditor.Core.Patching
 {

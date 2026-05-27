@@ -1,6 +1,3 @@
-﻿using SkyrimHavokEditor.Core;
-using SkyrimHavokEditor.Models;
-using SkyrimHavokEditor.Models.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,6 +7,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Models;
+using SkyrimHavokEditor.Models.ViewModels;
 
 namespace SkyrimHavokEditor.UI
 {
@@ -1043,7 +1043,7 @@ namespace SkyrimHavokEditor.UI
             _debugger.SnapshotReceived += snap => Dispatcher.Invoke(() =>
             {
                 // ── Step 1: resolve all state names first ─────────────────────────
-                foreach (var state in snap.ActiveStates) 
+                foreach (var state in snap.ActiveStates)
                 {
                     if (!string.IsNullOrEmpty(state.StateName)) continue;
                     var key = (state.SMName?.ToLowerInvariant() ?? "", state.StateId);
@@ -1206,7 +1206,7 @@ namespace SkyrimHavokEditor.UI
             lv.ValueBrush = normal;
             lv.NameBrush = normalN;
         }
-        
+
 
         private void PanToNodeIfPending()
         {
@@ -2570,7 +2570,7 @@ namespace SkyrimHavokEditor.UI
 
             if (cW <= 0 || cH <= 0)
             {
-                _fitPending = true; 
+                _fitPending = true;
                 return;
             }
 

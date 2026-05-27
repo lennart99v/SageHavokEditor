@@ -1,6 +1,3 @@
-﻿using SkyrimHavokEditor.Core;
-using SkyrimHavokEditor.Models;
-using SkyrimHavokEditor.Models.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -13,6 +10,9 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Models;
+using SkyrimHavokEditor.Models.ViewModels;
 
 namespace SkyrimHavokEditor.UI.Dialogs
 {
@@ -145,7 +145,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
                 {
                     matchedParam = obj.Params.FirstOrDefault(p =>
                         !string.IsNullOrEmpty(p.Value) &&
-                        p.Value.Length < 500 &&  
+                        p.Value.Length < 500 &&
                         p.Name != "eventNames" &&
                         p.Name != "variableNames" &&
                         p.Name != "wordVariableNames" &&

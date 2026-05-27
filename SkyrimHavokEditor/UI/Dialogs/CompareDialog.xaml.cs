@@ -1,5 +1,3 @@
-﻿using SkyrimHavokEditor.Core;
-using SkyrimHavokEditor.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -9,6 +7,8 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Xml.Serialization;
+using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Models;
 using SkyrimHavokEditor.Models.ViewModels;
 
 namespace SkyrimHavokEditor.UI.Dialogs
@@ -62,31 +62,27 @@ namespace SkyrimHavokEditor.UI.Dialogs
         }
 
         private void RunComparison()
-{
-    if (_managerB == null) return;
-    _allResults.Clear();
-
-    // Decode IEEE 754 bit patterns same as main window
-    string Decode(string rawValue)
-    {
-        if (string.IsNullOrWhiteSpace(rawValue)) return "0";
-        if (long.TryParse(rawValue, out long longVal))
         {
-            int intVal = (int)longVal;
-            if (Math.Abs(intVal) > 1000000 || intVal < 0)
-            {
-                float f = BitConverter.Int32BitsToSingle(intVal);
-                if (!float.IsNaN(f) && !float.IsInfinity(f))
-                    return f.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-            }
-            return intVal.ToString();
-        }
-        return rawValue;
-    }
+            if (_managerB == null) return;
+            _allResults.Clear();
 
-            // Helper to get name from object
-            string GetName(HkObject o) =>
-                o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id;
+            // Decode IEEE 754 bit patterns same as main window
+            string Decode(string rawValue)
+            {
+                if (string.IsNullOrWhiteSpace(rawValue)) return "0";
+                if (long.TryParse(rawValue, out long longVal))
+                {
+                    int intVal = (int)longVal;
+                    if (Math.Abs(intVal) > 1000000 || intVal < 0)
+                    {
+                        float f = BitConverter.Int32BitsToSingle(intVal);
+                        if (!float.IsNaN(f) && !float.IsInfinity(f))
+                            return f.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                    return intVal.ToString();
+                }
+                return rawValue;
+            }
 
             // --- VARIABLES ---
             var varNamesB = new List<string>();

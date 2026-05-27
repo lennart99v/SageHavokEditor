@@ -1,8 +1,8 @@
-﻿using SkyrimHavokEditor.Core.Services;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using SkyrimHavokEditor.Core.Services;
 
 namespace SkyrimHavokEditor.Core.Services
 {

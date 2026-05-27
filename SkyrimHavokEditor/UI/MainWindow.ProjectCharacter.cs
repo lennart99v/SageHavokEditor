@@ -1,12 +1,7 @@
-﻿// ── Add this to MainWindow.cs ─────────────────────────────────────────────────
+// ── Add this to MainWindow.cs ─────────────────────────────────────────────────
 // This is a partial class addition — put it in MainWindow.ProjectCharacter.cs
 // or append to the bottom of MainWindow.cs inside the class body.
 
-using SkyrimHavokEditor.Core;
-using SkyrimHavokEditor.Core.Services;
-using SkyrimHavokEditor.Models;
-using SkyrimHavokEditor.Models.ViewModels;
-using SkyrimHavokEditor.UI;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -14,6 +9,11 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Core.Services;
+using SkyrimHavokEditor.Models;
+using SkyrimHavokEditor.Models.ViewModels;
+using SkyrimHavokEditor.UI;
 
 namespace SkyrimHavokEditor
 {

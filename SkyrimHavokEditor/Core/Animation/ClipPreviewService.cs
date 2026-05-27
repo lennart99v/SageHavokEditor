@@ -1,6 +1,3 @@
-﻿using SkyrimHavokEditor.Core;
-using SkyrimHavokEditor.Core.Animation;
-using SkyrimHavokEditor.UI;
 using System;
 using System.Collections.Concurrent;
 using System.IO;
@@ -8,6 +5,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Core.Animation;
+using SkyrimHavokEditor.UI;
 
 namespace SkyrimHavokEditor.Core.Animation
 {
@@ -152,18 +152,19 @@ namespace SkyrimHavokEditor.Core.Animation
 
         private static PreviewResult Fail(string msg) => new() { Success = false, Error = msg };
     }
-    namespace SkyrimHavokEditor.UI
+}
+
+namespace SkyrimHavokEditor.UI
+{
+    public class ClipPreviewWindow : Window
     {
-        public class ClipPreviewWindow : Window
+        public readonly ClipPreviewView View = new();
+        public ClipPreviewWindow()
         {
-            public readonly ClipPreviewView View = new();
-            public ClipPreviewWindow()
-            {
-                Title = "Clip Preview";
-                Width = 520; Height = 480;
-                Background = System.Windows.Media.Brushes.Black;
-                Content = View;
-            }
+            Title = "Clip Preview";
+            Width = 520; Height = 480;
+            Background = System.Windows.Media.Brushes.Black;
+            Content = View;
         }
     }
 }

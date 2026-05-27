@@ -1,7 +1,7 @@
-﻿using SkyrimHavokEditor.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SkyrimHavokEditor.Models;
 
 namespace SkyrimHavokEditor.Core.Patching
 {
@@ -251,55 +251,55 @@ namespace SkyrimHavokEditor.Core.Patching
             var currentEvents = GetCurrentEventNames();
             for (int i = _eventsOriginal.Count; i < currentEvents.Count; i++)
                 patch.Operations.Add(new AddEventOp
-                    {
-                        Name = currentEvents[i],
-                        Note = $"New event at index {i}: {currentEvents[i]}"
-                    });
+                {
+                    Name = currentEvents[i],
+                    Note = $"New event at index {i}: {currentEvents[i]}"
+                });
 
             // Also catch renames that happened via EventList directly
             // (when the Strings list wasn't updated but EventList was)
             int sharedEventCount = Math.Min(_eventsOriginal.Count, currentEvents.Count);
             for (int i = 0; i < sharedEventCount; i++)
-                {
-                    if (_eventsOriginal[i] == currentEvents[i]) continue;
-                    // Only add RenameEventOp if not already added from Strings diff above
-                    bool alreadyCovered = patch.Operations.OfType<RenameEventOp>()
-                        .Any(r => r.Index == i);
-                    if (!alreadyCovered)
-                        patch.Operations.Add(new RenameEventOp
-                        {
-                            Index = i,
-                            OldName = _eventsOriginal[i],
-                            NewName = currentEvents[i],
-                            Note = $"Rename event[{i}]: \"{_eventsOriginal[i]}\" → \"{currentEvents[i]}\""
-                        });
-                }
+            {
+                if (_eventsOriginal[i] == currentEvents[i]) continue;
+                // Only add RenameEventOp if not already added from Strings diff above
+                bool alreadyCovered = patch.Operations.OfType<RenameEventOp>()
+                    .Any(r => r.Index == i);
+                if (!alreadyCovered)
+                    patch.Operations.Add(new RenameEventOp
+                    {
+                        Index = i,
+                        OldName = _eventsOriginal[i],
+                        NewName = currentEvents[i],
+                        Note = $"Rename event[{i}]: \"{_eventsOriginal[i]}\" → \"{currentEvents[i]}\""
+                    });
+            }
 
             // ── 5. New variables ──────────────────────────────────────────────
             var currentVars = GetCurrentVarNames();
             for (int i = _varsOriginal.Count; i < currentVars.Count; i++)
                 patch.Operations.Add(new AddVariableOp
-                    {
-                        Name = currentVars[i],
-                        Note = $"New variable at index {i}: {currentVars[i]}"
-                    });
+                {
+                    Name = currentVars[i],
+                    Note = $"New variable at index {i}: {currentVars[i]}"
+                });
 
             // Renames within existing variables
             int sharedVarCount = Math.Min(_varsOriginal.Count, currentVars.Count);
             for (int i = 0; i < sharedVarCount; i++)
-                {
-                    if (_varsOriginal[i] == currentVars[i]) continue;
-                    bool alreadyCovered = patch.Operations.OfType<RenameVariableOp>()
-                        .Any(r => r.Index == i);
-                    if (!alreadyCovered)
-                        patch.Operations.Add(new RenameVariableOp
-                        {
-                            Index = i,
-                            OldName = _varsOriginal[i],
-                            NewName = currentVars[i],
-                            Note = $"Rename variable[{i}]: \"{_varsOriginal[i]}\" → \"{currentVars[i]}\""
-                        });
-                }
+            {
+                if (_varsOriginal[i] == currentVars[i]) continue;
+                bool alreadyCovered = patch.Operations.OfType<RenameVariableOp>()
+                    .Any(r => r.Index == i);
+                if (!alreadyCovered)
+                    patch.Operations.Add(new RenameVariableOp
+                    {
+                        Index = i,
+                        OldName = _varsOriginal[i],
+                        NewName = currentVars[i],
+                        Note = $"Rename variable[{i}]: \"{_varsOriginal[i]}\" → \"{currentVars[i]}\""
+                    });
+            }
 
             return patch;
         }
@@ -413,7 +413,7 @@ namespace SkyrimHavokEditor.Core.Patching
             var name = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value;
             if (!string.IsNullOrEmpty(name))
                 return $"name:{name}";
-        
+
             // 2. Objects with a unique identifying param combo
             // e.g. hkbStateMachineStateInfo has stateId + parent SM
             if (obj.ClassName == "hkbStateMachineStateInfo")
@@ -422,7 +422,7 @@ namespace SkyrimHavokEditor.Core.Patching
                 if (!string.IsNullOrEmpty(stateId))
                     return $"stateId:{stateId}";
             }
-        
+
             // 3. hkbClipGenerator — animationName is unique enough
             if (obj.ClassName == "hkbClipGenerator")
             {
@@ -430,7 +430,7 @@ namespace SkyrimHavokEditor.Core.Patching
                 if (!string.IsNullOrEmpty(anim))
                     return $"animName:{anim}";
             }
-        
+
             // 4. Transition arrays — identified by their owning state
             if (obj.ClassName == "hkbStateMachineTransitionInfoArray")
             {
@@ -438,9 +438,9 @@ namespace SkyrimHavokEditor.Core.Patching
                 // (stored as a reference in that state's "transitions" param)
                 return $"id:{id}"; // fallback — improved below
             }
-        
-                    // Singleton classes — only one instance per file
-                    var singletonClasses = new HashSet<string>
+
+            // Singleton classes — only one instance per file
+            var singletonClasses = new HashSet<string>
             {
                 "hkbBehaviorGraphStringData",
                 "hkbBehaviorGraphData",
@@ -448,7 +448,7 @@ namespace SkyrimHavokEditor.Core.Patching
                 "hkbBehaviorGraph",
                 "hkRootLevelContainer"
             };
-        
+
             if (singletonClasses.Contains(obj.ClassName))
                 return $"class:{obj.ClassName}";
 
@@ -459,7 +459,7 @@ namespace SkyrimHavokEditor.Core.Patching
         private static readonly HashSet<string> _skipChildDiffParams = new()
 {
     "eventNames", "variableNames", "wordVariableNames",
-    "animationNames", "stringData" 
+    "animationNames", "stringData"
 };
 
         private static string SafeName(string cls)

@@ -1,10 +1,10 @@
-﻿using SkyrimHavokEditor.Core;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using SkyrimHavokEditor.Core;
 
 namespace SkyrimHavokEditor.UI
 {
@@ -80,9 +80,6 @@ namespace SkyrimHavokEditor.UI
         // ── Comment boxes ─────────────────────────────────────────────────
         public List<GraphComment> Comments { get; } = new();
 
-        // ── Reroute nodes (mid-wire dots) ─────────────────────────────────
-        private GraphReroute _draggingReroute;
-
         // ── Events ────────────────────────────────────────────────────────────
         public event Action<GraphNode> NodeSelected;
         public event Action<GraphNode> NodeDoubleClicked;
@@ -92,7 +89,6 @@ namespace SkyrimHavokEditor.UI
         public event Action<GraphEdge> EdgeContextMenuRequested;
         public event Action<GraphNode> NodeRenameRequested;
         public event Action<Point> CanvasContextMenuRequested;
-        public event Action<GraphNode> NodeDeleteRequested;
         public event Action<HashSet<GraphNode>> SelectionChanged;
         public event Action<GraphComment> CommentAdded;
         public event Action<GraphComment> CommentDoubleClicked;

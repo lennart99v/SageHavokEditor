@@ -144,7 +144,7 @@ namespace SkyrimHavokEditor.Core.Skeletons
         }
 
         /// <summary>
-        /// Parse a raw space-separated float string (Havok XML format) 
+        /// Parse a raw space-separated float string (Havok XML format)
         /// and return a named dict.
         /// </summary>
         public Dictionary<string, float> ParseHavokWeightString(
@@ -220,15 +220,15 @@ namespace SkyrimHavokEditor.Core.Skeletons
 
         private class SkeletonDefinition
         {
-            [JsonPropertyName("skeletonId")]  public string SkeletonId  { get; set; }
+            [JsonPropertyName("skeletonId")] public string SkeletonId { get; set; }
             [JsonPropertyName("description")] public string Description { get; set; }
-            [JsonPropertyName("bones")]       public List<BoneEntry> Bones { get; set; }
+            [JsonPropertyName("bones")] public List<BoneEntry> Bones { get; set; }
         }
 
         private class BoneEntry
         {
-            [JsonPropertyName("index")] public int    Index { get; set; }
-            [JsonPropertyName("name")]  public string Name  { get; set; }
+            [JsonPropertyName("index")] public int Index { get; set; }
+            [JsonPropertyName("name")] public string Name { get; set; }
         }
     }
 }

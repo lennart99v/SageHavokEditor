@@ -1,4 +1,4 @@
-﻿namespace SkyrimHavokEditor.UI.Dialogs
+namespace SkyrimHavokEditor.UI.Dialogs
 {
     public partial class InputDialog : System.Windows.Window
     {

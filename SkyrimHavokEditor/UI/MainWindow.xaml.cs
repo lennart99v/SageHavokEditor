@@ -1,15 +1,3 @@
-﻿using SkyrimHavokEditor.Core;
-using SkyrimHavokEditor.Core.Animation;
-using SkyrimHavokEditor.Core.Animation.SkyrimHavokEditor.UI;
-using SkyrimHavokEditor.Core.Patching;
-using SkyrimHavokEditor.Core.Services;
-using SkyrimHavokEditor.Core.Skeletons;
-using SkyrimHavokEditor.Core.Validation;
-using SkyrimHavokEditor.Models;
-using SkyrimHavokEditor.Models.ViewModels;
-using SkyrimHavokEditor.UI;
-using SkyrimHavokEditor.UI.Converters;
-using SkyrimHavokEditor.UI.Dialogs;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -21,12 +9,23 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.AccessControl;
 using System.Text;
-using System.Threading.Tasks; 
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Xml.Serialization;
+using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Core.Animation;
+using SkyrimHavokEditor.Core.Patching;
+using SkyrimHavokEditor.Core.Services;
+using SkyrimHavokEditor.Core.Skeletons;
+using SkyrimHavokEditor.Core.Validation;
+using SkyrimHavokEditor.Models;
+using SkyrimHavokEditor.Models.ViewModels;
+using SkyrimHavokEditor.UI;
+using SkyrimHavokEditor.UI.Converters;
+using SkyrimHavokEditor.UI.Dialogs;
 
 namespace SkyrimHavokEditor
 {
@@ -1018,10 +1017,10 @@ namespace SkyrimHavokEditor
                 ClipList.Add(clipEntry);
             }
 
-        // ------------------------
-        // TRANSITIONS
-        // ------------------------
-        TransitionList.Clear();
+            // ------------------------
+            // TRANSITIONS
+            // ------------------------
+            TransitionList.Clear();
 
             var stateIdToName = new Dictionary<string, string>();
             foreach (var stateObj in manager.ObjectMap.Values
@@ -3041,7 +3040,7 @@ namespace SkyrimHavokEditor
                 EventList[i].Id = i.ToString();
         }
 
-  
+
 
         // ── SM Inspector collections ──────────────────────────────────────────────
         public ObservableCollection<HkObject> SmList { get; set; } = new();
@@ -3135,10 +3134,10 @@ namespace SkyrimHavokEditor
                     HkObject resolvedEffect = null;
                     if (!string.IsNullOrEmpty(effect) && effect != "null"
                         && manager.TryResolve(effect, out var effectObj))
-                    { 
+                    {
                         blendDuration = effectObj.Params
                             .FirstOrDefault(p => p.Name == "duration")?.Value ?? "";
-                    resolvedEffect = effectObj;
+                        resolvedEffect = effectObj;
                     }
 
                     stateIdToName.TryGetValue(toStateId, out var toName);

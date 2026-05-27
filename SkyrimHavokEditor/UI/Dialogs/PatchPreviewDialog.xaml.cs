@@ -1,10 +1,10 @@
-﻿using SkyrimHavokEditor.Core;
-using SkyrimHavokEditor.Core.Patching;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Xml.Serialization;
+using SkyrimHavokEditor.Core;
+using SkyrimHavokEditor.Core.Patching;
 
 namespace SkyrimHavokEditor.UI.Dialogs
 {

@@ -1,4 +1,4 @@
-﻿// UI/DebugPanelView.xaml.cs
+// UI/DebugPanelView.xaml.cs
 using System.Windows;
 using System.Windows.Controls;
 

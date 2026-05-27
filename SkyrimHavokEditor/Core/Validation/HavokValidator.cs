@@ -1,9 +1,9 @@
-﻿using SkyrimHavokEditor.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using SkyrimHavokEditor.Models;
 using SkyrimHavokEditor.Models.ViewModels;
 
 namespace SkyrimHavokEditor.Core.Validation
