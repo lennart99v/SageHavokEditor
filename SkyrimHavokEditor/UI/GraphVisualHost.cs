@@ -32,19 +32,19 @@ namespace SkyrimHavokEditor.UI
         // ── Graph state ───────────────────────────────────────────────────────
         private List<GraphNode> _nodes = new();
         private List<GraphEdge> _edges = new();
-        private GraphNode _selectedNode;
-        public GraphNode SelectedNode => _selectedNode;
+        private GraphNode? _selectedNode;
+        public GraphNode? SelectedNode => _selectedNode;
         private HashSet<GraphNode> _selectedNodes = new();   // multi-select
-        private GraphNode _draggingNode;
-        private GraphNode _hoveredNode;
-        private GraphEdge _hoveredEdge;
-        private GraphNode _connectingFrom;
-        private GraphNode _connectHoverNode;
+        private GraphNode? _draggingNode;
+        private GraphNode? _hoveredNode;
+        private GraphEdge? _hoveredEdge;
+        private GraphNode? _connectingFrom;
+        private GraphNode? _connectHoverNode;
         private Point _connectingTo;
         private Point _dragOffset;
         private string _searchQuery = "";
         private double _dpi = 96;
-        private string _highlightId = null;  // search highlight
+        private string? _highlightId = null;  // search highlight
         private HashSet<string> _liveStateIds = new();
         private List<VariableValue> _liveVars = new();
         private double _pulsePhase = 0;
@@ -52,7 +52,7 @@ namespace SkyrimHavokEditor.UI
         private readonly Dictionary<GraphEdge, double> _firedEdges = new();
         private readonly DrawingVisual _guideLayer = new();
         private const double SnapBase = 8; // screen px at zoom 1.0
-        private GraphEdge _rewiringEdge;
+        private GraphEdge? _rewiringEdge;
 
         // ── Lasso selection ────────────────────────────────────────────────
         private bool _isLassoing;
@@ -64,11 +64,11 @@ namespace SkyrimHavokEditor.UI
         private const double HandleSize = 8;
         private const double MinCommentSize = 60;
 
-        private GraphComment _hoveredComment;
-        private GraphComment _draggingComment;
+        private GraphComment? _hoveredComment;
+        private GraphComment? _draggingComment;
         private Point _commentDragOffset;
         private List<(GraphNode node, double ox, double oy)> _commentDraggedNodes = new();
-        private GraphComment _resizingComment;
+        private GraphComment? _resizingComment;
         private ResizeHandleType _resizingHandle = ResizeHandleType.None;
         private Point _resizeStartMouse;
         private Rect _resizeStartRect;
@@ -81,25 +81,25 @@ namespace SkyrimHavokEditor.UI
         public List<GraphComment> Comments { get; } = new();
 
         // ── Events ────────────────────────────────────────────────────────────
-        public event Action<GraphNode> NodeSelected;
-        public event Action<GraphNode> NodeDoubleClicked;
-        public event Action<GraphNode> NodeMoved;
-        public event Action<GraphNode, GraphNode> ConnectionRequested;
-        public event Action<GraphNode> NodeContextMenuRequested;
-        public event Action<GraphEdge> EdgeContextMenuRequested;
-        public event Action<GraphNode> NodeRenameRequested;
-        public event Action<Point> CanvasContextMenuRequested;
-        public event Action<HashSet<GraphNode>> SelectionChanged;
-        public event Action<GraphComment> CommentAdded;
-        public event Action<GraphComment> CommentDoubleClicked;
-        public event Action<GraphComment> CommentContextMenuRequested;
-        public event Action<double, double> PanDelta;      // dx, dy from empty-space drag
-        public event Action MapTransformChanged;
-        public event Action<GraphNode, Point> NodeHoverChanged;
-        public event Action<GraphEdge, Point> EdgeHoverChanged;
-        public event Action<GraphEdge, GraphNode> EdgeRewireRequested;
+        public event Action<GraphNode>? NodeSelected;
+        public event Action<GraphNode>? NodeDoubleClicked;
+        public event Action<GraphNode>? NodeMoved;
+        public event Action<GraphNode, GraphNode>? ConnectionRequested;
+        public event Action<GraphNode>? NodeContextMenuRequested;
+        public event Action<GraphEdge>? EdgeContextMenuRequested;
+        public event Action<GraphNode>? NodeRenameRequested;
+        public event Action<Point>? CanvasContextMenuRequested;
+        public event Action<HashSet<GraphNode>>? SelectionChanged;
+        public event Action<GraphComment>? CommentAdded;
+        public event Action<GraphComment>? CommentDoubleClicked;
+        public event Action<GraphComment>? CommentContextMenuRequested;
+        public event Action<double, double>? PanDelta;      // dx, dy from empty-space drag
+        public event Action? MapTransformChanged;
+        public event Action<GraphNode?, Point>? NodeHoverChanged;
+        public event Action<GraphEdge?, Point>? EdgeHoverChanged;
+        public event Action<GraphEdge, GraphNode>? EdgeRewireRequested;
 
-        public Func<GraphNode, GraphNode, bool> ConnectionValidator;
+        public Func<GraphNode, GraphNode, bool>? ConnectionValidator;
         public void RaiseCommentAdded(GraphComment c) => CommentAdded?.Invoke(c);
 
         // ── Node palette ──────────────────────────────────────────────────────
@@ -304,7 +304,7 @@ namespace SkyrimHavokEditor.UI
             foreach (var nv in _nodeVisuals) DrawNodeVisual(nv);
         }
 
-        private void RedrawNode(GraphNode node)
+        private void RedrawNode(GraphNode? node)
         {
             if (node == null) return;
             var nv = _nodeVisuals.Find(v => v.Node == node);
@@ -547,7 +547,7 @@ namespace SkyrimHavokEditor.UI
 
             double bestX = snap, bestY = snap, dX = 0, dY = 0;
             double? guideX = null, guideY = null;
-            GraphNode matchX = null, matchY = null;
+            GraphNode? matchX = null, matchY = null;
 
             var dxLines = new[] { tx, tx + w / 2, tx + w };
             var dyLines = new[] { ty, ty + h / 2, ty + h };
@@ -710,7 +710,7 @@ namespace SkyrimHavokEditor.UI
             dc.DrawText(ft, new Point(x - ft.Width / 2, y - ft.Height / 2));
         }
 
-        private bool HitTestEdgeEndpoint(Point p, out GraphEdge edge)
+        private bool HitTestEdgeEndpoint(Point p, out GraphEdge? edge)
         {
             edge = _hoveredEdge;
             if (edge == null || edge.LastBezier == default) return false;
@@ -750,7 +750,7 @@ namespace SkyrimHavokEditor.UI
 
         // ── Hit testing ────────────────────────────────────────────────────────
 
-        private GraphNode HitTestNode(Point p)
+        private GraphNode? HitTestNode(Point p)
         {
             for (int i = _nodes.Count - 1; i >= 0; i--)
             {
@@ -762,7 +762,7 @@ namespace SkyrimHavokEditor.UI
             return null;
         }
 
-        private bool HitTestOutputPort(Point p, out GraphNode node)
+        private bool HitTestOutputPort(Point p, out GraphNode? node)
         {
             foreach (var n in _nodes)
             {
@@ -774,7 +774,7 @@ namespace SkyrimHavokEditor.UI
             node = null; return false;
         }
 
-        private GraphEdge HitTestEdge(Point p)
+        private GraphEdge? HitTestEdge(Point p)
         {
             foreach (var edge in _edges)
             {
@@ -849,7 +849,7 @@ namespace SkyrimHavokEditor.UI
             }
 
             // ── Grab the END of a hovered edge → re-wire its destination ──────────────
-            if (HitTestEdgeEndpoint(p, out var grabbed))
+            if (HitTestEdgeEndpoint(p, out var grabbed) && grabbed != null)
             {
                 _rewiringEdge = grabbed;
                 _connectingFrom = grabbed.From;   // draft + validity reuse the connect path
@@ -1246,7 +1246,7 @@ namespace SkyrimHavokEditor.UI
     ResizeHandleType.SW, ResizeHandleType.W
 };
 
-        private (GraphComment c, ResizeHandleType handle) HitTestCommentHandle(Point p)
+        private (GraphComment? c, ResizeHandleType handle) HitTestCommentHandle(Point p)
         {
             for (int i = Comments.Count - 1; i >= 0; i--)
             {
@@ -1261,7 +1261,7 @@ namespace SkyrimHavokEditor.UI
             return (null, ResizeHandleType.None);
         }
 
-        private GraphComment HitTestCommentHeader(Point p)
+        private GraphComment? HitTestCommentHeader(Point p)
         {
             for (int i = Comments.Count - 1; i >= 0; i--)
             {
@@ -1272,7 +1272,7 @@ namespace SkyrimHavokEditor.UI
             return null;
         }
 
-        private GraphComment HitTestCommentAny(Point p)
+        private GraphComment? HitTestCommentAny(Point p)
         {
             for (int i = Comments.Count - 1; i >= 0; i--)
             {
@@ -1328,12 +1328,12 @@ namespace SkyrimHavokEditor.UI
 
     public class GraphNode
     {
-        public string Id { get; set; }
-        public string StateId { get; set; }
-        public string Name { get; set; }
-        public string ClassName { get; set; }
-        public string Machine { get; set; }
-        public string SubLabel { get; set; }
+        public string Id { get; set; } = "";
+        public string StateId { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string ClassName { get; set; } = "";
+        public string Machine { get; set; } = "";
+        public string SubLabel { get; set; } = "";
         public GraphNodeType NodeType { get; set; } = GraphNodeType.State;
         public double X { get; set; }
         public double Y { get; set; }
@@ -1341,19 +1341,19 @@ namespace SkyrimHavokEditor.UI
         public double Height { get; set; } = 68;
         public bool IsStart { get; set; }
         public bool CanDrillDown { get; set; }  // show ⬇ indicator
-        public object Tag { get; set; }
+        public object? Tag { get; set; }
     }
 
     public class GraphEdge
     {
-        public GraphNode From { get; set; }
-        public GraphNode To { get; set; }
-        public string EventName { get; set; }
-        public string EventId { get; set; }
-        public string Flags { get; set; }
+        public GraphNode From { get; set; } = null!;
+        public GraphNode To { get; set; } = null!;
+        public string EventName { get; set; } = "";
+        public string EventId { get; set; } = "";
+        public string Flags { get; set; } = "";
         public (Point p0, Point p1, Point p2, Point p3) LastBezier { get; set; }
         /// <summary>Backing Havok objects: (transitionChild, transitionArray, ownerState)</summary>
-        public object Tag { get; set; }
+        public object? Tag { get; set; }
         /// <summary>Optional reroute points along this edge.</summary>
         public List<GraphReroute> Reroutes { get; set; } = new();
     }
