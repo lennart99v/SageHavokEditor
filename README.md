@@ -1,5 +1,9 @@
 # SageHavokEditor
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078D6.svg)]()
+
 A WPF editor for Skyrim Special Edition Havok behavior, animation and
 skeleton files (`.hkx`), with a graph view of state machines, an animation
 clip preview, and a Nemesis-style patch system for distributing changes
