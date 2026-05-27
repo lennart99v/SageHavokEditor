@@ -14,8 +14,8 @@ namespace SkyrimHavokEditor.Core.Services
         public bool CanUndo => _undoStack.Count > 0;
         public bool CanRedo => _redoStack.Count > 0;
 
-        public string UndoDescription => CanUndo ? _undoStack.Peek().Description : null;
-        public string RedoDescription => CanRedo ? _redoStack.Peek().Description : null;
+        public string? UndoDescription => CanUndo ? _undoStack.Peek().Description : null;
+        public string? RedoDescription => CanRedo ? _redoStack.Peek().Description : null;
 
         public void Record(EditAction action)
         {
@@ -48,8 +48,8 @@ namespace SkyrimHavokEditor.Core.Services
 
     public class EditAction
     {
-        public string Description { get; set; }
-        public Action Undo { get; set; }
-        public Action Redo { get; set; }
+        public string Description { get; set; } = "";
+        public Action Undo { get; set; } = () => { };
+        public Action Redo { get; set; } = () => { };
     }
 }

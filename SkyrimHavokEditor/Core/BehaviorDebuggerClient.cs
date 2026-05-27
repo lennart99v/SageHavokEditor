@@ -10,25 +10,25 @@ namespace SkyrimHavokEditor.Core
 {
     public class VariableValue
     {
-        [JsonPropertyName("name")] public string Name { get; set; }
+        [JsonPropertyName("name")] public string Name { get; set; } = "";
         [JsonPropertyName("value")] public float Value { get; set; }
     }
 
     public class ActiveStateInfo
     {
-        [JsonPropertyName("smName")] public string SMName { get; set; }
+        [JsonPropertyName("smName")] public string SMName { get; set; } = "";
         [JsonPropertyName("stateId")] public int StateId { get; set; }
         [JsonPropertyName("stateName")] public string StateName { get; set; } = "";
     }
 
     public class BehaviorSnapshot
     {
-        [JsonPropertyName("formId")] public string FormId { get; set; }
-        [JsonPropertyName("actorName")] public string ActorName { get; set; }
-        [JsonPropertyName("behaviorFile")] public string BehaviorFile { get; set; }
+        [JsonPropertyName("formId")] public string FormId { get; set; } = "";
+        [JsonPropertyName("actorName")] public string ActorName { get; set; } = "";
+        [JsonPropertyName("behaviorFile")] public string BehaviorFile { get; set; } = "";
         [JsonPropertyName("activeStates")] public List<ActiveStateInfo> ActiveStates { get; set; } = new();
         [JsonPropertyName("variables")] public List<VariableValue> Variables { get; set; } = new();
-        [JsonPropertyName("dragon")] public DragonSnapshot Dragon { get; set; }
+        [JsonPropertyName("dragon")] public DragonSnapshot? Dragon { get; set; }
 
         // Set by editor — not from plugin
         [JsonIgnore] public DateTime Timestamp { get; set; }
@@ -36,22 +36,22 @@ namespace SkyrimHavokEditor.Core
 
     public class DragonSnapshot
     {
-        [JsonPropertyName("formId")] public string FormId { get; set; }
-        [JsonPropertyName("behaviorFile")] public string BehaviorFile { get; set; }
+        [JsonPropertyName("formId")] public string FormId { get; set; } = "";
+        [JsonPropertyName("behaviorFile")] public string BehaviorFile { get; set; } = "";
         [JsonPropertyName("activeStates")] public List<ActiveStateInfo> ActiveStates { get; set; } = new();
         [JsonPropertyName("variables")] public List<VariableValue> Variables { get; set; } = new();
     }
 
     public class DebugVarEntry
     {
-        public string Name { get; set; }
-        public string Type { get; set; }  // "float" or "int"
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "";  // "float" or "int"
     }
 
     public class DebugSMEntry
     {
-        public string VariableName { get; set; }
-        public string SmName { get; set; }
+        public string VariableName { get; set; } = "";
+        public string SmName { get; set; } = "";
     }
 
     public class DebugConfig
@@ -62,13 +62,13 @@ namespace SkyrimHavokEditor.Core
 
     public class BehaviorDebuggerClient
     {
-        public event Action<BehaviorSnapshot> SnapshotReceived;
-        public event Action<bool> ConnectionChanged;
+        public event Action<BehaviorSnapshot>? SnapshotReceived;
+        public event Action<bool>? ConnectionChanged;
 
-        private Thread _thread;
+        private Thread? _thread;
         private volatile bool _running;
         private volatile bool _paused;
-        private NamedPipeClientStream _activePipe;
+        private NamedPipeClientStream? _activePipe;
 
         // Session recording
         private readonly List<BehaviorSnapshot> _recording = new();

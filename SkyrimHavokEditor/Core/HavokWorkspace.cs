@@ -16,12 +16,12 @@ namespace SkyrimHavokEditor.Core
 
     public class HkLoadedFile
     {
-        public string XmlPath { get; set; }
-        public string OriginalPath { get; set; }
-        public string HkxPath { get; set; }
+        public string XmlPath { get; set; } = "";
+        public string OriginalPath { get; set; } = "";
+        public string HkxPath { get; set; } = "";
         public bool WasHkx { get; set; }
         public HkFileType FileType { get; set; }
-        public HavokManager Manager { get; set; }
+        public HavokManager? Manager { get; set; }
         public string DisplayName =>
             Path.GetFileName(OriginalPath ?? XmlPath ?? "unknown");
     }
@@ -78,13 +78,13 @@ namespace SkyrimHavokEditor.Core
 
         public void SaveCharacterXml(string outPath)
         {
-            if (CharacterFile == null) return;
+            if (CharacterFile?.Manager == null) return;
             SerializeManager(CharacterFile.Manager, outPath);
         }
 
         public void SaveProjectXml(string outPath)
         {
-            if (ProjectFile == null) return;
+            if (ProjectFile?.Manager == null) return;
             SerializeManager(ProjectFile.Manager, outPath);
         }
 
@@ -108,7 +108,8 @@ namespace SkyrimHavokEditor.Core
             var mgr = new HavokManager();
             var ser = new XmlSerializer(typeof(HkPackfile));
             using var fs = new FileStream(xmlPath, FileMode.Open, FileAccess.Read);
-            var packfile = (HkPackfile)ser.Deserialize(fs);
+            var packfile = (HkPackfile?)ser.Deserialize(fs)
+                ?? throw new InvalidDataException($"Failed to deserialize {Path.GetFileName(xmlPath)}");
             mgr.BuildGraph(packfile);
 
             return new HkLoadedFile
@@ -131,7 +132,7 @@ namespace SkyrimHavokEditor.Core
 
             foreach (var charVm in pvm.Characters)
             {
-                var relPath = charVm.File.OriginalPath;
+                var relPath = charVm.File?.OriginalPath ?? "";
                 if (string.IsNullOrEmpty(relPath)) continue;
 
                 // The project stores paths like "Characters\DragonTEST.hkx"
@@ -239,8 +240,9 @@ namespace SkyrimHavokEditor.Core
 
         private ProjectViewModel BuildProjectViewModel(HkLoadedFile file)
         {
-            var mgr = file.Manager;
             var pvm = new ProjectViewModel { File = file };
+            var mgr = file.Manager;
+            if (mgr == null) return pvm;
 
             var projData = mgr.ObjectMap.Values
                 .FirstOrDefault(o => o.ClassName == "hkbProjectData");
@@ -297,6 +299,7 @@ namespace SkyrimHavokEditor.Core
             HkLoadedFile file)
         {
             var mgr = file.Manager;
+            if (mgr == null) return;
 
             var charData = mgr.ObjectMap.Values
                 .FirstOrDefault(o => o.ClassName == "hkbCharacterData");

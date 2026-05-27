@@ -10,9 +10,9 @@ namespace SkyrimHavokEditor.Models.ViewModels
 {
     public class IdNamePair : INotifyPropertyChanged
     {
-        public string Id { get; set; }
+        public string Id { get; set; } = "";
 
-        private string _name;
+        private string _name = "";
 
         public int Index { get; set; }
         public string Name
@@ -33,7 +33,7 @@ namespace SkyrimHavokEditor.Models.ViewModels
         public bool IsInt => VariableType == "VARIABLE_TYPE_INT32";
         public bool IsReal => !IsBool && !IsInt;
 
-        public string RawValue { get; set; }
+        public string RawValue { get; set; } = "";
 
         private bool _boolValue;
         public bool BoolValue
@@ -58,30 +58,29 @@ namespace SkyrimHavokEditor.Models.ViewModels
             }
         }
 
-        private string _value;
+        private string _value = "";
         public string Value
         {
             get => _value;
             set
             {
-                var trimmed = value?.Trim();
+                var trimmed = value?.Trim() ?? "";
                 if (_value != trimmed)
                 {
                     var old = _value;
                     _value = trimmed;
-                    _boolValue = trimmed == "1" || trimmed?.ToLower() == "true";
+                    _boolValue = trimmed == "1" || trimmed.Equals("true", StringComparison.OrdinalIgnoreCase);
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(BoolValue));
-                    OnPropertyChanged(nameof(BoolDisplayValue));  // ← add this
-                    if (old != null || trimmed != null)
-                        ValueChanged?.Invoke(this, (old, trimmed));
+                    OnPropertyChanged(nameof(BoolDisplayValue));
+                    ValueChanged?.Invoke(this, (old, trimmed));
                 }
             }
         }
 
         public string BoolDisplayValue
         {
-            get => (_value == "1" || _value?.ToLower() == "true") ? "true" : "false";
+            get => (_value == "1" || _value.Equals("true", StringComparison.OrdinalIgnoreCase)) ? "true" : "false";
             set
             {
                 Value = value == "true" ? "1" : "0";
@@ -89,15 +88,14 @@ namespace SkyrimHavokEditor.Models.ViewModels
             }
         }
 
-        // Add these two properties to IdNamePair:
         public string TypeShort => VariableType switch
         {
             "VARIABLE_TYPE_BOOL" => "BOOL",
             "VARIABLE_TYPE_INT8" => "INT8",
             "VARIABLE_TYPE_INT16" => "INT16",
             "VARIABLE_TYPE_INT32" => "INT",
-            "VARIABLE_TYPE_REAL" => "FLOAT",   // ← file uses REAL, display as FLOAT
-            "VARIABLE_TYPE_FLOAT" => "FLOAT",   // ← keep for compatibility
+            "VARIABLE_TYPE_REAL" => "FLOAT",
+            "VARIABLE_TYPE_FLOAT" => "FLOAT",
             "VARIABLE_TYPE_POINTER" => "PTR",
             _ => "?"
         };
@@ -115,10 +113,10 @@ namespace SkyrimHavokEditor.Models.ViewModels
         };
 
 
-        public event EventHandler<(string OldValue, string NewValue)> ValueChanged;
+        public event EventHandler<(string OldValue, string NewValue)>? ValueChanged;
 
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string name = null)
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string? name = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }

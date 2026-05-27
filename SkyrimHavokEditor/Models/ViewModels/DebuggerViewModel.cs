@@ -11,8 +11,8 @@ namespace SkyrimHavokEditor.UI
 {
     public class DebuggerViewModel : INotifyPropertyChanged
     {
-        public event PropertyChangedEventHandler PropertyChanged;
-        private void OnProp([CallerMemberName] string p = "")
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void OnProp([CallerMemberName] string? p = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
 
         // ── Collections (shared, both panels bind to these) ───────────────────
@@ -63,9 +63,9 @@ namespace SkyrimHavokEditor.UI
         public double PanToOpacity { get => _panToOpacity; set { _panToOpacity = value; OnProp(); } }
 
         // ── Commands wired by StateMachineGraphView ───────────────────────────
-        public Action OnPauseToggle { get; set; }
-        public Action OnRecordToggle { get; set; }
-        public Action OnExportRecording { get; set; }
-        public Action OnPanToActiveToggle { get; set; }
+        public Action? OnPauseToggle { get; set; }
+        public Action? OnRecordToggle { get; set; }
+        public Action? OnExportRecording { get; set; }
+        public Action? OnPanToActiveToggle { get; set; }
     }
 }

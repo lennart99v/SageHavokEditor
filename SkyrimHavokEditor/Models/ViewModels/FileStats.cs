@@ -28,8 +28,8 @@ namespace SkyrimHavokEditor.Models.ViewModels
             ? $"Objects: {ObjectCount}  |  Variables: {VariableCount}  |  Events: {EventCount}  |  Clips: {ClipCount}  |  Transitions: {TransitionCount}  |  Bindings: {BindingCount}  |  State Machines: {StateMachineCount}"
             : "No file loaded";
 
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string n = null)
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string? n = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
 }

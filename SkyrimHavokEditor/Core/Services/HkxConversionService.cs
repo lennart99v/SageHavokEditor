@@ -17,8 +17,8 @@ namespace SkyrimHavokEditor.Core
     public class HkxConversionResult
     {
         public bool Success { get; init; }
-        public string Error { get; init; }
-        public string XmlPath { get; init; }   // set on successful HKX→XML
+        public string? Error { get; init; }
+        public string? XmlPath { get; init; }   // set on successful HKX→XML
     }
 
     /// <summary>

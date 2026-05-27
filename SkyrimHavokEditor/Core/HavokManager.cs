@@ -8,7 +8,7 @@ namespace SkyrimHavokEditor.Core
     {
         public Dictionary<string, HkObject> ObjectMap { get; private set; } = new();
 
-        public HkObject RootObject { get; private set; }
+        public HkObject? RootObject { get; private set; }
 
         public void BuildGraph(HkPackfile packfile)
         {
@@ -42,7 +42,7 @@ namespace SkyrimHavokEditor.Core
             }
         }
 
-        public HkObject Resolve(string id)
+        public HkObject? Resolve(string? id)
         {
             if (id == null)
                 return null;
@@ -53,7 +53,7 @@ namespace SkyrimHavokEditor.Core
             return null;
         }
 
-        public bool TryResolve(string id, out HkObject obj)
+        public bool TryResolve(string? id, out HkObject? obj)
         {
             obj = null;
 

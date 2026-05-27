@@ -8,8 +8,8 @@ namespace SkyrimHavokEditor.Models.ViewModels
 {
     public class TransitionDetail
     {
-        public string Label { get; set; }
-        public string Value { get; set; }
-        public string ObjectId { get; set; }
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+        public string ObjectId { get; set; } = "";
     }
 }

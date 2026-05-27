@@ -18,7 +18,7 @@ namespace SkyrimHavokEditor.Core.Services
         {
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(BookmarksPath));
+                Directory.CreateDirectory(Path.GetDirectoryName(BookmarksPath)!);
                 var lines = Bookmarks.Select(b => $"{b.Id}|{b.Name}|{b.ClassName}|{b.Label ?? ""}");
                 File.WriteAllLines(BookmarksPath, lines);
             }
@@ -68,10 +68,10 @@ namespace SkyrimHavokEditor.Core.Services
 
     public class BookmarkEntry
     {
-        public string Id { get; set; }
-        public string Name { get; set; }
-        public string ClassName { get; set; }
-        public string Label { get; set; }
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string ClassName { get; set; } = "";
+        public string Label { get; set; } = "";
         public string Display => string.IsNullOrEmpty(Label) ? Name : $"{Label} ({Name})";
     }
 }
