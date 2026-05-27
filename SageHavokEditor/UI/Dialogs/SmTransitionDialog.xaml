@@ -1,0 +1,110 @@
+﻿<Window x:Class="SageHavokEditor.UI.Dialogs.SmTransitionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Transition" Width="480" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        WindowStyle="None" AllowsTransparency="False" ShowInTaskbar="False"
+        Background="{DynamicResource BgDarkBrush}">
+    <Border BorderBrush="{DynamicResource AccentBlueBrush}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="38"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <!-- Title bar -->
+            <Grid Grid.Row="0" Background="{DynamicResource BgPanelBrush}" MouseLeftButtonDown="TitleBar_MouseDown">
+                <TextBlock x:Name="TitleLabel" Text="Transition"
+                           Foreground="{DynamicResource AccentBlueBrush}"
+                           FontWeight="SemiBold" FontSize="13"
+                           VerticalAlignment="Center" Margin="12,0"/>
+                <Button Content="✕" Width="38" Height="38" Padding="0" HorizontalAlignment="Right" Click="BtnClose_Click">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#C42B1C"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+            <!-- Fields -->
+            <Grid Grid.Row="1" Margin="20,16,20,8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="12"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="12"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="12"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <!-- From State -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="From State"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                <ComboBox Grid.Row="0" Grid.Column="1"
+                          ItemsSource="{Binding FromStateOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                          DisplayMemberPath="Name" SelectedValuePath="Id"
+                          SelectedValue="{Binding SelectedFromStateId, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}"
+                          Background="{DynamicResource BgMidBrush}" Foreground="{DynamicResource TextPrimaryBrush}" BorderBrush="{DynamicResource BorderBrush}"/>
+                <!-- Event -->
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Event"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                <!-- Remove the ItemTemplate version, use DisplayMemberPath like the others -->
+                <ComboBox Grid.Row="2" Grid.Column="1"
+          ItemsSource="{Binding EventList, RelativeSource={RelativeSource AncestorType=Window}}"
+          DisplayMemberPath="Name"
+          SelectedValuePath="Id"
+          SelectedValue="{Binding SelectedEventId, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}"
+          Background="{DynamicResource BgMidBrush}" 
+          Foreground="{DynamicResource TextPrimaryBrush}" 
+          BorderBrush="{DynamicResource BorderBrush}"/>
+                <!-- To State -->
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="To State"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                <ComboBox Grid.Row="4" Grid.Column="1"
+                          ItemsSource="{Binding StateOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                          DisplayMemberPath="Name" SelectedValuePath="Id"
+                          SelectedValue="{Binding SelectedToStateId, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}"
+                          Background="{DynamicResource BgMidBrush}" Foreground="{DynamicResource TextPrimaryBrush}" BorderBrush="{DynamicResource BorderBrush}"/>
+                <!-- Flags -->
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Flags"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="6" Grid.Column="1" x:Name="FlagsBox"
+                         Background="{DynamicResource BgMidBrush}" Foreground="{DynamicResource TextPrimaryBrush}"
+                         BorderBrush="{DynamicResource BorderBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}" Padding="6,5"/>
+            </Grid>
+            <!-- Buttons -->
+            <Border Grid.Row="2" Background="{DynamicResource BgPanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,10">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Cancel" Width="80" Margin="0,0,8,0" Click="BtnCancel_Click"/>
+                    <Button Content="Confirm" Width="90" Click="BtnConfirm_Click">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Setter Property="Background" Value="#0E639C"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="BorderBrush" Value="#1177BB"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#1177BB"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter Property="Background" Value="#094771"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

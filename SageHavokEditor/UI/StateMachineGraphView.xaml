@@ -1,0 +1,109 @@
+﻿<UserControl x:Class="SageHavokEditor.UI.StateMachineGraphView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="{DynamicResource BgDarkBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0" Background="{DynamicResource BgPanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                Padding="8,6">
+            <DockPanel DockPanel.Dock="Top" Background="{DynamicResource BgPanelBrush}"
+           LastChildFill="True">
+
+                <!-- Back button -->
+                <Button x:Name="BtnBack" Content="← Back" IsEnabled="False"
+            Click="BtnBack_Click" Padding="8,4" Margin="4,3"
+            DockPanel.Dock="Left"/>
+
+                <Border Background="{DynamicResource BgMidBrush}"
+        BorderBrush="{DynamicResource BorderBrush}"
+        BorderThickness="1" CornerRadius="3"
+        Margin="6,0,0,0" Padding="0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🔍" VerticalAlignment="Center"
+                   Padding="6,0,4,0"
+                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBox x:Name="GraphSearchBox"
+                 Width="160" Padding="2,3"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 Foreground="{DynamicResource TextPrimaryBrush}"
+                 VerticalAlignment="Center"
+                 FontSize="11"
+                 ToolTip="Search nodes (Enter to go-to, Esc to clear)"
+                 KeyDown="GraphSearchBox_KeyDown"
+                 TextChanged="GraphSearchBox_TextChanged"/>
+                        <Button Content="✕" Padding="4,0" Margin="0"
+                Background="Transparent" BorderThickness="0"
+                Foreground="{DynamicResource TextSecondaryBrush}"
+                FontSize="10" VerticalAlignment="Center"
+                Click="GraphSearchClear_Click"
+                ToolTip="Clear search"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Machine selector -->
+                <ComboBox x:Name="MachineSelector" Width="180" Margin="4,3"
+              SelectionChanged="MachineSelector_SelectionChanged"
+              DockPanel.Dock="Left"/>
+
+                <!-- Toolbar buttons (right side) -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Margin="4,3">
+                    <TextBox x:Name="SearchBox" Width="120" Padding="3"
+                 TextChanged="SearchBox_TextChanged" Margin="0,0,4,0"/>
+                    <Button Content="⊙ Layout"  Click="BtnLayout_Click"  Padding="6,3" Margin="0,0,2,0"/>
+                    <Button Content="⊕"         Click="BtnZoomIn_Click"  Padding="6,3" Margin="0,0,2,0"/>
+                    <Button Content="⊖"         Click="BtnZoomOut_Click" Padding="6,3" Margin="0,0,2,0"/>
+                    <Button Content="⊡"         Click="BtnFit_Click"     Padding="6,3" Margin="0,0,2,0"/>
+                    <Button x:Name="BtnPanToActive"
+        Content="🎯" ToolTip="Pan to active node (off)"
+        Click="BtnPanToActive_Click"
+        Padding="4,2" Margin="0,0,2,0"
+        FontSize="10" Opacity="0.5"/>
+                    <Button Content="Export PNG" Click="BtnExportPng_Click" Padding="6,3"/>
+                </StackPanel>
+
+                <!-- Breadcrumb bar — fills remaining space -->
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Hidden">
+                    <StackPanel x:Name="BreadcrumbPanel" Orientation="Horizontal"
+                    VerticalAlignment="Center" Margin="4,0"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+        <ItemsControl x:Name="BookmarkStrip"
+              DockPanel.Dock="Top"
+              Height="0"
+              Background="Transparent">
+            <!-- Slots 1-9 shown as tiny dots when set; clicking jumps to bookmark -->
+            <!-- Populated from code-behind after SaveGraphBookmark -->
+        </ItemsControl>
+        <!-- Graph canvas with pan/zoom -->
+        <Border Grid.Row="1"
+        x:Name="CanvasBorder"
+        MouseWheel="Canvas_MouseWheel"
+        MouseLeftButtonDown="Canvas_MouseLeftButtonDown"
+        MouseLeftButtonUp="Canvas_MouseLeftButtonUp"
+        MouseMove="Canvas_MouseMove"
+        ClipToBounds="True"
+        Background="{DynamicResource  BgMidBrush}">
+            <Canvas x:Name="GraphCanvas" Width="50000" Height="50000">
+                <Canvas.Background>
+                    <DrawingBrush TileMode="Tile" Viewport="0,0,24,24" ViewportUnits="Absolute">
+                        <DrawingBrush.Drawing>
+                            <GeometryDrawing Brush="#333333">
+                                <GeometryDrawing.Geometry>
+                                    <EllipseGeometry RadiusX="0.8" RadiusY="0.8" Center="12,12"/>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                        </DrawingBrush.Drawing>
+                    </DrawingBrush>
+                </Canvas.Background>
+            </Canvas>
+        </Border>
+    </Grid>
+</UserControl>

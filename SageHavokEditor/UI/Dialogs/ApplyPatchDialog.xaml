@@ -1,0 +1,132 @@
+﻿<Window x:Class="SageHavokEditor.UI.Dialogs.ApplyPatchDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Apply Behavior Patch"
+        Height="580" Width="700"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgDarkBrush}"
+        WindowStyle="SingleBorderWindow"
+        ResizeMode="CanResize">
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="🔧 Apply Behavior Patch"
+                       FontSize="16" FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimaryBrush}"
+                       Margin="0,0,0,4"/>
+            <TextBlock Text="Load a .behaviorpatch file and apply it to the current behavior."
+                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+        </StackPanel>
+
+        <!-- Patch file picker -->
+        <Border Grid.Row="1" Background="{StaticResource BgPanelBrush}"
+        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+        CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Patch File / Folder" FontWeight="SemiBold" FontSize="11"
+                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,3"/>
+                    <TextBlock x:Name="PatchFileLabel" Text="No patch selected"
+                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                </StackPanel>
+                <Button Grid.Column="1" Content="Browse .behaviorpatch…" Padding="10,5"
+                VerticalAlignment="Center" Margin="6,0,0,0"
+                Click="BtnBrowsePatch_Click"/>
+                <Button Grid.Column="2" Content="Browse Nemesis/Pandora folder…" Padding="10,5"
+                VerticalAlignment="Center" Margin="6,0,0,0"
+                Click="BtnBrowseNemesisFolder_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- Patch info -->
+        <Border Grid.Row="2" x:Name="PatchInfoPanel"
+                Background="{StaticResource BgPanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                CornerRadius="4" Padding="10,8" Margin="0,0,0,10"
+                Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                    <TextBlock x:Name="TxtPatchAuthor"      FontSize="11" Margin="0,0,0,2"/>
+                    <TextBlock x:Name="TxtPatchDescription" FontSize="11" Margin="0,0,0,2"
+                               TextWrapping="Wrap"/>
+                    <TextBlock x:Name="TxtPatchCreated"     FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                    <TextBlock x:Name="TxtPatchStats" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Results log -->
+        <Grid Grid.Row="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" x:Name="ResultHeader"
+                       Text="Operations to apply:" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" Margin="0,0,0,4"/>
+            <ListBox Grid.Row="1" x:Name="ResultsList"
+                     SelectionMode="Extended" VirtualizingPanel.IsVirtualizing="True"
+                     Background="{StaticResource BgMidBrush}"
+                     BorderBrush="{StaticResource BorderBrush}"
+                     FontSize="11">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="{Binding Icon}" Margin="0,0,6,0"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Message}"
+                                       Foreground="{Binding Color}"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+
+        <!-- Footer -->
+        <Grid Grid.Row="4" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="SummaryText" Grid.Column="0"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="Preview" Padding="10,6"
+                    Margin="0,0,5,0" Click="BtnPreview_Click"
+                    x:Name="BtnPreview" IsEnabled="False"/>
+            <Button Grid.Column="2" Content="✅ Apply Patch" Padding="12,6"
+                    Margin="0,0,5,0" Click="BtnApply_Click"
+                    x:Name="BtnApply" IsEnabled="False"
+                    Background="{StaticResource BgSelectedBrush}"/>
+            <Button Grid.Column="3" Content="Close" Padding="10,6"
+                    Click="BtnClose_Click"/>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,13 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Architect" />
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Project Path="libs/HKX2Library/HKX2/HKX2.csproj">
+    <BuildType Solution="Architect|*" Project="Release" />
+  </Project>
+  <Project Path="SageHavokEditor/SageHavokEditor.csproj">
+    <Build Solution="Architect|*" Project="false" />
+  </Project>
+</Solution>

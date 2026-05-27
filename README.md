@@ -1,4 +1,4 @@
-# SkyrimHavokEditor
+# SageHavokEditor
 
 A WPF editor for Skyrim Special Edition Havok behavior, animation and
 skeleton files (`.hkx`), with a graph view of state machines, an animation
@@ -33,22 +33,22 @@ without shipping modified behavior files.
 ## Build
 
 ```pwsh
-dotnet build SkyrimHavokEditor/SkyrimHavokEditor.csproj -c Release
+dotnet build SageHavokEditor/SageHavokEditor.csproj -c Release
 ```
 
 To produce a single-file, self-contained `win-x64` release bundle in
-`SkyrimHavokEditor/SkyrimHavokEditor_Dist/`:
+`SageHavokEditor/SageHavokEditor_Dist/`:
 
 ```pwsh
-dotnet publish SkyrimHavokEditor/SkyrimHavokEditor.csproj -c Release
-cd SkyrimHavokEditor
+dotnet publish SageHavokEditor/SageHavokEditor.csproj -c Release
+cd SageHavokEditor
 .\PrepareRelease.bat
 ```
 
 ## Project layout
 
 ```
-SkyrimHavokEditor/
+SageHavokEditor/
   Core/                Havok parsing, patching, services, validation
     Animation/         skeleton parser, spline decoder, clip sampler
     Patching/          snapshot, patch generator/applier, Nemesis reader
