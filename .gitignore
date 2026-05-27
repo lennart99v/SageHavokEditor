@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# ── Project-specific ──────────────────────────────────────────────────
+# Release bundle produced by PrepareRelease.bat
+*_Dist/
+*_Dist.zip
