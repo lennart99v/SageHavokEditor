@@ -472,7 +472,7 @@ namespace SkyrimHavokEditor.Core.Patching
         // ── Helpers ───────────────────────────────────────────────────────────
 
         /// Resolve "name:BHR_Master" or "id:#0052" to an HkObject
-        private HkObject ResolveAnchor(string anchor)
+        private HkObject? ResolveAnchor(string anchor)
         {
             if (string.IsNullOrEmpty(anchor)) return null;
 
@@ -533,7 +533,7 @@ namespace SkyrimHavokEditor.Core.Patching
         }
 
         /// Resolve a value — if localRef is set, look up the mapped actual ID
-        private string ResolveValue(string value, string localRef)
+        private string ResolveValue(string? value, string? localRef)
         {
             if (!string.IsNullOrEmpty(localRef))
             {
@@ -556,13 +556,12 @@ namespace SkyrimHavokEditor.Core.Patching
             return $"#{next:D4}";
         }
 
-        // Add to PatchApplier:
-        private HkObject GetStringData() =>
+        private HkObject? GetStringData() =>
             _manager.ObjectMap.Values.FirstOrDefault(o =>
                 o.ClassName == "hkbBehaviorGraphStringData" ||
                 o.ClassName == "hkbProjectStringData");
 
-        private static string Truncate(string s, int max = 40)
+        private static string Truncate(string? s, int max = 40)
             => s?.Length > max ? s.Substring(0, max) + "…" : s ?? "";
     }
 }

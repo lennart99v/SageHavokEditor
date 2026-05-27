@@ -10,9 +10,9 @@ namespace SkyrimHavokEditor.Core.Animation
 {
     public sealed class Skeleton
     {
-        public string[] BoneNames;
-        public int[] ParentIndices;
-        public HkTransform[] ReferencePose;   // local space
+        public string[] BoneNames = Array.Empty<string>();
+        public int[] ParentIndices = Array.Empty<int>();
+        public HkTransform[] ReferencePose = Array.Empty<HkTransform>();   // local space
     }
 
     public static class SkeletonParser
@@ -26,26 +26,26 @@ namespace SkyrimHavokEditor.Core.Animation
 
             // First hkaSkeleton with a non-empty referencePose (skip empty #0053-style stubs)
             var skel = doc.Descendants("hkobject")
-                .Where(o => (string)o.Attribute("class") == "hkaSkeleton")
+                .Where(o => (string?)o.Attribute("class") == "hkaSkeleton")
                 .FirstOrDefault(o =>
                 {
-                    var rp = o.Elements("hkparam").FirstOrDefault(p => (string)p.Attribute("name") == "referencePose");
+                    var rp = o.Elements("hkparam").FirstOrDefault(p => (string?)p.Attribute("name") == "referencePose");
                     return rp != null && !string.IsNullOrWhiteSpace(rp.Value);
                 })
                 ?? throw new Exception("No hkaSkeleton with a reference pose found.");
 
             string Param(string n) =>
-                skel.Elements("hkparam").FirstOrDefault(p => (string)p.Attribute("name") == n)?.Value ?? "";
+                skel.Elements("hkparam").FirstOrDefault(p => (string?)p.Attribute("name") == n)?.Value ?? "";
 
             var parents = Param("parentIndices")
                 .Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(int.Parse).ToArray();
 
             var names = skel.Elements("hkparam")
-                .First(p => (string)p.Attribute("name") == "bones")
+                .First(p => (string?)p.Attribute("name") == "bones")
                 .Elements("hkobject")
                 .Select(o => o.Elements("hkparam")
-                    .First(p => (string)p.Attribute("name") == "name").Value.Trim())
+                    .First(p => (string?)p.Attribute("name") == "name").Value.Trim())
                 .ToArray();
 
             // referencePose: groups of (t)(q)(s) — 3 groups per bone

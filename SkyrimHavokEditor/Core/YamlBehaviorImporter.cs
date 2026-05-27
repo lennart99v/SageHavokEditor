@@ -326,7 +326,7 @@ namespace SkyrimHavokEditor.Core
 
         // ── Generic object YAML loader ────────────────────────────────────────────
 
-        private void LoadObjectYaml(string yamlPath, string defaultClass)
+        private void LoadObjectYaml(string yamlPath, string? defaultClass)
         {
             var text = File.ReadAllText(yamlPath);
             var doc = YamlDocument.Parse(text);
@@ -841,9 +841,9 @@ namespace SkyrimHavokEditor.Core
             }
         }
 
-        private string ResolveNameToId(string value)
+        private string ResolveNameToId(string? value)
         {
-            if (string.IsNullOrEmpty(value) || value == "null") return value;
+            if (string.IsNullOrEmpty(value) || value == "null") return value ?? "";
             if (value.StartsWith("#")) return value;
             if (_nameToObject.TryGetValue(value, out var obj)) return obj.Id;
             return value;
@@ -875,7 +875,7 @@ namespace SkyrimHavokEditor.Core
             return "0";
         }
 
-        private static string GuessClassFromContent(YamlDocument doc)
+        private static string? GuessClassFromContent(YamlDocument doc)
         {
             if (doc.HasScalar("animationName")) return "hkbClipGenerator";
             if (doc.HasScalar("blendParameter")) return "hkbBlenderGenerator";
@@ -922,12 +922,12 @@ namespace SkyrimHavokEditor.Core
 
         // ── Accessors ─────────────────────────────────────────────────────────────
 
-        public string GetScalar(string key) =>
+        public string? GetScalar(string key) =>
             Scalars.TryGetValue(key, out var v) ? v : null;
 
         public bool HasScalar(string key) => Scalars.ContainsKey(key);
 
-        public YamlDocument GetSection(string name) =>
+        public YamlDocument? GetSection(string name) =>
             _sections.TryGetValue(name, out var s) ? s : null;
 
         public List<string> GetStringList(string name) =>
@@ -945,10 +945,10 @@ namespace SkyrimHavokEditor.Core
             var doc = new YamlDocument();
             var lines = yaml.Split('\n');
 
-            string currentSection = null;        // e.g. "behavior"
-            string currentListField = null;      // e.g. "variables" or "eventNames"
+            string? currentSection = null;        // e.g. "behavior"
+            string? currentListField = null;      // e.g. "variables" or "eventNames"
             bool currentListIsObjects = false;   // true if items have sub-keys
-            Dictionary<string, string> currentItem = null;
+            Dictionary<string, string>? currentItem = null;
 
             for (int i = 0; i < lines.Length; i++)
             {
@@ -1104,7 +1104,7 @@ namespace SkyrimHavokEditor.Core
             return idx > 0 ? s[..idx] : s;
         }
 
-        private static string PeekNextNonEmpty(string[] lines, int from)
+        private static string? PeekNextNonEmpty(string[] lines, int from)
         {
             for (int i = from; i < lines.Length; i++)
                 if (!string.IsNullOrWhiteSpace(lines[i])) return lines[i];

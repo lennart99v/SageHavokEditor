@@ -77,8 +77,8 @@ namespace SkyrimHavokEditor.Core.Patching
 
             // Normal case: find ORIGINAL → CLOSE → NEW → CLOSE blocks
             var state = ParseState.Normal;
-            string currentParam = null;
-            string originalValue = null;
+            string? currentParam = null;
+            string? originalValue = null;
 
             for (int i = 1; i < lines.Length; i++)
             {
@@ -175,7 +175,7 @@ namespace SkyrimHavokEditor.Core.Patching
             return result;
         }
 
-        private static string Truncate(string s, int max = 30)
+        private static string Truncate(string? s, int max = 30)
             => s?.Length > max ? s.Substring(0, max) + "…" : s ?? "";
 
         private enum ParseState { Normal, InOriginal, AfterOriginal, InNew, InNewOnly }

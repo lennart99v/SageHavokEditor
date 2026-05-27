@@ -8,8 +8,8 @@ namespace SkyrimHavokEditor.Core.Animation
 {
     public sealed class AnimationAnnotation
     {
-        public float Time;        // seconds
-        public string Text;       // e.g. "FootLeft"
+        public float Time;             // seconds
+        public string Text = "";       // e.g. "FootLeft"
         public int TrackIndex;
     }
 
@@ -17,10 +17,10 @@ namespace SkyrimHavokEditor.Core.Animation
     {
         public float Duration;
         public int NumFrames;
-        public int NumTracks;                       // numberOfTransformTracks
-        public HkTransform[][] Frames;              // [frame][bone] LOCAL space, skeleton-sized
+        public int NumTracks;                                       // numberOfTransformTracks
+        public HkTransform[][] Frames = Array.Empty<HkTransform[]>(); // [frame][bone] LOCAL space, skeleton-sized
         public List<AnimationAnnotation> Annotations = new();
-        public bool TrackCountExceedsBones;         // real warning (vs. benign "fewer tracks")
+        public bool TrackCountExceedsBones;                         // real warning (vs. benign "fewer tracks")
 
         public int FrameAt(double timeSeconds)
         {
@@ -48,14 +48,14 @@ namespace SkyrimHavokEditor.Core.Animation
             var doc = XDocument.Load(xmlPath);
 
             var anim = doc.Descendants("hkobject")
-                .FirstOrDefault(o => (string)o.Attribute("class") == "hkaSplineCompressedAnimation");
+                .FirstOrDefault(o => (string?)o.Attribute("class") == "hkaSplineCompressedAnimation");
             if (anim == null)
                 throw new AnimationParseException(
                     "No hkaSplineCompressedAnimation found " +
                     "(interleaved/uncompressed animations aren't supported yet).");
 
             string P(string n) => anim.Elements("hkparam")
-                .FirstOrDefault(p => (string)p.Attribute("name") == n)?.Value?.Trim() ?? "";
+                .FirstOrDefault(p => (string?)p.Attribute("name") == n)?.Value?.Trim() ?? "";
 
             float duration = ParseF(P("duration"), 1f);
             int numFrames = ParseI(P("numFrames"), 0);
@@ -76,7 +76,7 @@ namespace SkyrimHavokEditor.Core.Animation
 
             var trackFrames = HavokSplineDecoder.Decode(data, numFrames, maskSize);  // [frame][track]
 
-            int[] trackToBone = ParseTrackToBone(doc);     // null = identity (track i → bone i)
+            int[]? trackToBone = ParseTrackToBone(doc);     // null = identity (track i → bone i)
             int boneCount = skeleton.ReferencePose.Length;
 
             var frames = new HkTransform[numFrames][];
@@ -111,20 +111,20 @@ namespace SkyrimHavokEditor.Core.Animation
         private static void ReadAnnotations(XElement anim, AnimationClip clip)
         {
             var annTracks = anim.Elements("hkparam")
-                .FirstOrDefault(p => (string)p.Attribute("name") == "annotationTracks");
+                .FirstOrDefault(p => (string?)p.Attribute("name") == "annotationTracks");
             if (annTracks == null) return;
 
             int ti = 0;
             foreach (var track in annTracks.Elements("hkobject"))
             {
                 var anns = track.Elements("hkparam")
-                    .FirstOrDefault(p => (string)p.Attribute("name") == "annotations");
+                    .FirstOrDefault(p => (string?)p.Attribute("name") == "annotations");
                 if (anns != null)
                 {
                     foreach (var a in anns.Elements("hkobject"))
                     {
-                        var time = a.Elements("hkparam").FirstOrDefault(p => (string)p.Attribute("name") == "time")?.Value;
-                        var text = a.Elements("hkparam").FirstOrDefault(p => (string)p.Attribute("name") == "text")?.Value;
+                        var time = a.Elements("hkparam").FirstOrDefault(p => (string?)p.Attribute("name") == "time")?.Value;
+                        var text = a.Elements("hkparam").FirstOrDefault(p => (string?)p.Attribute("name") == "text")?.Value;
                         if (time != null && !string.IsNullOrWhiteSpace(text))
                             clip.Annotations.Add(new AnimationAnnotation
                             {
@@ -139,12 +139,12 @@ namespace SkyrimHavokEditor.Core.Animation
             clip.Annotations = clip.Annotations.OrderBy(a => a.Time).ToList();
         }
 
-        private static int[] ParseTrackToBone(XDocument doc)
+        private static int[]? ParseTrackToBone(XDocument doc)
         {
             var binding = doc.Descendants("hkobject")
-                .FirstOrDefault(o => (string)o.Attribute("class") == "hkaAnimationBinding");
+                .FirstOrDefault(o => (string?)o.Attribute("class") == "hkaAnimationBinding");
             var raw = binding?.Elements("hkparam")
-                .FirstOrDefault(p => (string)p.Attribute("name") == "transformTrackToBoneIndices")?.Value?.Trim();
+                .FirstOrDefault(p => (string?)p.Attribute("name") == "transformTrackToBoneIndices")?.Value?.Trim();
             if (string.IsNullOrEmpty(raw)) return null;     // empty = identity mapping
             var arr = raw.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries)
                          .Select(int.Parse).ToArray();

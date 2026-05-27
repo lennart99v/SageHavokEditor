@@ -24,7 +24,7 @@ namespace SkyrimHavokEditor.Core.Skeletons
     /// </summary>
     public class SkeletonRegistry
     {
-        private static SkeletonRegistry _instance;
+        private static SkeletonRegistry? _instance;
         public static SkeletonRegistry Instance => _instance ??= new SkeletonRegistry();
 
         // skeletonId -> ordered bone name list (index = Havok bone index)
@@ -220,15 +220,15 @@ namespace SkyrimHavokEditor.Core.Skeletons
 
         private class SkeletonDefinition
         {
-            [JsonPropertyName("skeletonId")] public string SkeletonId { get; set; }
-            [JsonPropertyName("description")] public string Description { get; set; }
-            [JsonPropertyName("bones")] public List<BoneEntry> Bones { get; set; }
+            [JsonPropertyName("skeletonId")] public string SkeletonId { get; set; } = "";
+            [JsonPropertyName("description")] public string Description { get; set; } = "";
+            [JsonPropertyName("bones")] public List<BoneEntry> Bones { get; set; } = new();
         }
 
         private class BoneEntry
         {
             [JsonPropertyName("index")] public int Index { get; set; }
-            [JsonPropertyName("name")] public string Name { get; set; }
+            [JsonPropertyName("name")] public string Name { get; set; } = "";
         }
     }
 }

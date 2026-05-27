@@ -11,12 +11,12 @@ namespace SkyrimHavokEditor.Core.Patching
 
     public class PatchExportOptions
     {
-        public string ModCode { get; set; }
-        public string ModName { get; set; }
-        public string Author { get; set; }
-        public string OutputFolder { get; set; }
-        public string BehaviorFileName { get; set; }
-        public string ProjectName { get; set; }
+        public string ModCode { get; set; } = "";
+        public string ModName { get; set; } = "";
+        public string Author { get; set; } = "";
+        public string OutputFolder { get; set; } = "";
+        public string BehaviorFileName { get; set; } = "";
+        public string ProjectName { get; set; } = "";
         public PatchEngineTarget Target { get; set; }
     }
 
@@ -36,7 +36,8 @@ namespace SkyrimHavokEditor.Core.Patching
         {
             var serializer = new System.Xml.Serialization.XmlSerializer(typeof(HkPackfile));
             using var fs = File.OpenRead(xmlPath);
-            var packfile = (HkPackfile)serializer.Deserialize(fs);
+            var packfile = (HkPackfile?)serializer.Deserialize(fs)
+                ?? throw new InvalidDataException($"Failed to deserialize {Path.GetFileName(xmlPath)}");
             var mgr = new HavokManager();
             mgr.BuildGraph(packfile);
             return PatchGenerator.TakeSnapshot(mgr);

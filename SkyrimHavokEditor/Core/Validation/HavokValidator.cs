@@ -150,10 +150,10 @@ namespace SkyrimHavokEditor.Core.Validation
                 if (statesParam == null) continue;
 
                 var stateIds = new Dictionary<string, string>();
-                foreach (var stateRef in statesParam.Value
+                foreach (var stateRef in (statesParam.Value ?? "")
                     .Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 {
-                    if (!_manager.TryResolve(stateRef, out var stateObj)) continue;
+                    if (!_manager.TryResolve(stateRef, out var stateObj) || stateObj == null) continue;
                     var stateId = stateObj.Params.FirstOrDefault(p => p.Name == "stateId")?.Value ?? "";
                     if (stateIds.TryGetValue(stateId, out var existing))
                     {
@@ -178,10 +178,10 @@ namespace SkyrimHavokEditor.Core.Validation
                 if (smStatesParam == null) continue;
 
                 var validStateIds = new HashSet<string>();
-                foreach (var sr in smStatesParam.Value
+                foreach (var sr in (smStatesParam.Value ?? "")
                     .Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 {
-                    if (_manager.TryResolve(sr, out var so))
+                    if (_manager.TryResolve(sr, out var so) && so != null)
                     {
                         var sid = so.Params.FirstOrDefault(p => p.Name == "stateId")?.Value;
                         if (sid != null) validStateIds.Add(sid);
@@ -192,7 +192,7 @@ namespace SkyrimHavokEditor.Core.Validation
                 var smWildcardRef = sm.Params.FirstOrDefault(p => p.Name == "wildcardTransitions")?.Value;
                 var wildcardArrayIds = new HashSet<string>();
                 if (!string.IsNullOrEmpty(smWildcardRef) && smWildcardRef != "null"
-                    && _manager.TryResolve(smWildcardRef, out var wildcardArray))
+                    && _manager.TryResolve(smWildcardRef, out var wildcardArray) && wildcardArray != null)
                 {
                     var wtp = wildcardArray.Params.FirstOrDefault(p => p.Name == "transitions");
                     if (wtp?.Children != null)
@@ -200,13 +200,13 @@ namespace SkyrimHavokEditor.Core.Validation
                             wildcardArrayIds.Add(wtr.GetHashCode().ToString());
                 }
 
-                foreach (var sr in smStatesParam.Value
+                foreach (var sr in (smStatesParam.Value ?? "")
                     .Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 {
-                    if (!_manager.TryResolve(sr, out var stateObj)) continue;
+                    if (!_manager.TryResolve(sr, out var stateObj) || stateObj == null) continue;
                     var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
                     if (string.IsNullOrEmpty(transRef) || transRef == "null") continue;
-                    if (!_manager.TryResolve(transRef, out var transArray)) continue;
+                    if (!_manager.TryResolve(transRef, out var transArray) || transArray == null) continue;
                     var tp = transArray.Params.FirstOrDefault(p => p.Name == "transitions");
                     if (tp?.Children == null) continue;
 
@@ -231,7 +231,7 @@ namespace SkyrimHavokEditor.Core.Validation
                         // Also skip FLAG_TO_NESTED_STATE_ID_IS_VALID explicitly  
                         if (flags.Contains("TO_NESTED")) continue;
 
-                        if (!validStateIds.Contains(toSid))
+                        if (toSid != null && !validStateIds.Contains(toSid))
                         {
                             issues.Add(new ValidationIssue
                             {

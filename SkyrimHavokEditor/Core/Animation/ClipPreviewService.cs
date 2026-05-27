@@ -22,12 +22,10 @@ namespace SkyrimHavokEditor.Core.Animation
         private readonly ConcurrentDictionary<string, string> _xmlCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.OrdinalIgnoreCase);
 
-        private Skeleton _skeleton;
-        private string _skeletonSource;
+        private Skeleton? _skeleton;
+        private string? _skeletonSource;
 
         public ClipPreviewService(HkxConversionService conv) => _conv = conv;
-
-
 
         public void Reset()
         {
@@ -39,9 +37,9 @@ namespace SkyrimHavokEditor.Core.Animation
         public sealed class PreviewResult
         {
             public bool Success { get; init; }
-            public string Error { get; init; }
-            public AnimationClip Clip { get; init; }
-            public Skeleton Skeleton { get; init; }
+            public string? Error { get; init; }
+            public AnimationClip? Clip { get; init; }
+            public Skeleton? Skeleton { get; init; }
             public bool TrackCountMismatch { get; init; }
         }
 
@@ -101,7 +99,7 @@ namespace SkyrimHavokEditor.Core.Animation
                     return cached;
 
                 var res = await _conv.PrepareXmlAsync(sourceFull);
-                if (!res.Success) throw new Exception(res.Error);
+                if (!res.Success || res.XmlPath == null) throw new Exception(res.Error ?? "Conversion failed");
 
                 if (!string.Equals(res.XmlPath, sourceFull, StringComparison.OrdinalIgnoreCase))
                 {
@@ -132,7 +130,7 @@ namespace SkyrimHavokEditor.Core.Animation
             return await Task.FromResult(true);   // LE seam: read header version here later
         }
 
-        private static string ResolvePath(string stored, string[] roots)
+        private static string? ResolvePath(string stored, string[] roots)
         {
             if (string.IsNullOrWhiteSpace(stored)) return null;
             if (Path.IsPathRooted(stored) && File.Exists(stored)) return stored;

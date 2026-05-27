@@ -8,8 +8,8 @@ namespace SkyrimHavokEditor.Core.Patching
     /// </summary>
     public class ObjectSnapshot
     {
-        public string ClassName { get; set; }
-        public string Name { get; set; }
+        public string ClassName { get; set; } = "";
+        public string Name { get; set; } = "";
 
         /// paramName → ParamSnapshot
         public Dictionary<string, ParamSnapshot> Params { get; set; } = new();

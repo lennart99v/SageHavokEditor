@@ -462,10 +462,10 @@ namespace SkyrimHavokEditor.Core.Patching
     "animationNames", "stringData"
 };
 
-        private static string SafeName(string cls)
+        private static string SafeName(string? cls)
             => (cls ?? "obj").Replace("hkb", "").Replace("hk", "").ToLower();
 
-        private static string Truncate(string s, int max = 40)
+        private static string Truncate(string? s, int max = 40)
             => s?.Length > max ? s.Substring(0, max) + "…" : s ?? "";
     }
 

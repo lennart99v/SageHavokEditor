@@ -73,7 +73,7 @@ namespace SkyrimHavokEditor.UI
             // We only care if it's referenced as a sub-component of another behavior object
             return _manager.ObjectMap.Values.Any(parent =>
                 parent != obj &&
-                (parent.ClassName == "hkbStateMachine" || parent.ClassName.Contains("Generator")) &&
+                (parent.ClassName == "hkbStateMachine" || (parent.ClassName?.Contains("Generator") ?? false)) &&
                 parent.Params.Any(p => p.Value == obj.Id));
         }
 
@@ -123,7 +123,7 @@ namespace SkyrimHavokEditor.UI
             return stateNode;
         }
 
-        private BehaviorNodeData ResolveGenerator(HkObject generator)
+        private BehaviorNodeData? ResolveGenerator(HkObject? generator)
         {
             if (generator == null) return null;
             if (generator.ClassName == "hkbStateMachine") return BuildStateMachine(generator);
@@ -156,7 +156,7 @@ namespace SkyrimHavokEditor.UI
             return targetState != null ? GetName(targetState) : $"State ID: {toStateIdParam.Value}";
         }
 
-        private string GetName(HkObject obj)
+        private string GetName(HkObject? obj)
         {
             if (obj == null) return "Null Object";
             var nameParam = obj.Params?.FirstOrDefault(p => p.Name == "name");

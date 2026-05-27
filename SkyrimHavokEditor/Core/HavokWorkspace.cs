@@ -98,7 +98,7 @@ namespace SkyrimHavokEditor.Core
             if (fmt == HkxFormat.HKX)
             {
                 var result = await _conv.PrepareXmlAsync(path);
-                if (!result.Success)
+                if (!result.Success || result.XmlPath == null)
                     throw new Exception($"HKX conversion failed for {Path.GetFileName(path)}:\n{result.Error}");
                 xmlPath = result.XmlPath;
                 wasHkx = true;

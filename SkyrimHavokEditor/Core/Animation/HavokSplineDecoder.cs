@@ -150,7 +150,7 @@ namespace SkyrimHavokEditor.Core.Animation
         {
             bool anyDyn = (mask & 0xF0) != 0;
             int numCP = 0, deg = 0;
-            byte[] knots = null;
+            byte[] knots = Array.Empty<byte>();
 
             if (anyDyn)
             {
@@ -183,7 +183,7 @@ namespace SkyrimHavokEditor.Core.Animation
                 }
             }
 
-            byte[] ctrlPts = null;
+            byte[] ctrlPts = Array.Empty<byte>();
             if (anyDyn)
             {
                 int cpSize = numCP * numDyn * bpc;
