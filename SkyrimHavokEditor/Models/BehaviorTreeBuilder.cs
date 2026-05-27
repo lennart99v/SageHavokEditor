@@ -84,10 +84,10 @@ namespace SkyrimHavokEditor.UI
             var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
             if (statesParam != null)
             {
-                var ids = statesParam.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ids = (statesParam.Value ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 foreach (var id in ids)
                 {
-                    if (_manager.TryResolve(id, out var state))
+                    if (_manager.TryResolve(id, out var state) && state != null)
                         node.Children.Add(BuildState(state, sm));
                 }
             }
@@ -102,17 +102,18 @@ namespace SkyrimHavokEditor.UI
             if (genParam != null && _manager.TryResolve(genParam.Value, out var gen))
             {
                 var genFolder = new BehaviorNodeData { Name = "Logic (Generator)", Type = NodeType.Generator };
-                genFolder.Children.Add(ResolveGenerator(gen));
+                var resolvedGen = ResolveGenerator(gen);
+                if (resolvedGen != null) genFolder.Children.Add(resolvedGen);
                 stateNode.Children.Add(genFolder);
             }
 
             var transParam = state.Params?.FirstOrDefault(p => p.Name == "transitions");
-            if (transParam != null && _manager.TryResolve(transParam.Value, out var transArray))
+            if (transParam != null && _manager.TryResolve(transParam.Value, out var transArray) && transArray != null)
             {
                 var transFolder = new BehaviorNodeData { Name = "Transitions", Type = NodeType.Transition };
                 foreach (var p in transArray.Params)
                 {
-                    if (_manager.TryResolve(p.Value, out var tr))
+                    if (_manager.TryResolve(p.Value, out var tr) && tr != null)
                     {
                         var targetName = GetTargetStateName(tr, parentMachine);
                         transFolder.Children.Add(new BehaviorNodeData { Name = $"→ {targetName}", Object = tr });

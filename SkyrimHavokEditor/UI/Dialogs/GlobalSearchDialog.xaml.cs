@@ -24,13 +24,13 @@ namespace SkyrimHavokEditor.UI.Dialogs
         private string _activeFilter = "all";
         private bool _replaceVisible = false;
 
-        public event Action<string> ObjectSelected;
-        public event Action<string> NavigateToEvent;
-        public event Action<string> NavigateToVariable;
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event Action<string>? ObjectSelected;
+        public event Action<string>? NavigateToEvent;
+        public event Action<string>? NavigateToVariable;
+        public event PropertyChangedEventHandler? PropertyChanged;
         public List<ReplaceChange> Changes { get; } = new();
 
-        public Action<string, Action, Action> RecordUndo { get; set; }
+        public Action<string, Action, Action>? RecordUndo { get; set; }
 
         private bool _showPlaceholder = true;
         public Visibility PlaceholderVisibility =>
@@ -79,7 +79,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
                 return;
             }
 
-            string prefix = null;
+            string? prefix = null;
             string query = raw.Trim();
 
             var prefixMap = new Dictionary<string, string>
@@ -123,7 +123,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
                         Name = ev.Name,
                         Id = $"idx:{ev.Id}",
                         Details = "Behavior event",
-                        ObjectId = null,
+                        ObjectId = "",
                         IsNavigable = false,
                         RawValue = ev.Name,
                         IsEditable = false
@@ -140,7 +140,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
                                 || Matches(obj.Id, query, caseSensitive, useRegex)
                                 || Matches(cls, query, caseSensitive, useRegex);
 
-                HkParam matchedParam = null;
+                HkParam? matchedParam = null;
                 if (!matchesName)
                 {
                     matchedParam = obj.Params.FirstOrDefault(p =>
@@ -228,7 +228,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
                     IsNavigable = true,
                     RawValue = matchedParam?.Value ?? name,
                     IsEditable = isEditable,
-                    MatchedParamName = matchedParam?.Name
+                    MatchedParamName = matchedParam?.Name ?? ""
                 });
             }
 
@@ -337,7 +337,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
                     {
                         ClipId = item.ObjectId,
                         ClipName = item.Name,
-                        OldPath = oldVal,
+                        OldPath = oldVal ?? "",
                         NewPath = newVal
                     });
 
@@ -475,49 +475,49 @@ namespace SkyrimHavokEditor.UI.Dialogs
             _ => 5
         };
 
-        protected void OnPropertyChanged([CallerMemberName] string name = null)
+        protected void OnPropertyChanged([CallerMemberName] string? name = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
     public class SearchResultItem : INotifyPropertyChanged
     {
-        public string Category { get; set; }
-        public SolidColorBrush CategoryBrush { get; set; }
-        public SolidColorBrush CategoryTextBrush { get; set; }
+        public string Category { get; set; } = "";
+        public SolidColorBrush CategoryBrush { get; set; } = new(Colors.Gray);
+        public SolidColorBrush CategoryTextBrush { get; set; } = new(Colors.White);
 
-        private string _name;
+        private string _name = "";
         public string Name
         {
             get => _name;
             set { _name = value; OnPropertyChanged(); }
         }
 
-        public string Id { get; set; }
+        public string Id { get; set; } = "";
 
-        private string _details;
+        private string _details = "";
         public string Details
         {
             get => _details;
             set { _details = value; OnPropertyChanged(); }
         }
 
-        public string ObjectId { get; set; }
+        public string ObjectId { get; set; } = "";
         public bool IsNavigable { get; set; }
         public bool IsEditable { get; set; }
-        public string RawValue { get; set; }
-        public string MatchedParamName { get; set; }
+        public string RawValue { get; set; } = "";
+        public string MatchedParamName { get; set; } = "";
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
-        protected void OnPropertyChanged([CallerMemberName] string n = null)
+        protected void OnPropertyChanged([CallerMemberName] string? n = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
 
     public class ReplaceChange
     {
-        public string ClipId { get; set; }
-        public string ClipName { get; set; }
-        public string OldPath { get; set; }
-        public string NewPath { get; set; }
+        public string ClipId { get; set; } = "";
+        public string ClipName { get; set; } = "";
+        public string OldPath { get; set; } = "";
+        public string NewPath { get; set; } = "";
     }
 }

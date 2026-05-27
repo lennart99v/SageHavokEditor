@@ -16,7 +16,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
         }
 
         private readonly Dictionary<string, Block> _anchors = new();
-        private RichTextBox _docBox;
+        private RichTextBox _docBox = null!;
 
         public void ScrollToSection(string key)
         {

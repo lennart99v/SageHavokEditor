@@ -16,7 +16,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
     public partial class CompareDialog : Window
     {
         private readonly HavokManager _managerA;
-        private HavokManager _managerB;
+        private HavokManager? _managerB;
         private readonly List<IdNamePair> _variablesA;
         private readonly List<IdNamePair> _eventsA;
         private readonly List<ClipInfo> _clipsA;
@@ -24,7 +24,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
         private readonly List<CompareResult> _allResults = new();
         private readonly ObservableCollection<CompareResult> _filtered = new();
 
-        public event Action<string> ObjectSelected;
+        public event Action<string>? ObjectSelected;
 
         public CompareDialog(HavokManager managerA,
     List<IdNamePair> variables, List<IdNamePair> events, List<ClipInfo> clips)
@@ -47,7 +47,8 @@ namespace SkyrimHavokEditor.UI.Dialogs
             {
                 var serializer = new XmlSerializer(typeof(HkPackfile));
                 using var fs = new FileStream(dlg.FileName, FileMode.Open);
-                var packfile = (HkPackfile)serializer.Deserialize(fs);
+                var packfile = (HkPackfile?)serializer.Deserialize(fs)
+                    ?? throw new InvalidDataException("Could not parse XML.");
 
                 _managerB = new HavokManager();
                 _managerB.BuildGraph(packfile);
@@ -189,8 +190,8 @@ namespace SkyrimHavokEditor.UI.Dialogs
                 {
                     Category = "Clip",
                     Name = name,
-                    ValueA = inA ? pathA : "(not present)",
-                    ValueB = inB ? pathB : "(not present)",
+                    ValueA = inA ? (pathA ?? "") : "(not present)",
+                    ValueB = inB ? (pathB ?? "") : "(not present)",
                     DiffType = diffType
                 });
             }

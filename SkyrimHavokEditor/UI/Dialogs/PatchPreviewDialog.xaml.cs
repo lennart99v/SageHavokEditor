@@ -13,12 +13,12 @@ namespace SkyrimHavokEditor.UI.Dialogs
         private readonly BehaviorPatch _patch;
         public ObservableCollection<PatchOpViewModel> Ops { get; } = new();
 
-        private readonly HavokManager _manager;
-        private readonly Dictionary<string, ObjectSnapshot> _snapshot;
+        private readonly HavokManager? _manager;
+        private readonly Dictionary<string, ObjectSnapshot>? _snapshot;
         private readonly string _behaviorFilePath;
 
-        public PatchPreviewDialog(BehaviorPatch patch, HavokManager manager = null,
-    Dictionary<string, ObjectSnapshot> snapshot = null,
+        public PatchPreviewDialog(BehaviorPatch patch, HavokManager? manager = null,
+    Dictionary<string, ObjectSnapshot>? snapshot = null,
     string behaviorFilePath = "")
         {
             InitializeComponent();
@@ -142,13 +142,13 @@ namespace SkyrimHavokEditor.UI.Dialogs
                 set { _isIncluded = value; OnPropertyChanged(); }
             }
 
-            public string TypeLabel { get; set; }
-            public string TypeColor { get; set; }
-            public string Note { get; set; }
-            public PatchOperation Operation { get; set; }
+            public string TypeLabel { get; set; } = "";
+            public string TypeColor { get; set; } = "";
+            public string Note { get; set; } = "";
+            public PatchOperation Operation { get; set; } = null!;
 
-            public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
-            protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null)
+            public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+            protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? n = null)
                 => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(n));
         }
 
@@ -182,7 +182,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
             if (string.IsNullOrEmpty(modCode) || modCode.Contains(" "))
             { MessageBox.Show("Mod code cannot be empty or contain spaces."); return; }
 
-            var outputFolder = System.IO.Path.GetDirectoryName(dlg.FileName);
+            var outputFolder = System.IO.Path.GetDirectoryName(dlg.FileName) ?? "";
             var behaviorName = System.IO.Path.GetFileNameWithoutExtension(_behaviorFilePath);
 
             var opts = new PatchExportOptions

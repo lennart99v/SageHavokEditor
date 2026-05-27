@@ -21,7 +21,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
             DragonVarsList.ItemsSource = vm.DragonVars;
         }
 
-        private DebuggerViewModel VM => DataContext as DebuggerViewModel;
+        private DebuggerViewModel? VM => DataContext as DebuggerViewModel;
 
         private void BtnPause_Click(object sender, RoutedEventArgs e)
             => VM?.OnPauseToggle?.Invoke();

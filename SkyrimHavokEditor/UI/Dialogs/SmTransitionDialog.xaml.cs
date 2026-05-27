@@ -14,7 +14,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
     {
         private HavokManager _manager;
         private List<HkObject> _allStates;
-        public List<string> ResultIds { get; private set; }
+        public List<string> ResultIds { get; private set; } = new();
 
         public ObservableCollection<HkObject> CurrentStates { get; set; } = new();
         public ObservableCollection<HkObject> AvailableStates { get; set; } = new();

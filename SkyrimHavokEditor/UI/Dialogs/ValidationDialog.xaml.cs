@@ -12,7 +12,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
     {
         private readonly List<ValidationIssue> _allIssues;
         private readonly ObservableCollection<ValidationIssue> _filtered = new();
-        public event Action<string> ObjectSelected;
+        public event Action<string>? ObjectSelected;
 
         public int ErrorCount => _allIssues.Count(i => i.IsError);
         public int WarningCount => _allIssues.Count(i => i.IsWarning);

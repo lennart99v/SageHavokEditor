@@ -13,10 +13,10 @@ namespace SkyrimHavokEditor.UI.Dialogs
         public ObservableCollection<IdNamePair> StateOptions { get; } = new();
 
         // ── Result properties ─────────────────────────────────────────────────────
-        public string ResultFromStateId { get; private set; }
-        public string ResultEventId { get; private set; }
-        public string ResultToStateId { get; private set; }
-        public string ResultFlags { get; private set; }
+        public string ResultFromStateId { get; private set; } = "";
+        public string ResultEventId { get; private set; } = "";
+        public string ResultToStateId { get; private set; } = "";
+        public string ResultFlags { get; private set; } = "";
 
         // ── Dependency properties for combo bindings ──────────────────────────────
         public static readonly DependencyProperty SelectedFromStateIdProperty =
@@ -48,9 +48,9 @@ namespace SkyrimHavokEditor.UI.Dialogs
             IEnumerable<IdNamePair> fromStateOptions,
             IEnumerable<IdNamePair> events,
             IEnumerable<IdNamePair> toStateOptions,
-            string initialFromStateId = null,
-            string initialEventId = null,
-            string initialToStateId = null,
+            string? initialFromStateId = null,
+            string? initialEventId = null,
+            string? initialToStateId = null,
             string initialFlags = "FLAG_DISABLE_CONDITION")
         {
             InitializeComponent();
@@ -61,9 +61,9 @@ namespace SkyrimHavokEditor.UI.Dialogs
             foreach (var e in events) EventList.Add(e);
             foreach (var s in toStateOptions) StateOptions.Add(s);
 
-            SelectedFromStateId = initialFromStateId;
-            SelectedEventId = initialEventId;
-            SelectedToStateId = initialToStateId;
+            SelectedFromStateId = initialFromStateId ?? "";
+            SelectedEventId = initialEventId ?? "";
+            SelectedToStateId = initialToStateId ?? "";
             FlagsBox.Text = initialFlags ?? "";
         }
 

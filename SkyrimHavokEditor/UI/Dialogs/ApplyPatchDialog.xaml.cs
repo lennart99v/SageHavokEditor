@@ -13,10 +13,10 @@ namespace SkyrimHavokEditor.UI.Dialogs
     public partial class ApplyPatchDialog : Window
     {
         private readonly HavokManager _manager;
-        private BehaviorPatch _patch;
+        private BehaviorPatch? _patch;
 
         public bool PatchWasApplied { get; private set; } = false;
-        public ApplyResult LastResult { get; private set; }
+        public ApplyResult? LastResult { get; private set; }
 
         private readonly ObservableCollection<LogEntry> _log = new();
 
@@ -41,7 +41,12 @@ namespace SkyrimHavokEditor.UI.Dialogs
             {
                 var serializer = new XmlSerializer(typeof(BehaviorPatch));
                 using var fs = new FileStream(dlg.FileName, FileMode.Open);
-                _patch = (BehaviorPatch)serializer.Deserialize(fs);
+                _patch = (BehaviorPatch?)serializer.Deserialize(fs);
+                if (_patch == null)
+                {
+                    MessageBox.Show("Failed to read patch file.");
+                    return;
+                }
 
                 PatchFileLabel.Text = Path.GetFileName(dlg.FileName);
                 ShowPatchInfo();
@@ -57,6 +62,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
 
         private void ShowPatchInfo()
         {
+            if (_patch == null) return;
             PatchInfoPanel.Visibility = Visibility.Visible;
 
             TxtPatchAuthor.Text = string.IsNullOrEmpty(_patch.Author)
@@ -85,6 +91,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
             _log.Clear();
             ResultHeader.Text = "Operations to apply:";
 
+            if (_patch == null) return;
             foreach (var op in _patch.Operations)
             {
                 _log.Add(new LogEntry
@@ -137,7 +144,7 @@ namespace SkyrimHavokEditor.UI.Dialogs
             };
             if (dlg.ShowDialog() != true) return;
 
-            var folder = System.IO.Path.GetDirectoryName(dlg.FileName);
+            var folder = System.IO.Path.GetDirectoryName(dlg.FileName) ?? "";
 
             // Verify it actually contains patch files
             var patchFiles = System.IO.Directory.GetFiles(folder, "#*.txt");
@@ -346,8 +353,8 @@ namespace SkyrimHavokEditor.UI.Dialogs
 
     public class LogEntry
     {
-        public string Icon { get; set; }
-        public string Message { get; set; }
-        public string Color { get; set; }
+        public string Icon { get; set; } = "";
+        public string Message { get; set; } = "";
+        public string Color { get; set; } = "";
     }
 }
