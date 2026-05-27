@@ -7,7 +7,6 @@ using SkyrimHavokEditor.Core.Skeletons;
 using SkyrimHavokEditor.Core.Validation;
 using SkyrimHavokEditor.Models;
 using SkyrimHavokEditor.Models.ViewModels;
-using SkyrimHavokEditor.Tools;
 using SkyrimHavokEditor.UI;
 using SkyrimHavokEditor.UI.Converters;
 using SkyrimHavokEditor.UI.Dialogs;
@@ -1728,11 +1727,13 @@ namespace SkyrimHavokEditor
                 FileName = System.IO.Path.GetFileName(clip.AnimationPath ?? "")
             };
 
-            // Try to set initial directory from existing path
-            if (!string.IsNullOrEmpty(clip.AnimationPath))
+            // Try to set initial directory from existing path, anchored on the
+            // configured game meshes folder (AnimationPath is stored relative to it).
+            var anchor = AppSettings.MeshesPath;
+            if (!string.IsNullOrEmpty(anchor) && !string.IsNullOrEmpty(clip.AnimationPath))
             {
                 var dir = System.IO.Path.GetDirectoryName(
-                    System.IO.Path.Combine(@"C:\", clip.AnimationPath.TrimStart('\\', '/')));
+                    System.IO.Path.Combine(anchor, clip.AnimationPath.TrimStart('\\', '/')));
                 if (System.IO.Directory.Exists(dir))
                     dlg.InitialDirectory = dir;
             }
@@ -2869,17 +2870,8 @@ namespace SkyrimHavokEditor
         private HavokValidator _validator;
 
 
-        private async void BtnValidate_Click(object sender, RoutedEventArgs e)
+        private void BtnValidate_Click(object sender, RoutedEventArgs e)
         {
-            //if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
-            //{
-            //    MessageBox.Show("No file loaded.");
-            //    return;
-            //}
-            await SamplerTest.Run(
-    @"C:\hkxworking_64\skeleton.xml",
-    @"C:\hkxworking_64\mtforwardground.xml");
-            return;
             var issues = _validator.RunValidation();
             var dialog = new ValidationDialog(issues);
             dialog.Owner = this;

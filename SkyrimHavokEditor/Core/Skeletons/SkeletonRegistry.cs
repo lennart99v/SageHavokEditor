@@ -14,7 +14,7 @@ namespace SkyrimHavokEditor.Core.Skeletons
     ///
     /// Usage:
     ///   var registry = SkeletonRegistry.Instance;
-    ///   registry.LoadFromNif("dragon", @"C:\...\skeleton.nif");
+    ///   registry.LoadFromNif("dragon", @"path\to\skeleton.nif");
     ///
     ///   // Convert flat array to named dict:
     ///   var named = registry.IndexedToNamed("dragon", new float[] { 1f, 0f, 0.5f, ... });
