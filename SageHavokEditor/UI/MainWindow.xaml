@@ -120,8 +120,9 @@
                     <Button Content="📤 Export" Click="BtnExport_Click"
                             ToolTip="Export CSV (Ctrl+E)" Margin="0,0,5,0"/>
                     <Button Content="🔎 Validate" Click="BtnValidate_Click" Margin="0,0,5,0"/>
-                    <Button Content="🔭 Search" Click="BtnGlobalSearch_Click"
-                            ToolTip="Global search (Ctrl+G)" Margin="0,0,5,0"/>
+                    <Button Content="🔭 Search All" Click="BtnGlobalSearch_Click"
+                            ToolTip="Search everything — events, states, clips, variables, objects (Ctrl+G). Supports prefixes: event:  state:  clip:  var:  obj:"
+                            Margin="0,0,5,0"/>
                     <Button Content="⇄ Compare" Click="BtnCompare_Click" Margin="0,0,5,0"/>
                     <Button x:Name="BtnDebugger" Content="🎮 Live Debug"
                             Click="BtnDebugger_Click" Padding="8,4" Margin="4,0"/>
@@ -368,7 +369,7 @@
                                                     <Setter.Value>
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
-                                                                <TextBlock Text="🔍 Filter variables…"
+                                                                <TextBlock Text="🔍 Filter variables…   ·   Ctrl+G: search everything"
                                                                            Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
@@ -511,7 +512,7 @@
                                                     <Setter.Value>
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
-                                                                <TextBlock Text="🔍 Filter clips…"
+                                                                <TextBlock Text="🔍 Filter clips…   ·   Ctrl+G: search everything"
                                                                            Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
@@ -629,7 +630,7 @@
                                                     <Setter.Value>
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
-                                                                <TextBlock Text="🔍 Filter events…"
+                                                                <TextBlock Text="🔍 Filter events…   ·   Ctrl+G: search everything"
                                                                            Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
@@ -760,7 +761,7 @@
                                                     <Setter.Value>
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
-                                                                <TextBlock Text="🔍 Filter by state or event…"
+                                                                <TextBlock Text="🔍 Filter by state or event…   ·   Ctrl+G: search everything"
                                                                            Foreground="{DynamicResource TextSecondaryBrush}" Margin="5,3"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>

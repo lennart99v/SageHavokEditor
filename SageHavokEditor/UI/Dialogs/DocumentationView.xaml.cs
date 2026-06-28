@@ -308,10 +308,15 @@ namespace SageHavokEditor.UI.Dialogs
                 "Graph node colours are fixed and do not change with the theme.");
 
             AddSection("global_search", "Global Search",
-                "Press Ctrl+G or click 🔭 Search to open the Global Search dialog.\n\n" +
-                "• Search across all objects, variables, events, and clips simultaneously.\n" +
-                "• Click a result to jump to that object, variable, or event in its respective tab.\n" +
-                "• The search is case-insensitive and matches partial names.");
+                "Press Ctrl+G or click 🔭 Search All to open the Global Search dialog. This is the " +
+                "fastest way to find anything in a file — use it instead of scrolling a tab by hand. " +
+                "The per-tab filter boxes also hint at it (Ctrl+G: search everything).\n\n" +
+                "• Searches across all objects, states, variables, events, and clips at once.\n" +
+                "• Type a prefix to scope the search: event:  state:  clip:  var:  trans:  obj: " +
+                "(e.g. event:attack finds only events matching \"attack\"). Filter chips do the same.\n" +
+                "• Click or press ↵ on a result to jump to it in its tab; double-click to navigate.\n" +
+                "• Case and Regex toggles refine matching; the ± Replace panel can edit matched values.\n" +
+                "• The search is case-insensitive by default and matches partial names.");
 
             AddSection("compare", "Compare Files",
                 "Click ⇄ Compare to open two behavior files side-by-side.\n\n" +
