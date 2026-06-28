@@ -470,11 +470,47 @@ namespace SageHavokEditor
             GraphView.NodeAddedToGraph -= OnNodeAddedToGraph;
             GraphView.NodeDeletedFromGraph -= OnNodeDeletedFromGraph;
             GraphView.StatusText_ -= OnGraphStatus;
+            GraphView.NavigateToEventRequested -= NavigateToEvent;
+            GraphView.TransitionFlagsChangedFromGraph -= OnTransitionFlagsChangedFromGraph;
             GraphView.TransitionDeletedFromGraph += OnTransitionDeletedFromGraph;
             GraphView.NodeRenamedOnGraph += OnNodeRenamedOnGraph;
             GraphView.NodeAddedToGraph += OnNodeAddedToGraph;
             GraphView.NodeDeletedFromGraph += OnNodeDeletedFromGraph;
             GraphView.StatusText_ += OnGraphStatus;
+            GraphView.NavigateToEventRequested += NavigateToEvent;
+            GraphView.TransitionFlagsChangedFromGraph += OnTransitionFlagsChangedFromGraph;
+        }
+
+        private void OnTransitionFlagsChangedFromGraph(
+            SageHavokEditor.Models.HkObject trChild, string oldFlags, string newFlags)
+        {
+            var flagsParam = trChild.Params.FirstOrDefault(p => p.Name == "flags");
+            if (flagsParam == null) return;
+
+            bool nowDisabled = newFlags.Split('|', System.StringSplitOptions.RemoveEmptyEntries)
+                .Any(f => f.Trim() == "FLAG_DISABLED");
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"{(nowDisabled ? "Disable" : "Enable")} transition (graph)",
+                Undo = () =>
+                {
+                    flagsParam.Value = oldFlags;
+                    GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                    RefreshLookups();
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    flagsParam.Value = newFlags;
+                    GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                    RefreshLookups();
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+            StatusText.Text = nowDisabled ? "✓ Transition disabled" : "✓ Transition enabled";
+            RefreshLookups();
         }
 
         private void OnGraphStatus(string msg)

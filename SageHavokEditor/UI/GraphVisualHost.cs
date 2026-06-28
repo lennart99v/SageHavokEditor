@@ -15,6 +15,7 @@ namespace SageHavokEditor.UI
         Clip,           // hkbClipGenerator          — green header
         Modifier,       // hkbModifier* etc          — orange header
         Blender,        // hkbBlender* etc           — teal header
+        Wildcard,       // synthetic "★ ANY" source for wildcard transitions — amber
         Unknown         // everything else           — grey header
     }
 
@@ -122,6 +123,9 @@ namespace SageHavokEditor.UI
             [GraphNodeType.Blender] = new(
         Color.FromRgb(0x0C, 0x7A, 0x7A), Color.FromRgb(0xE0, 0xFF, 0xFF),
         Color.FromRgb(0x08, 0x3C, 0x3C), Color.FromRgb(0x22, 0xDD, 0xDD)),
+            [GraphNodeType.Wildcard] = new(
+        Color.FromRgb(0xB0, 0x6A, 0x00), Color.FromRgb(0xFF, 0xF1, 0xD6),
+        Color.FromRgb(0x3A, 0x26, 0x00), Color.FromRgb(0xFF, 0xB3, 0x3D)),
             [GraphNodeType.Unknown] = new(
         Color.FromRgb(0x4A, 0x4A, 0x50), Color.FromRgb(0xCC, 0xCC, 0xCC),
         Color.FromRgb(0x26, 0x26, 0x2A), Color.FromRgb(0x88, 0x88, 0x99)),
@@ -439,6 +443,7 @@ namespace SageHavokEditor.UI
                 GraphNodeType.Clip => "▶",
                 GraphNodeType.Modifier => "⚙",
                 GraphNodeType.Blender => "⇌",
+                GraphNodeType.Wildcard => "★",
                 _ => "○"
             };
             dc.DrawText(MakeText(icon, 10, new SolidColorBrush(pal.HeaderText), FontWeights.Normal),
@@ -593,10 +598,21 @@ namespace SageHavokEditor.UI
 
             _firedEdges.TryGetValue(edge, out double fire);
             bool isHovered = edge == _hoveredEdge;
-            var pen = isHovered
-                ? new Pen(new SolidColorBrush(Color.FromRgb(0xC5, 0x86, 0xC0)), 3)
-                : _edgePen;
-            var arrowFill = isHovered ? _arrowHover : _arrowFill;
+            Pen pen;
+            if (isHovered)
+                pen = new Pen(new SolidColorBrush(Color.FromRgb(0xC5, 0x86, 0xC0)), 3);
+            else if (edge.IsDisabled)
+                pen = new Pen(new SolidColorBrush(Color.FromArgb(0x66, 0x88, 0x88, 0x90)), 1.4)
+                { DashStyle = DashStyles.Dash };
+            else if (edge.IsWildcard)
+                pen = new Pen(new SolidColorBrush(Color.FromRgb(0xFF, 0xB3, 0x3D)), 1.6)
+                { DashStyle = DashStyles.Dash };
+            else
+                pen = _edgePen;
+            var arrowFill = isHovered ? _arrowHover
+                          : edge.IsDisabled ? FB(new SolidColorBrush(Color.FromArgb(0x88, 0x88, 0x88, 0x90)))
+                          : edge.IsWildcard ? FB(new SolidColorBrush(Color.FromRgb(0xFF, 0xB3, 0x3D)))
+                          : _arrowFill;
 
             if (edge.From.Id == edge.To.Id)
             { DrawSelfLoop(edge, edgeDc, labelDc, pen, arrowFill, fire); return; }
@@ -640,8 +656,11 @@ namespace SageHavokEditor.UI
     new Point(x2, y2), Math.Atan2(y2 - cy2, x2 - cx2));
 
             if (!string.IsNullOrEmpty(edge.EventName))
-                DrawEdgeLabel(labelDc, edge.EventName, (cx1 + cx2) / 2, (cy1 + cy2) / 2 - 16,
+            {
+                var labelText = edge.IsDisabled ? "⊘ " + edge.EventName : edge.EventName;
+                DrawEdgeLabel(labelDc, labelText, (cx1 + cx2) / 2, (cy1 + cy2) / 2 - 16,
                     isHovered || fire > 0, enlarge: isHovered);
+            }
 
             if (fire > 0)
             {
@@ -1351,6 +1370,10 @@ namespace SageHavokEditor.UI
         public string EventName { get; set; } = "";
         public string EventId { get; set; } = "";
         public string Flags { get; set; } = "";
+        /// <summary>True for a wildcard transition (fires from any state) — drawn dashed/amber.</summary>
+        public bool IsWildcard { get; set; }
+        /// <summary>True when the transition has FLAG_DISABLED set — drawn dimmed.</summary>
+        public bool IsDisabled { get; set; }
         public (Point p0, Point p1, Point p2, Point p3) LastBezier { get; set; }
         /// <summary>Backing Havok objects: (transitionChild, transitionArray, ownerState)</summary>
         public object? Tag { get; set; }

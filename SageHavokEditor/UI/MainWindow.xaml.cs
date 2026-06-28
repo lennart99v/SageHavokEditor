@@ -38,6 +38,11 @@ namespace SageHavokEditor
         public ObservableCollection<IdNamePair> EventList { get; set; } = new();
         public ObservableCollection<ClipInfo> ClipList { get; set; } = new();
 
+        // Single source of truth for event id -> name resolution. Holds the live
+        // EventList (only ever cleared/repopulated, never reassigned), so renames,
+        // adds and deletes are reflected automatically.
+        private EventResolver _eventResolver;
+
         public FileStats Stats { get; } = new FileStats();
 
         private ContextMenu RecentFilesMenu = new ContextMenu();
@@ -219,6 +224,7 @@ namespace SageHavokEditor
         {
             InitializeComponent();
             this.DataContext = this;
+            _eventResolver = new EventResolver(EventList);
             WireDebugPanel();
             ClipsView = CollectionViewSource.GetDefaultView(ClipList);
             ClipsView.Filter = o => o is ClipInfo c &&
@@ -1032,9 +1038,6 @@ namespace SageHavokEditor
                     stateIdToName[stateId] = stateName;
             }
 
-            var eventNamesLookup = EventList
-                .ToDictionary(e => e.Id, e => e.Name);
-
             foreach (var stateObj in manager.ObjectMap.Values
                 .Where(o => o.ClassName == "hkbStateMachineStateInfo"))
             {
@@ -1067,14 +1070,13 @@ namespace SageHavokEditor
                     }
 
                     stateIdToName.TryGetValue(toStateId, out var toName);
-                    eventNamesLookup.TryGetValue(eventId, out var evName);
 
                     TransitionList.Add(new TransitionInfo
                     {
                         FromState = fromName,
                         ToState = toName ?? $"ID:{toStateId}",
                         EventId = eventId,
-                        EventName = evName ?? $"Event {eventId}",
+                        EventName = _eventResolver.Name(eventId),
                         BlendDuration = blendDuration,
                         Flags = flags,
                         TransitionEffect = effect
@@ -1183,8 +1185,6 @@ namespace SageHavokEditor
             var triggersParam = triggerArrayObj.Params.FirstOrDefault(p => p.Name == "triggers");
             if (triggersParam?.Children == null) return list;
 
-            var eventNamesLookup = EventList.ToDictionary(ev => ev.Id, ev => ev.Name);
-
             foreach (var tr in triggersParam.Children)
             {
                 string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
@@ -1202,12 +1202,10 @@ namespace SageHavokEditor
                 var eventId = eventParam?.Children?.Count > 0
                     ? eventParam.Children[0].Params.FirstOrDefault(p => p.Name == "id")?.Value ?? ""
                     : "";
-                eventNamesLookup.TryGetValue(eventId, out var evName);
-
                 list.Add(new UI.PreviewTrigger
                 {
                     Time = time,
-                    EventName = evName ?? $"Event {eventId}",
+                    EventName = _eventResolver.Name(eventId),
                     RelativeToEnd = relToEnd
                 });
             }
@@ -1459,8 +1457,7 @@ namespace SageHavokEditor
             }
         }
         private void AddTransition(HkObject tr, string fromName,
-    Dictionary<string, string> stateIdToName,
-    Dictionary<string, string> eventNames)
+    Dictionary<string, string> stateIdToName)
         {
             string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
 
@@ -1471,14 +1468,13 @@ namespace SageHavokEditor
             var effect = Get("transition");
 
             stateIdToName.TryGetValue(toStateId, out var toName);
-            eventNames.TryGetValue(eventId, out var evName);
 
             TransitionList.Add(new TransitionInfo
             {
                 FromState = fromName,
                 ToState = toName ?? $"ID:{toStateId}",
                 EventId = eventId,
-                EventName = evName ?? $"Event {eventId}",
+                EventName = _eventResolver.Name(eventId),
                 BlendDuration = blend,
                 Flags = flags,
                 TransitionEffect = effect
@@ -2091,8 +2087,6 @@ namespace SageHavokEditor
             var triggersParam = triggerArrayObj.Params.FirstOrDefault(p => p.Name == "triggers");
             if (triggersParam?.Children == null) return;
 
-            var eventNamesLookup = EventList.ToDictionary(e => e.Id, e => e.Name);
-
             foreach (var tr in triggersParam.Children)
             {
                 string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
@@ -2106,14 +2100,12 @@ namespace SageHavokEditor
                     eventId = eventParam.Children[0].Params
                         .FirstOrDefault(p => p.Name == "id")?.Value ?? "";
 
-                eventNamesLookup.TryGetValue(eventId, out var evName);
-
                 TriggerList.Add(new ClipTrigger
                 {
                     ClipName = clip.Name,
                     LocalTime = localTime,
                     EventId = eventId,
-                    EventName = evName ?? $"Event {eventId}",
+                    EventName = _eventResolver.Name(eventId),
                     RelativeToEnd = relToEnd,
                     Acyclic = acyclic
                 });
@@ -2517,6 +2509,17 @@ namespace SageHavokEditor
                 SelectedTransition = tr;
         }
 
+        // ── Transitions list: jump from a transition to its event definition ──────────
+        private void TransitionGoToEvent_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedTransition == null)
+            {
+                StatusText.Text = "Select a transition first, then 'Go to event'.";
+                return;
+            }
+            NavigateToEvent(SelectedTransition.EventId);
+        }
+
         private void TransitionDetail_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if ((sender as ListBox)?.SelectedItem is not TransitionDetail detail) return;
@@ -2610,19 +2613,7 @@ namespace SageHavokEditor
             dialog.NavigateToEvent += (idxStr) =>
             {
                 if (!idxStr.StartsWith("idx:")) return;
-                if (!int.TryParse(idxStr.Substring(4), out int idx)) return;
-                if (idx < 0 || idx >= EventList.Count) return;
-
-                EventFilter = "";
-                MainTabControl.SelectedIndex = 4;
-
-                Dispatcher.InvokeAsync(() =>
-                {
-                    var target = EventList.FirstOrDefault(ev => ev.Id == idx.ToString());
-                    if (target == null) return;
-                    EventsListBox.SelectedItem = target;
-                    EventsListBox.ScrollIntoView(target);
-                }, System.Windows.Threading.DispatcherPriority.Loaded);
+                NavigateToEvent(idxStr.Substring(4));
             };
 
             dialog.NavigateToVariable += (name) =>
@@ -2643,6 +2634,33 @@ namespace SageHavokEditor
                 }, System.Windows.Threading.DispatcherPriority.Loaded);
             };
             dialog.Show();
+        }
+
+        /// <summary>
+        /// Jump to an event's definition: switch to the Events tab, then select and
+        /// scroll to the matching row. Selecting the row fires the SelectedEvent
+        /// setter, which populates the Usages panel — so the user lands on both the
+        /// event and everywhere it's used (transitions, wildcards, clip triggers,
+        /// properties). This is the "click the trigger, trace it" path.
+        /// </summary>
+        public void NavigateToEvent(string? eventId)
+        {
+            if (string.IsNullOrEmpty(eventId)) return;
+            var target = EventList.FirstOrDefault(ev => ev.Id == eventId);
+            if (target == null)
+            {
+                StatusText.Text = $"Event #{eventId} not found in this behavior.";
+                return;
+            }
+
+            EventFilter = "";
+            MainTabControl.SelectedIndex = 4; // Events tab
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                EventsListBox.SelectedItem = target; // → SelectedEvent → RefreshEventUsages
+                EventsListBox.ScrollIntoView(target);
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         public ICollectionView EventsView { get; private set; }
@@ -3093,7 +3111,6 @@ namespace SageHavokEditor
             if (sm == null) return;
 
             var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
-            var eventLookup = EventList.ToDictionary(e => e.Id, e => e.Name);
 
             var stateIdToName = new Dictionary<string, string>();
             var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
@@ -3142,7 +3159,6 @@ namespace SageHavokEditor
                     }
 
                     stateIdToName.TryGetValue(toStateId, out var toName);
-                    eventLookup.TryGetValue(eventId, out var evName);
 
                     SmTransitionRows.Add(new SmTransitionRow
                     {
@@ -3155,7 +3171,8 @@ namespace SageHavokEditor
                         ToState = toName ?? $"ID:{toStateId}",
                         ToStateId = toStateId,
                         EventId = eventId,
-                        EventName = evName ?? $"Event {eventId}",
+                        EventName = (HasTransitionFlag(flags, "FLAG_DISABLED") ? "⊘ " : "")
+                                    + _eventResolver.Name(eventId),
                         BlendDuration = blendDuration,
                         TransitionEffectObj = resolvedEffect,
                         Flags = flags
@@ -3186,7 +3203,6 @@ namespace SageHavokEditor
                                 .FirstOrDefault(p => p.Name == "duration")?.Value ?? "";
 
                         stateIdToName.TryGetValue(toStateId, out var toName);
-                        eventLookup.TryGetValue(eventId, out var evName);
 
                         SmTransitionRows.Add(new SmTransitionRow
                         {
@@ -3199,7 +3215,8 @@ namespace SageHavokEditor
                             ToState = toName ?? $"ID:{toStateId}",
                             ToStateId = toStateId,
                             EventId = eventId,
-                            EventName = evName ?? $"Event {eventId}",
+                            EventName = (HasTransitionFlag(flags, "FLAG_DISABLED") ? "⊘ " : "")
+                                        + _eventResolver.Name(eventId),
                             BlendDuration = blendDuration,
                             Flags = flags
                         });
@@ -3216,6 +3233,76 @@ namespace SageHavokEditor
             bool hasRow = _selectedSmRow != null;
             BtnDeleteSmTransition.IsEnabled = hasRow;
             BtnEditSmTransition.IsEnabled = hasRow;
+        }
+
+        // ── SM Inspector: jump from a (possibly wildcard) transition to its event ──────
+        private void SmGoToEvent_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedSmRow == null)
+            {
+                StatusText.Text = "Select a transition row first, then 'Go to event'.";
+                return;
+            }
+            NavigateToEvent(_selectedSmRow.EventId);
+        }
+
+        // ── SM Inspector: enable/disable a transition (toggles FLAG_DISABLED) ──────────
+        private void SmToggleDisabled_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedSmRow?.TransitionChild is not HkObject trChild)
+            {
+                StatusText.Text = "Select a transition row first.";
+                return;
+            }
+
+            var flagsParam = trChild.Params.FirstOrDefault(p => p.Name == "flags");
+            if (flagsParam == null)
+            {
+                flagsParam = new HkParam { Name = "flags", Value = "0" };
+                trChild.Params.Add(flagsParam);
+            }
+
+            var oldFlags = flagsParam.Value ?? "";
+            var newFlags = ToggleTransitionFlag(oldFlags, "FLAG_DISABLED");
+            flagsParam.Value = newFlags;
+
+            bool nowDisabled = HasTransitionFlag(newFlags, "FLAG_DISABLED");
+            var capturedSm = _selectedSM;
+            var label = $"{_selectedSmRow.FromState} → {_selectedSmRow.ToState}";
+
+            void Apply(string flags)
+            {
+                flagsParam.Value = flags;
+                RefreshSmInspector(capturedSm);
+                GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                UpdateUndoRedoButtons();
+            }
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"{(nowDisabled ? "Disable" : "Enable")} transition {label}",
+                Undo = () => Apply(oldFlags),
+                Redo = () => Apply(newFlags)
+            });
+
+            Apply(newFlags);
+            StatusText.Text = nowDisabled ? $"✓ Disabled: {label}" : $"✓ Enabled: {label}";
+        }
+
+        // Token-level helpers for the pipe-separated Havok transition flags string.
+        private static bool HasTransitionFlag(string? flags, string flag) =>
+            (flags ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Any(f => f.Trim() == flag);
+
+        private static string ToggleTransitionFlag(string? flags, string flag)
+        {
+            var tokens = (flags ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0 && t != "0")
+                .ToList();
+            if (tokens.Contains(flag)) tokens.Remove(flag);
+            else tokens.Add(flag);
+            return tokens.Count == 0 ? "0" : string.Join("|", tokens);
         }
 
         // ── Edit button ───────────────────────────────────────────────────────────────
@@ -3404,16 +3491,13 @@ namespace SageHavokEditor
                 if (fparam != null) fparam.Value = resultFlags;
 
                 // Resolve display names
-                var eventLookup = EventList.ToDictionary(e => e.Id, e => e.Name);
-                eventLookup.TryGetValue(resultEventId ?? "", out var newEvName);
-
                 var stateIdToName = new Dictionary<string, string>();
                 foreach (var s in stateOptions)
                     stateIdToName[s.Id] = s.Name.Split('(')[0].Trim();
                 stateIdToName.TryGetValue(resultToStateId ?? "", out var newToName);
 
                 row.EventId = resultEventId;
-                row.EventName = newEvName ?? $"Event {resultEventId}";
+                row.EventName = _eventResolver.Name(resultEventId);
                 row.ToStateId = resultToStateId;
                 row.ToState = newToName ?? $"ID:{resultToStateId}";
                 row.Flags = resultFlags;

@@ -773,6 +773,12 @@
                             </TextBox>
                             <ListBox Grid.Row="1" ItemsSource="{Binding TransitionsView}"
                                      SelectionChanged="TransitionsList_SelectionChanged">
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="🔎 Go to event (definition &amp; usages)"
+                                                  Click="TransitionGoToEvent_Click"/>
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="0,4">
@@ -924,6 +930,14 @@
           CanUserDeleteRows="False"
           SelectionChanged="SmTransitionsGrid_SelectionChanged"
           Margin="4,0,4,4">
+                                <DataGrid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="🔎 Go to event (definition &amp; usages)"
+                                                  Click="SmGoToEvent_Click"/>
+                                        <MenuItem Header="⊘ Enable / Disable transition"
+                                                  Click="SmToggleDisabled_Click"/>
+                                    </ContextMenu>
+                                </DataGrid.ContextMenu>
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="From"  Binding="{Binding FromState}"  Width="*"  IsReadOnly="True"/>
                                     <DataGridTextColumn Header="To"    Binding="{Binding ToState}"    Width="*"  IsReadOnly="True"/>
@@ -1386,12 +1400,12 @@
                                 <DataTemplate>
                                     <Grid Margin="0,2">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="110"/>
+                                            <ColumnDefinition Width="120"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="11"
-                                                   VerticalAlignment="Top" Margin="0,4,0,0"
-                                                   TextTrimming="CharacterEllipsis"/>
+                                                   VerticalAlignment="Top" Margin="0,4,6,0"
+                                                   TextWrapping="Wrap" ToolTip="{Binding Name}"/>
                                         <StackPanel Grid.Column="1">
                                             <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                      Padding="3" FontSize="11"
@@ -1444,7 +1458,9 @@
                                                                             </Grid.ColumnDefinitions>
                                                                             <TextBlock Text="{Binding Name}"
                                                                                        Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                                       FontSize="10" VerticalAlignment="Center"/>
+                                                                                       FontSize="10" VerticalAlignment="Top"
+                                                                                       TextWrapping="Wrap" Margin="0,0,6,0"
+                                                                                       ToolTip="{Binding Name}"/>
                                                                             <TextBox Grid.Column="1"
                                                                                      Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      FontSize="10" Padding="2,1">

@@ -20,8 +20,35 @@ namespace SageHavokEditor.UI.Dialogs
 
         public void ScrollToSection(string key)
         {
-            if (_anchors.TryGetValue(key, out var block))
-                block.BringIntoView();
+            // The doc is built on Loaded; if the Guide tab has never been shown yet,
+            // build it now so the anchors exist.
+            if (_anchors.Count == 0) Build();
+            if (!_anchors.ContainsKey(key)) return;
+
+            // BringIntoView() on a FlowDocument Block does not reliably drive the
+            // surrounding ScrollViewer, so translate the heading's position into the
+            // outer ScrollViewer's content offset and scroll there explicitly.
+            // Deferred to DispatcherPriority.Loaded so the layout pass (and any tab
+            // switch) has completed before we measure.
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (_docBox == null || !_anchors.TryGetValue(key, out var block)) return;
+                try
+                {
+                    _docBox.UpdateLayout();
+                    var rect = block.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+                    if (rect.IsEmpty) return;
+                    double y = _docBox.TransformToAncestor(ContentPanel)
+                                      .Transform(new Point(0, rect.Top)).Y;
+                    ContentScroller.ScrollToVerticalOffset(System.Math.Max(0, y - 8));
+                }
+                catch
+                {
+                    // Layout not ready or visual tree changed — fall back to the
+                    // best-effort built-in behaviour.
+                    block.BringIntoView();
+                }
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         private void Build()
@@ -133,6 +160,20 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Ctrl+1-9 — save a viewport bookmark.\n" +
                 "• 1-9 — jump to a saved bookmark.\n" +
                 "• Escape — clear selection and search highlight.\n\n" +
+                "Wildcard transitions\n" +
+                "• Wildcard (high-priority) transitions fire from ANY state in a machine, so they " +
+                "aren't anchored to a single node. They are drawn from a dedicated amber ★ ANY " +
+                "source node with dashed amber edges to each target state. This makes the otherwise " +
+                "invisible \"random/high-priority\" triggers (e.g. a creature's special-attack or " +
+                "death state) easy to find.\n" +
+                "• Clicking the ★ ANY node opens its state machine in the Object Data panel.\n\n" +
+                "Edge right-click menu\n" +
+                "• Go to event — jump straight to the triggering event's definition and its full " +
+                "usage list (works on normal and wildcard edges).\n" +
+                "• Disable / Enable transition — toggles the Havok FLAG_DISABLED flag. A disabled " +
+                "transition is drawn dimmed and dashed with a ⊘ marker on its label, and never fires " +
+                "in-game until re-enabled. Fully undoable.\n" +
+                "• Delete Transition — removes the transition.\n\n" +
                 "Live debugging\n" +
                 "• Active states glow with an animated green outline.\n" +
                 "• When a transition fires, its edge pulses green so you can trace the flow as it happens.\n\n" +
@@ -150,13 +191,19 @@ namespace SageHavokEditor.UI.Dialogs
             AddSection("tab_events", "Events Tab",
                 "Lists every behaviour event (hkbBehaviorGraphStringData.eventNames).\n\n" +
                 "• Each row shows the event index and an editable name.\n" +
-                "• The usages panel at the bottom shows every transition, trigger, and property referencing the selected event.\n" +
+                "• The usages panel at the bottom shows every transition, wildcard, clip trigger, and " +
+                "property referencing the selected event. Click a usage to jump straight to it.\n" +
+                "• Everywhere else in the editor, an event is shown by its resolved name rather than a " +
+                "raw numeric id. If a referenced id has no name it appears as ‹unnamed #N› so you can " +
+                "still trace it. Right-click an event in the graph, the Transitions list, or the SM " +
+                "Inspector and choose Go to event to land here on the matching row with its usages.\n" +
                 "• + Add Event / Delete work the same as the Variables equivalents.");
 
             AddSection("tab_transitions", "Transitions Tab",
                 "A flat list of every hkbStateMachineTransitionInfoArray entry in the file.\n\n" +
                 "• Columns: From state, To state, Event, Blend duration.\n" +
                 "• Click a row to see full transition details including conditions and trigger intervals.\n" +
+                "• Right-click a row → Go to event to jump to the triggering event's definition and usages.\n" +
                 "• Filter box narrows the list by state or event name.");
 
             AddSection("tab_clips", "Clips Tab",
@@ -170,7 +217,10 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Select a state machine from the dropdown to load all its transitions.\n" +
                 "• + Add Transition — opens a dialog to pick source state, target state, event, and flags.\n" +
                 "• Edit and Delete buttons act on the selected row.\n" +
-                "• Wildcard transitions (★) are shown at the bottom of the list.");
+                "• Wildcard transitions (★ WILDCARD) are shown at the bottom of the list — these are the " +
+                "from-any-state, high-priority triggers also drawn from the ★ ANY node in the Graph tab.\n" +
+                "• Right-click a row for: Go to event (jump to the event definition + usages) and " +
+                "Enable / Disable transition (toggles FLAG_DISABLED, marked with ⊘; undoable).");
 
             AddSection("tab_bindings", "Bindings Tab",
                 "Lists every hkbVariableBindingSet entry found in the file.\n\n" +
@@ -212,6 +262,28 @@ namespace SageHavokEditor.UI.Dialogs
                 "• ✕ removes a bookmark. Bookmarks persist between sessions via AppData.");
 
             AddNavHeader("Advanced");
+
+            AddSection("tracing_triggers", "Tracing & Editing Triggers",
+                "Behaviour files reference events by a numeric id (e.g. #495), which makes a raw " +
+                "state-machine trigger hard to follow. The editor resolves these for you and gives you " +
+                "a direct path from any trigger to where it is defined and used.\n\n" +
+                "Find what a trigger is\n" +
+                "• Events are shown by name everywhere — graph edge labels, the Transitions list, and " +
+                "the SM Inspector. An id with no name appears as ‹unnamed #N›, never as a bare number.\n" +
+                "• Go to event — right-click a transition (in the graph, the Transitions list, or the " +
+                "SM Inspector) and choose Go to event. You land on the Events tab with that event " +
+                "selected and its full usage list shown: every transition, wildcard, clip trigger, and " +
+                "property that references it.\n\n" +
+                "Find a high-priority / random trigger\n" +
+                "• \"Random\" or high-priority behaviours (a creature breathing fire, entering a death " +
+                "state, etc.) are usually wildcard transitions that fire from any state. Open the Graph " +
+                "tab and look for the amber ★ ANY node — its dashed edges are exactly those triggers. " +
+                "You can also read them at the bottom of the SM Inspector list (★ WILDCARD).\n\n" +
+                "Turn a trigger off\n" +
+                "• Right-click the transition (graph edge or SM Inspector row) → Disable transition. " +
+                "This sets the Havok FLAG_DISABLED flag so it never fires, without deleting it — a " +
+                "dimmed/⊘ marker shows it is off, and Enable transition restores it. Every toggle is " +
+                "undoable and is written back on save.");
 
             AddSection("patch_export", "Exporting Patches",
                 "Generate a Nemesis or Pandora compatible patch from your edits.\n\n" +

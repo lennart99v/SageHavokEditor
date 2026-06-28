@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using SageHavokEditor.Core;
+using SageHavokEditor.Core.Services;
 using SageHavokEditor.Models;
 using SageHavokEditor.Models.ViewModels;
 
@@ -81,6 +82,7 @@ namespace SageHavokEditor.UI
         // the uninitialised warning without forcing null-checks at every use site.
         private HavokManager _manager = null!;
         private List<IdNamePair> _events = new();
+        private EventResolver _eventResolver = new(new List<IdNamePair>());
 
         // ── Graph state ───────────────────────────────────────────────────────
         private List<GraphNode> _nodes = new();
@@ -182,6 +184,8 @@ namespace SageHavokEditor.UI
         public event Action<HkObject, HkObject, string>? NodeDeletedFromGraph;
         public event Action<string>? StatusText_;
         public event Action<HkObject, string, string>? TransitionRetargetedFromGraph; // (trChild, oldToStateId, newToStateId)
+        public event Action<string>? NavigateToEventRequested; // (eventId) — jump to the event definition + usages
+        public event Action<HkObject, string, string>? TransitionFlagsChangedFromGraph; // (trChild, oldFlags, newFlags)
 
         // ── Graphviz ──────────────────────────────────────────────────────────
         private static readonly string GraphvizDotPath = Path.Combine(
@@ -350,6 +354,7 @@ namespace SageHavokEditor.UI
         {
             _manager = manager;
             _events = events;
+            _eventResolver = new EventResolver(_events);
             _loadedVariables = variables ?? new();
             var machines = manager.ObjectMap.Values
                 .Where(o => o.ClassName == "hkbStateMachine")
@@ -1324,20 +1329,75 @@ namespace SageHavokEditor.UI
 
             var eventItem = new MenuItem
             {
-                Header = $"Event: {edge.EventName}",
+                Header = $"Event: {_eventResolver.Label(edge.EventId)}",
                 IsEnabled = false
             };
             menu.Items.Add(eventItem);
+
+            // Click-through to where this trigger is defined (Events tab + usages).
+            if (!string.IsNullOrEmpty(edge.EventId))
+            {
+                var gotoItem = new MenuItem { Header = "🔎 Go to event (show definition & usages)" };
+                gotoItem.Click += (_, __) => NavigateToEventRequested?.Invoke(edge.EventId);
+                menu.Items.Add(gotoItem);
+            }
+
             menu.Items.Add(new Separator
             {
                 Style = (Style)TryFindResource("MenuSeparatorStyle")
             });
+
+            var toggleItem = new MenuItem
+            {
+                Header = edge.IsDisabled ? "✅ Enable transition" : "⊘ Disable transition"
+            };
+            toggleItem.Click += (_, __) => ToggleEdgeDisabled(edge);
+            menu.Items.Add(toggleItem);
 
             var deleteItem = new MenuItem { Header = "🗑 Delete Transition" };
             deleteItem.Click += (_, __) => DeleteEdgeTransition(edge);
             menu.Items.Add(deleteItem);
 
             menu.IsOpen = true;
+        }
+
+        /// <summary>Toggle FLAG_DISABLED on the edge's backing transition, with undo via MainWindow.</summary>
+        private void ToggleEdgeDisabled(GraphEdge edge)
+        {
+            if (edge.Tag is not (HkObject trChild, HkObject _, HkObject _))
+            {
+                MessageBox.Show("Cannot resolve transition backing data.");
+                return;
+            }
+
+            var flagsParam = trChild.Params.FirstOrDefault(p => p.Name == "flags");
+            if (flagsParam == null)
+            {
+                flagsParam = new HkParam { Name = "flags", Value = "0" };
+                trChild.Params.Add(flagsParam);
+            }
+
+            var oldFlags = flagsParam.Value ?? "";
+            var newFlags = ToggleFlagToken(oldFlags, "FLAG_DISABLED");
+            flagsParam.Value = newFlags;
+
+            // Fire so MainWindow records undo + refreshes the transitions/inspector lists
+            TransitionFlagsChangedFromGraph?.Invoke(trChild, oldFlags, newFlags);
+
+            var currentFilter = MachineSelector.SelectedItem as string ?? "-- All Machines --";
+            BuildStateMachineGraph(currentFilter);
+        }
+
+        /// <summary>Add or remove a flag token from a pipe-separated Havok flags string.</summary>
+        private static string ToggleFlagToken(string flags, string flag)
+        {
+            var tokens = (flags ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0 && t != "0")
+                .ToList();
+            if (tokens.Contains(flag)) tokens.Remove(flag);
+            else tokens.Add(flag);
+            return tokens.Count == 0 ? "0" : string.Join("|", tokens);
         }
 
         private void DeleteEdgeTransition(GraphEdge edge)
@@ -1472,7 +1532,6 @@ namespace SageHavokEditor.UI
 
             _visualHost.ShowOverlayText("Building graph…", Color.FromRgb(0x9D, 0x9D, 0x9D));
 
-            var eventNames = _events.ToDictionary(e => e.Id, e => e.Name);
             var allObjects = _manager.ObjectMap.Values.ToList();
             bool useGv = File.Exists(GraphvizDotPath);
 
@@ -1551,17 +1610,81 @@ namespace SageHavokEditor.UI
                         var toStateId = Get("toStateId");
                         var eventId = Get("eventId");
                         if (!stateIdToNode.TryGetValue(toStateId, out var toNode)) continue;
-                        eventNames.TryGetValue(eventId, out var evName);
 
+                        var flags = Get("flags");
                         localEdges.Add(new GraphEdge
                         {
                             From = fromNode,
                             To = toNode,
-                            EventName = evName ?? $"Event {eventId}",
+                            EventName = _eventResolver.Name(eventId),
                             EventId = eventId,
-                            Flags = Get("flags"),
+                            Flags = flags,
+                            IsDisabled = HasFlag(flags, "FLAG_DISABLED"),
                             // Store backing objects so edge context menu can delete
                             Tag = (tr, transArray, stateObj)
+                        });
+                    }
+                }
+
+                // ── Wildcard transitions: one "★ ANY" pseudo-source per state machine ──
+                // These fire from ANY state, so they aren't anchored to a single state
+                // node. Drawing them from a dedicated amber source makes the otherwise
+                // invisible "random/high-priority" triggers visible and editable.
+                foreach (var sm in allObjects.Where(o => o.ClassName == "hkbStateMachine"))
+                {
+                    var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
+                    if (machineFilter != "-- All Machines --" && smName != machineFilter) continue;
+
+                    var wcRef = sm.Params.FirstOrDefault(p => p.Name == "wildcardTransitions")?.Value;
+                    if (string.IsNullOrEmpty(wcRef) || wcRef == "null") continue;
+                    if (!_manager.TryResolve(wcRef, out var wcArray)) continue;
+                    var wcParam = wcArray.Params.FirstOrDefault(p => p.Name == "transitions");
+                    if (wcParam?.Children == null || wcParam.Children.Count == 0) continue;
+
+                    GraphNode? anyNode = null;
+                    foreach (var tr in wcParam.Children)
+                    {
+                        string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+                        var toStateId = Get("toStateId");
+                        var eventId = Get("eventId");
+                        var flags = Get("flags");
+
+                        // Resolve the target within THIS state machine (stateIds repeat across SMs)
+                        var toNode = localNodes.FirstOrDefault(n =>
+                            n.NodeType == GraphNodeType.State &&
+                            n.Machine == smName && n.StateId == toStateId);
+                        if (toNode == null) continue; // target not in the current view
+
+                        // Create the pseudo-source lazily, only once a real target exists
+                        if (anyNode == null)
+                        {
+                            anyNode = new GraphNode
+                            {
+                                Id = sm.Id,            // selecting it loads the state machine object
+                                Name = "★ ANY",
+                                SubLabel = smName,
+                                ClassName = "hkbStateMachine",
+                                Machine = smName,
+                                NodeType = GraphNodeType.Wildcard,
+                                Tag = sm,
+                                Width = 120,
+                                Height = 56
+                            };
+                            localNodes.Add(anyNode);
+                        }
+
+                        localEdges.Add(new GraphEdge
+                        {
+                            From = anyNode,
+                            To = toNode,
+                            EventName = _eventResolver.Name(eventId),
+                            EventId = eventId,
+                            Flags = flags,
+                            IsWildcard = true,
+                            IsDisabled = HasFlag(flags, "FLAG_DISABLED"),
+                            // (trChild, transitionArray, ownerSM) — ownerSM stands in for the
+                            // owner state so the existing delete/edit path works unchanged.
+                            Tag = (tr, wcArray, sm)
                         });
                     }
                 }
@@ -1590,6 +1713,12 @@ namespace SageHavokEditor.UI
             RedrawMinimapOverlay();
             PanToNodeIfPending();
         }
+
+        // Exact (token-level) match against a pipe-separated Havok flags string,
+        // e.g. "FLAG_IS_LOCAL_WILDCARD|FLAG_DISABLE_CONDITION".
+        private static bool HasFlag(string? flags, string flag) =>
+            (flags ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Any(f => f.Trim() == flag);
 
         private void RebuildStateLookup()
         {
@@ -2280,6 +2409,7 @@ namespace SageHavokEditor.UI
                         [GraphNodeType.Clip] = Color.FromRgb(0x2E, 0xA0, 0x4A),
                         [GraphNodeType.Modifier] = Color.FromRgb(0xCC, 0x6E, 0x1A),
                         [GraphNodeType.Blender] = Color.FromRgb(0x1A, 0xAA, 0xAA),
+                        [GraphNodeType.Wildcard] = Color.FromRgb(0xFF, 0xB3, 0x3D),
                         [GraphNodeType.Unknown] = Color.FromRgb(0x5A, 0x5A, 0x60),
                     };
                     colors.TryGetValue(n.NodeType, out var col);
