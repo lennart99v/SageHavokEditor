@@ -46,6 +46,7 @@ namespace SageHavokEditor.UI
         private string _searchQuery = "";
         private double _dpi = 96;
         private string? _highlightId = null;  // search highlight
+        private GraphEdge? _highlightEdge = null;  // event-navigation edge highlight
         private HashSet<string> _liveStateIds = new();
         private List<VariableValue> _liveVars = new();
         private double _pulsePhase = 0;
@@ -206,6 +207,7 @@ namespace SageHavokEditor.UI
             _selectedNode = null;
             _selectedNodes.Clear();
             _hoveredEdge = null;
+            _highlightEdge = null;
             _hoveredNode = null;
             _isLassoing = false;
             _firedEdges.Clear();
@@ -220,6 +222,13 @@ namespace SageHavokEditor.UI
         {
             _highlightId = nodeId;
             DrawAllNodes();
+            DrawAllEdges();
+        }
+
+        /// <summary>Emphasise a single transition edge (used by event → graph navigation). Pass null to clear.</summary>
+        public void HighlightEdge(GraphEdge? edge)
+        {
+            _highlightEdge = edge;
             DrawAllEdges();
         }
 
@@ -598,8 +607,12 @@ namespace SageHavokEditor.UI
 
             _firedEdges.TryGetValue(edge, out double fire);
             bool isHovered = edge == _hoveredEdge;
+            bool isHighlight = edge == _highlightEdge;   // event-navigation target
             Pen pen;
-            if (isHovered)
+            if (isHighlight)
+                pen = new Pen(new SolidColorBrush(Colors.Gold), 3.5)
+                { DashStyle = edge.IsWildcard ? DashStyles.Dash : DashStyles.Solid };
+            else if (isHovered)
                 pen = new Pen(new SolidColorBrush(Color.FromRgb(0xC5, 0x86, 0xC0)), 3);
             else if (edge.IsDisabled)
                 pen = new Pen(new SolidColorBrush(Color.FromArgb(0x66, 0x88, 0x88, 0x90)), 1.4)
@@ -609,7 +622,8 @@ namespace SageHavokEditor.UI
                 { DashStyle = DashStyles.Dash };
             else
                 pen = _edgePen;
-            var arrowFill = isHovered ? _arrowHover
+            var arrowFill = isHighlight ? FB(new SolidColorBrush(Colors.Gold))
+                          : isHovered ? _arrowHover
                           : edge.IsDisabled ? FB(new SolidColorBrush(Color.FromArgb(0x88, 0x88, 0x88, 0x90)))
                           : edge.IsWildcard ? FB(new SolidColorBrush(Color.FromRgb(0xFF, 0xB3, 0x3D)))
                           : _arrowFill;
@@ -659,7 +673,7 @@ namespace SageHavokEditor.UI
             {
                 var labelText = edge.IsDisabled ? "⊘ " + edge.EventName : edge.EventName;
                 DrawEdgeLabel(labelDc, labelText, (cx1 + cx2) / 2, (cy1 + cy2) / 2 - 16,
-                    isHovered || fire > 0, enlarge: isHovered);
+                    isHovered || fire > 0 || isHighlight, enlarge: isHovered || isHighlight);
             }
 
             if (fire > 0)

@@ -344,7 +344,7 @@
                     </TabItem>
 
                     <!-- Variables -->
-                    <TabItem>
+                    <TabItem x:Name="VariablesTab">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Variables" VerticalAlignment="Center"/>
@@ -597,7 +597,7 @@
                     </TabItem>
 
                     <!-- Events -->
-                    <TabItem>
+                    <TabItem x:Name="EventsTab">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Events" VerticalAlignment="Center"/>
@@ -773,7 +773,8 @@
                                 </TextBox.Style>
                             </TextBox>
                             <ListBox Grid.Row="1" ItemsSource="{Binding TransitionsView}"
-                                     SelectionChanged="TransitionsList_SelectionChanged">
+                                     SelectionChanged="TransitionsList_SelectionChanged"
+                                     PreviewMouseRightButtonDown="TransitionsList_PreviewMouseRightButtonDown">
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="🔎 Go to event (definition &amp; usages)"
@@ -861,6 +862,9 @@
                                                                     <DataTrigger Binding="{Binding Label}" Value="──">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsFlag}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </TextBlock.Style>
@@ -874,10 +878,31 @@
                                                                     <DataTrigger Binding="{Binding Label}" Value="──">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsFlag}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </TextBlock.Style>
                                                     </TextBlock>
+                                                    <!-- Flag badge (colored pill) — only for IsFlag rows -->
+                                                    <Border Grid.Column="1" CornerRadius="3" Padding="7,1"
+                                                            Margin="0,1" HorizontalAlignment="Left"
+                                                            Background="{Binding BadgeBg}">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsFlag}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock Text="{Binding Value}" FontSize="11"
+                                                                   FontWeight="SemiBold" TextWrapping="Wrap"
+                                                                   Foreground="{Binding BadgeFg}"/>
+                                                    </Border>
                                                 </Grid>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
@@ -888,7 +913,7 @@
                     </TabItem>
 
                     <!-- SM Inspector -->
-                    <TabItem>
+                    <TabItem x:Name="SmInspectorTab">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="SM Inspector" VerticalAlignment="Center"/>
@@ -1396,6 +1421,9 @@
                                    TextTrimming="CharacterEllipsis"
                                    Background="{DynamicResource BgDarkBrush}"/>
                         <ListBox x:Name="ParamsEditor" HorizontalContentAlignment="Stretch"
+                                 ScrollViewer.CanContentScroll="False"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  TextElement.Foreground="{DynamicResource InputTextBrush}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -1408,8 +1436,14 @@
                                                    VerticalAlignment="Top" Margin="0,4,6,0"
                                                    TextWrapping="Wrap" ToolTip="{Binding Name}"/>
                                         <StackPanel Grid.Column="1">
-                                            <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                      Padding="3" FontSize="11"
+                                                     TextWrapping="Wrap"
                                                      PreviewMouseLeftButtonDown="ParamValue_PreviewMouseLeftButtonDown"
                                                      PreviewMouseMove="ParamValue_PreviewMouseMove">
                                                 <TextBox.Style>
@@ -1423,11 +1457,31 @@
                                                             <DataTrigger Binding="{Binding Value, Converter={StaticResource ReferenceCheckConverter}}" Value="True">
                                                                 <Setter Property="Foreground" Value="{DynamicResource AccentBlueBrush}"/>
                                                                 <Setter Property="FontWeight" Value="Bold"/>
+                                                                <Setter Property="ToolTip" Value="This is a reference — click ↗ (or Ctrl+Click) to jump to it"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
                                                 </TextBox.Style>
                                             </TextBox>
+                                            <!-- Jump-to-reference link: only visible for "#ref" values -->
+                                            <Button Grid.Column="1" Content="↗" Margin="3,0,0,0"
+                                                    Padding="6,1" FontWeight="Bold"
+                                                    Foreground="{DynamicResource AccentBlueBrush}"
+                                                    Cursor="Hand"
+                                                    ToolTip="Jump to referenced object"
+                                                    Tag="{Binding}" Click="RefGoButton_Click">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Value, Converter={StaticResource ReferenceCheckConverter}}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                            </Grid>
                                             <Button Content="✏ Edit States" Margin="0,2,0,0"
                                                     HorizontalAlignment="Left" Padding="5,2"
                                                     Tag="{Binding}" Click="BtnEditStates_Click">

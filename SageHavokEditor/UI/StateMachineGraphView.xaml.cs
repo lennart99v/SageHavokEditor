@@ -100,6 +100,8 @@ namespace SageHavokEditor.UI
         private GraphVisualHost _visualHost = null!;
         private bool _panToActive = false;
         private string? _pendingPanToNodeId = null;
+        // Deferred event→transition reveal, applied once the SM graph finishes building.
+        private (string ownerObjectId, string eventId)? _pendingRevealTransition = null;
 
         private Border? _hoverCard;
         private System.Windows.Threading.DispatcherTimer? _hoverTimer;
@@ -185,6 +187,7 @@ namespace SageHavokEditor.UI
         public event Action<string>? StatusText_;
         public event Action<HkObject, string, string>? TransitionRetargetedFromGraph; // (trChild, oldToStateId, newToStateId)
         public event Action<string>? NavigateToEventRequested; // (eventId) — jump to the event definition + usages
+        public event Action<string>? ShowAnimationRequested;   // (stateObjectId) — open the state's clip animation + tags
         public event Action<HkObject, string, string>? TransitionFlagsChangedFromGraph; // (trChild, oldFlags, newFlags)
 
         // ── Graphviz ──────────────────────────────────────────────────────────
@@ -559,7 +562,13 @@ namespace SageHavokEditor.UI
             {
                 var genRef = obj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
                 if (!string.IsNullOrEmpty(genRef) && genRef != "null")
+                {
                     menu.Items.Add(drill);
+
+                    var showAnim = new MenuItem { Header = "🎬 Show animation & tags" };
+                    showAnim.Click += (_, __) => ShowAnimationRequested?.Invoke(node.Id);
+                    menu.Items.Add(showAnim);
+                }
             }
 
             menu.Items.Add(inspect);
@@ -1712,6 +1721,7 @@ namespace SageHavokEditor.UI
             FitToView();
             RedrawMinimapOverlay();
             PanToNodeIfPending();
+            RevealTransitionIfPending();
         }
 
         // Exact (token-level) match against a pipe-separated Havok flags string,
@@ -2688,6 +2698,7 @@ namespace SageHavokEditor.UI
                 // Escape = clear selection + highlight
                 case System.Windows.Input.Key.Escape:
                     _visualHost.HighlightNode(null);
+                    _visualHost.HighlightEdge(null);
                     e.Handled = true;
                     break;
             }
@@ -2971,6 +2982,91 @@ namespace SageHavokEditor.UI
             _translate.BeginAnimation(TranslateTransform.YProperty, animY);
 
             _visualHost.UpdateMapTransform(s, tx, ty);
+        }
+
+        /// <summary>
+        /// Reveal the transition that fires on <paramref name="eventId"/> and is owned by
+        /// <paramref name="ownerObjectId"/> — a state for a normal transition, or the state
+        /// machine itself for a wildcard. Switches to the owning machine's state view,
+        /// highlights the edge and its destination, and centers on the destination.
+        /// </summary>
+        public void RevealTransition(string ownerObjectId, string eventId)
+        {
+            if (_manager == null || string.IsNullOrEmpty(ownerObjectId) || string.IsNullOrEmpty(eventId)) return;
+            if (!_manager.ObjectMap.TryGetValue(ownerObjectId, out var ownerObj)) return;
+
+            string smName = ownerObj.ClassName == "hkbStateMachine"
+                ? ownerObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? ownerObj.Id
+                : FindStateMachineNameContaining(ownerObjectId);
+
+            _pendingRevealTransition = (ownerObjectId, eventId);
+
+            // Rebuild the SM state view if we're on a different machine or drilled into a
+            // generator (where transition edges don't exist). BuildStateMachineGraph then
+            // runs RevealTransitionIfPending once its layout completes.
+            bool switchMachine = !string.IsNullOrEmpty(smName) &&
+                                 MachineSelector.Items.Contains(smName) &&
+                                 ((MachineSelector.SelectedItem as string) != smName || _currentLevel != null);
+
+            if (switchMachine)
+            {
+                MachineSelector.SelectionChanged -= MachineSelector_SelectionChanged;
+                MachineSelector.SelectedItem = smName;
+                MachineSelector.SelectionChanged += MachineSelector_SelectionChanged;
+                _navStack.Clear();
+                _currentLevel = null;
+                UpdateBreadcrumb();
+                BuildStateMachineGraph(smName);
+            }
+            else
+            {
+                // Already showing the right state view — the edges are current.
+                RevealTransitionIfPending();
+            }
+        }
+
+        private void RevealTransitionIfPending()
+        {
+            if (_pendingRevealTransition == null) return;
+            var (ownerObjectId, eventId) = _pendingRevealTransition.Value;
+            _pendingRevealTransition = null;
+
+            var edge = FindTransitionEdge(ownerObjectId, eventId);
+            if (edge?.To == null)
+            {
+                StatusText_?.Invoke("Transition isn't visible in this view.");
+                return;
+            }
+
+            _visualHost.HighlightEdge(edge);
+            _visualHost.HighlightNode(edge.To.Id);
+            CenterOnNode(edge.To);
+            StatusText_?.Invoke($"📍 {edge.From?.Name} → {edge.To.Name}  ({edge.EventName})");
+        }
+
+        /// <summary>
+        /// Find the graph edge for a transition. Prefers an exact owner match (the edge's
+        /// backing (child, array, owner) tuple), which handles both normal transitions
+        /// (owner = state) and wildcards (owner = state machine); falls back to any edge
+        /// firing on the event.
+        /// </summary>
+        private GraphEdge? FindTransitionEdge(string ownerObjectId, string eventId)
+        {
+            var byOwner = _edges.FirstOrDefault(e =>
+                e.EventId == eventId &&
+                e.Tag is (HkObject _, HkObject _, HkObject owner) && owner.Id == ownerObjectId);
+            return byOwner ?? _edges.FirstOrDefault(e => e.EventId == eventId);
+        }
+
+        private string FindStateMachineNameContaining(string stateObjectId)
+        {
+            foreach (var sm in _manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
+            {
+                var states = sm.Params.FirstOrDefault(p => p.Name == "states")?.Value ?? "";
+                if (states.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(stateObjectId))
+                    return sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
+            }
+            return "";
         }
 
         /// <summary>

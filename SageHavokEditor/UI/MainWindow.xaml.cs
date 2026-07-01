@@ -277,7 +277,7 @@ namespace SageHavokEditor
                 var parentSM = FindParentSM(fromObjectId);
                 if (parentSM == null) return;
                 SelectedSM = parentSM;
-                MainTabControl.SelectedIndex = 6; // SM Inspector tab
+                MainTabControl.SelectedItem = SmInspectorTab;
                                                   // Pre-select the from state and open dialog
                 OpenTransitionDialog(isAdd: true,
                     preselectedFromState: manager.ObjectMap[fromObjectId]);
@@ -396,10 +396,13 @@ namespace SageHavokEditor
                 : (SolidColorBrush)Application.Current.Resources["TextSecondaryBrush"];
             BtnBookmarkToggle.ToolTip = isBookmarked ? "Remove bookmark" : "Bookmark this object";
 
-            // Show preview button only for clip generators
-            if (obj.ClassName == "hkbClipGenerator")
+            // Show the preview button for clip generators, and also for any object
+            // (e.g. a state) whose generator chain reaches a clip — so you can jump
+            // straight from a state to its animation + annotation tags.
+            var previewClip = obj.ClassName == "hkbClipGenerator" ? obj : FindClipInGeneratorChain(obj);
+            if (previewClip != null)
             {
-                _previewableClipObj = obj;
+                _previewableClipObj = previewClip;
                 BtnPreviewClipObj.Visibility = Visibility.Visible;
             }
             else
@@ -428,6 +431,56 @@ namespace SageHavokEditor
             }
         }
 
+        /// <summary>
+        /// Graph "🎬 Show animation &amp; tags" request for a state node — resolve its clip
+        /// and open the preview (which shows the clip's animation, event triggers and
+        /// annotation tags on the timeline).
+        /// </summary>
+        private void OnShowAnimationRequested(string stateObjectId)
+        {
+            if (!manager.ObjectMap.TryGetValue(stateObjectId, out var stateObj)) return;
+            var clip = stateObj.ClassName == "hkbClipGenerator"
+                ? stateObj
+                : FindClipInGeneratorChain(stateObj);
+            if (clip == null) { StatusText.Text = "No animation clip found for this state."; return; }
+
+            var ci = ClipList.FirstOrDefault(c => c.Id == clip.Id);
+            if (ci == null)
+            {
+                var animName = clip.Params.FirstOrDefault(p => p.Name == "animationName")?.Value;
+                var nm = clip.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? clip.Id;
+                if (string.IsNullOrEmpty(animName)) { StatusText.Text = "Clip has no animationName."; return; }
+                ci = new ClipInfo { Id = clip.Id, Name = nm, AnimationPath = animName };
+            }
+            PreviewClip(ci);
+        }
+
+        /// <summary>
+        /// Depth-first walk of an object's generator hierarchy (generator / generators /
+        /// children / modifier) returning the first hkbClipGenerator found, or null.
+        /// </summary>
+        private HkObject? FindClipInGeneratorChain(HkObject root)
+            => root == null ? null : WalkForClip(root, new HashSet<string>(), 0);
+
+        private HkObject? WalkForClip(HkObject obj, HashSet<string> visited, int depth)
+        {
+            if (obj == null || depth > 12 || !visited.Add(obj.Id)) return null;
+            if (obj.ClassName == "hkbClipGenerator") return obj;
+
+            foreach (var pname in new[] { "generator", "generators", "children", "modifier" })
+            {
+                var v = obj.Params.FirstOrDefault(p => p.Name == pname)?.Value;
+                if (string.IsNullOrEmpty(v) || v == "null") continue;
+                foreach (var r in v.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    if (manager.TryResolve(r, out var child))
+                    {
+                        var found = WalkForClip(child, visited, depth + 1);
+                        if (found != null) return found;
+                    }
+            }
+            return null;
+        }
+
         private void BtnBackNavigation_Click(object sender, RoutedEventArgs e)
         {
             if (_navigationHistory.Count == 0) return;
@@ -440,25 +493,46 @@ namespace SageHavokEditor
         private void ParamValue_PreviewMouseLeftButtonDown(object sender,
     System.Windows.Input.MouseButtonEventArgs e)
         {
+            // Ctrl+Click on a "#ref" value follows it (the ↗ button does the same
+            // without a modifier — see RefGoButton_Click). Ctrl keeps plain clicks
+            // free for editing the pointer text.
             if (!System.Windows.Input.Keyboard.Modifiers
                 .HasFlag(System.Windows.Input.ModifierKeys.Control)) return;
             if (sender is not TextBox tb) return;
+            if (NavigateFromRefValue(tb.Text, tb)) e.Handled = true;
+        }
 
-            var val = tb.Text?.Trim();
-            if (string.IsNullOrEmpty(val) || !val.StartsWith("#")) return;
+        private void RefGoButton_Click(object sender, RoutedEventArgs e)
+        {
+            // The button is only visible for "#ref" values (see the DataTrigger in
+            // the ParamsEditor template), so its Tag is the backing HkParam.
+            if (sender is not Button btn) return;
+            var val = (btn.Tag as HkParam)?.Value;
+            NavigateFromRefValue(val, btn);
+        }
 
-            // Handle space-separated multi-refs — find which token was clicked
+        /// <summary>
+        /// Follow a "#id"-style pointer value. A single ref jumps straight there;
+        /// a space-separated list opens a picker anchored to <paramref name="placement"/>.
+        /// Returns true if the value was a reference we could act on.
+        /// </summary>
+        private bool NavigateFromRefValue(string? rawValue, FrameworkElement placement)
+        {
+            var val = rawValue?.Trim();
+            if (string.IsNullOrEmpty(val) || !val.StartsWith("#")) return false;
+
             var refs = val.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                           .Where(r => r.StartsWith("#"))
                           .ToList();
+            if (refs.Count == 0) return false;
 
             if (refs.Count == 1)
             {
                 NavigateToObject(refs[0]);
             }
-            else if (refs.Count > 1)
+            else
             {
-                // Show a small context menu to pick which ref to jump to
+                // Multiple pointers in one field — let the user pick which to follow.
                 var menu = new ContextMenu();
                 foreach (var refId in refs)
                 {
@@ -471,10 +545,10 @@ namespace SageHavokEditor
                     item.Click += (s, ev) => NavigateToObject(capturedId);
                     menu.Items.Add(item);
                 }
-                menu.PlacementTarget = tb;
+                menu.PlacementTarget = placement;
                 menu.IsOpen = true;
             }
-            e.Handled = true;
+            return true;
         }
 
         private void ParamValue_PreviewMouseMove(object sender,
@@ -2230,7 +2304,8 @@ namespace SageHavokEditor
                         UsageType = "Transition",
                         Description = $"{fromName}  →  {toName}",
                         ObjectId = stateObj.Id,
-                        ClassName = "hkbStateMachineStateInfo"
+                        ClassName = "hkbStateMachineStateInfo",
+                        EventId = eventIndex
                     });
                 }
             }
@@ -2265,7 +2340,8 @@ namespace SageHavokEditor
                         UsageType = "Wildcard",
                         Description = $"★ {smName}  →  {toName}",
                         ObjectId = sm.Id,
-                        ClassName = "hkbStateMachine"
+                        ClassName = "hkbStateMachine",
+                        EventId = eventIndex
                     });
                 }
             }
@@ -2350,6 +2426,13 @@ namespace SageHavokEditor
                 var target = FindNodeById(root, usage.ObjectId);
                 if (target != null) SelectTreeNode(ObjectTree, target);
             }
+
+            // For a transition, don't just land on the owning state — reveal the actual
+            // edge in the graph (highlight it + its destination and center on the target),
+            // which is what "jump to this transition" intuitively means.
+            if ((usage.UsageType == "Transition" || usage.UsageType == "Wildcard")
+                && !string.IsNullOrEmpty(usage.EventId))
+                GraphView.RevealTransition(usage.ObjectId, usage.EventId);
         }
 
         private void EventFindUsages_Click(object sender, RoutedEventArgs e)
@@ -2375,17 +2458,23 @@ namespace SageHavokEditor
         {
             TransitionDetailList.Clear();
 
-            // ── Basic info ────────────────────────────────────────────────
-            TransitionDetailList.Add(new TransitionDetail
-            { Label = "From State", Value = tr.FromState });
-            TransitionDetailList.Add(new TransitionDetail
-            { Label = "To State", Value = tr.ToState });
-            TransitionDetailList.Add(new TransitionDetail
-            { Label = "Event", Value = $"{tr.EventName}  (id {tr.EventId})" });
-            TransitionDetailList.Add(new TransitionDetail
-            { Label = "Blend", Value = string.IsNullOrEmpty(tr.BlendDuration) ? "0" : tr.BlendDuration });
-            TransitionDetailList.Add(new TransitionDetail
-            { Label = "Flags", Value = tr.Flags });
+            // ── When it fires (plain-language summary) ────────────────────
+            // Lead with the actual firing rule — that's what "transition logic"
+            // means to a user — instead of raw fields they have to decode.
+            AddFiresWhenSummary(tr);
+
+            // ── Event ─────────────────────────────────────────────────────
+            if (!string.IsNullOrEmpty(tr.EventId) && tr.EventId != "-1")
+                TransitionDetailList.Add(new TransitionDetail
+                { Label = "Event", Value = $"{tr.EventName}  (#{tr.EventId})" });
+
+            // ── Flags (decoded into colored badges) ───────────────────────
+            var flagBadges = BuildFlagBadges(tr.Flags);
+            if (flagBadges.Count > 0)
+            {
+                TransitionDetailList.Add(new TransitionDetail { Label = "──", Value = "Flags" });
+                foreach (var b in flagBadges) TransitionDetailList.Add(b);
+            }
 
             if (string.IsNullOrEmpty(tr.TransitionEffect) || tr.TransitionEffect == "null")
                 return;
@@ -2394,6 +2483,8 @@ namespace SageHavokEditor
 
             // ── Transition effect details ─────────────────────────────────
             string Get(string n) => effectObj.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+
+            TransitionDetailList.Add(new TransitionDetail { Label = "──", Value = "Blend & effect" });
 
             var duration = Get("duration");
             var blendCurve = Get("blendCurve");
@@ -2503,10 +2594,146 @@ namespace SageHavokEditor
             }
         }
 
+        // ── Transition-detail clarity helpers ─────────────────────────────
+
+        /// <summary>Adds the "When it fires" section: one plain-language sentence that
+        /// combines the event, the condition and the wildcard/disabled flags.</summary>
+        private void AddFiresWhenSummary(TransitionInfo tr)
+        {
+            HkObject? effectObj = null, condObj = null;
+            if (!string.IsNullOrEmpty(tr.TransitionEffect) && tr.TransitionEffect != "null"
+                && manager.TryResolve(tr.TransitionEffect, out var eo)) effectObj = eo;
+            var condRef = effectObj?.Params.FirstOrDefault(p => p.Name == "condition")?.Value;
+            if (!string.IsNullOrEmpty(condRef) && condRef != "null"
+                && manager.TryResolve(condRef, out var co)) condObj = co;
+
+            bool hasEvent = !string.IsNullOrEmpty(tr.EventId) && tr.EventId != "-1";
+            bool condDisabled = HasTransitionFlag(tr.Flags, "FLAG_DISABLE_CONDITION");
+            bool wildcard = HasTransitionFlag(tr.Flags, "FLAG_IS_LOCAL_WILDCARD")
+                         || HasTransitionFlag(tr.Flags, "FLAG_IS_GLOBAL_WILDCARD");
+            bool disabled = HasTransitionFlag(tr.Flags, "FLAG_DISABLED");
+            string? condSummary = (condObj != null && !condDisabled) ? SummariseCondition(condObj) : null;
+
+            string rule;
+            if (disabled)
+            {
+                rule = "Never — this transition is disabled (FLAG_DISABLED).";
+            }
+            else
+            {
+                var from = wildcard ? "any state" : (string.IsNullOrEmpty(tr.FromState) ? "?" : tr.FromState);
+                var parts = new List<string>();
+                if (hasEvent) parts.Add($"the event “{tr.EventName}” is received");
+                if (condObj != null && !condDisabled)
+                    parts.Add(condSummary != null ? $"the condition ({condSummary}) is true"
+                                                  : "its condition is true");
+                var trigger = parts.Count == 0
+                    ? "immediately (nothing gates it)"
+                    : string.Join("  AND  ", parts);
+                rule = $"From {from} → “{tr.ToState}” when {trigger}.";
+            }
+
+            TransitionDetailList.Add(new TransitionDetail { Label = "──", Value = "When it fires" });
+            TransitionDetailList.Add(new TransitionDetail { Label = "Rule", Value = rule });
+        }
+
+        // Readable names for the Havok transition flags we care about.
+        private static readonly Dictionary<string, string> _transitionFlagText = new()
+        {
+            ["FLAG_DISABLE_CONDITION"] = "Ignores its condition — fires on the event alone",
+            ["FLAG_IS_LOCAL_WILDCARD"] = "Wildcard — can fire from any state in this machine",
+            ["FLAG_IS_GLOBAL_WILDCARD"] = "Global wildcard — can fire from any state",
+            ["FLAG_DISABLED"] = "Disabled — this transition never fires",
+            ["FLAG_USE_TRIGGER_INTERVAL"] = "Only eligible within a trigger time window",
+            ["FLAG_ABUT_ANIM_END"] = "Waits for the current animation to reach its end",
+            ["FLAG_TO_NESTED_STATE_ID_IS_VALID"] = "Targets a nested state",
+            ["FLAG_FROM_NESTED_STATE_ID_IS_VALID"] = "Starts from a nested state",
+            ["FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE"] = "Allows a wildcard to self-transition",
+        };
+
+        /// <summary>Turns a pipe-separated Havok flags string into colored badge rows;
+        /// unknown flags pass through verbatim (grey) so nothing is hidden.</summary>
+        private List<TransitionDetail> BuildFlagBadges(string? flags)
+        {
+            var rows = new List<TransitionDetail>();
+            foreach (var f in (flags ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var t = f.Trim();
+                if (t.Length == 0 || t == "0") continue;
+                var text = _transitionFlagText.TryGetValue(t, out var desc) ? desc : t;
+                var (bg, fg) = FlagBadgeBrushes(t);
+                rows.Add(new TransitionDetail { IsFlag = true, Value = text, BadgeBg = bg, BadgeFg = fg });
+            }
+            return rows;
+        }
+
+        // Badge colors per flag, echoing the graph palette (amber wildcard, red disabled…).
+        private static (Brush bg, Brush fg) FlagBadgeBrushes(string flag)
+        {
+            Color bg, fg;
+            switch (flag)
+            {
+                case "FLAG_DISABLED":
+                    bg = Color.FromArgb(0x33, 0xFF, 0x6B, 0x6B); fg = Color.FromRgb(0xFF, 0x9A, 0x9A); break;
+                case "FLAG_IS_LOCAL_WILDCARD":
+                case "FLAG_IS_GLOBAL_WILDCARD":
+                    bg = Color.FromArgb(0x33, 0xFF, 0xB3, 0x3D); fg = Color.FromRgb(0xFF, 0xC8, 0x66); break;
+                case "FLAG_DISABLE_CONDITION":
+                    bg = Color.FromArgb(0x33, 0xC5, 0x86, 0xC0); fg = Color.FromRgb(0xDB, 0xA6, 0xD6); break;
+                case "FLAG_TO_NESTED_STATE_ID_IS_VALID":
+                case "FLAG_FROM_NESTED_STATE_ID_IS_VALID":
+                    bg = Color.FromArgb(0x33, 0x4F, 0xC3, 0xF7); fg = Color.FromRgb(0x8F, 0xD6, 0xF7); break;
+                default:
+                    bg = Color.FromArgb(0x2E, 0x99, 0x99, 0xAA); fg = Color.FromRgb(0xC2, 0xC2, 0xCE); break;
+            }
+            var bgb = new SolidColorBrush(bg); bgb.Freeze();
+            var fgb = new SolidColorBrush(fg); fgb.Freeze();
+            return (bgb, fgb);
+        }
+
+        /// <summary>Short, human form of a transition condition (e.g. "Speed > 0.5"), or null.</summary>
+        private string? SummariseCondition(HkObject condObj)
+        {
+            if (condObj == null) return null;
+            var expr = condObj.Params.FirstOrDefault(p => p.Name == "expression")?.Value;
+            if (!string.IsNullOrEmpty(expr)) return ResolveVarNames(expr);
+
+            var varIdx = condObj.Params.FirstOrDefault(p => p.Name == "variableIndex")?.Value;
+            if (!string.IsNullOrEmpty(varIdx))
+            {
+                var varName = VariableList.FirstOrDefault(v => v.Index.ToString() == varIdx)?.Name ?? $"var[{varIdx}]";
+                var compareVal = condObj.Params.FirstOrDefault(p => p.Name == "value" || p.Name == "compareValue")?.Value ?? "?";
+                var op = condObj.Params.FirstOrDefault(p => p.Name == "operation")?.Value ?? "==";
+                return $"{varName} {op} {compareVal}";
+            }
+            return condObj.ClassName;
+        }
+
+        // Replace var[n] indices in an expression with their variable names.
+        private string ResolveVarNames(string expr) =>
+            System.Text.RegularExpressions.Regex.Replace(expr, @"\bvar\[(\d+)\]", m =>
+            {
+                var vn = VariableList.FirstOrDefault(v => v.Index.ToString() == m.Groups[1].Value)?.Name;
+                return vn ?? m.Value;
+            });
+
         private void TransitionsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if ((sender as ListBox)?.SelectedItem is TransitionInfo tr)
                 SelectedTransition = tr;
+        }
+
+        // Right-click doesn't select a ListBox row by default, so the context menu's
+        // "Go to event" would act on a stale/absent SelectedTransition. Select the row
+        // under the cursor first.
+        private void TransitionsList_PreviewMouseRightButtonDown(object sender,
+            System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var dep = e.OriginalSource as DependencyObject;
+            while (dep != null && dep is not ListBoxItem)
+                dep = System.Windows.Media.VisualTreeHelper.GetParent(dep);
+            if (dep is ListBoxItem item)
+                item.IsSelected = true;
         }
 
         // ── Transitions list: jump from a transition to its event definition ──────────
@@ -2523,7 +2750,13 @@ namespace SageHavokEditor
         private void TransitionDetail_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if ((sender as ListBox)?.SelectedItem is not TransitionDetail detail) return;
-            if (string.IsNullOrEmpty(detail.ObjectId)) return;
+            if (string.IsNullOrEmpty(detail.ObjectId))
+            {
+                // Header / flag / info row — nothing to navigate to, so don't leave it
+                // highlighted (re-ents with a null selection, which the guard above drops).
+                if (sender is ListBox lb) lb.SelectedItem = null;
+                return;
+            }
             if (!manager.ObjectMap.TryGetValue(detail.ObjectId, out var obj)) return;
             LoadObjectIntoEditor(obj);
             MainTabControl.SelectedIndex = 0;
@@ -2624,7 +2857,7 @@ namespace SageHavokEditor
 
                 VariableFilter = "";
 
-                MainTabControl.SelectedIndex = 2;
+                MainTabControl.SelectedItem = VariablesTab;
 
                 Dispatcher.InvokeAsync(() =>
                 {
@@ -2654,7 +2887,7 @@ namespace SageHavokEditor
             }
 
             EventFilter = "";
-            MainTabControl.SelectedIndex = 4; // Events tab
+            MainTabControl.SelectedItem = EventsTab;
 
             Dispatcher.InvokeAsync(() =>
             {

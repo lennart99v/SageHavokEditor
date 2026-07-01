@@ -12,5 +12,6 @@ namespace SageHavokEditor.Models.ViewModels
         public string Description { get; set; } = ""; // human-readable summary
         public string ObjectId { get; set; } = "";    // for navigation on click
         public string ClassName { get; set; } = "";
+        public string EventId { get; set; } = "";      // firing event index — set for transitions so the graph can reveal the edge
     }
 }

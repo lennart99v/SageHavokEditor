@@ -472,6 +472,7 @@ namespace SageHavokEditor
             GraphView.StatusText_ -= OnGraphStatus;
             GraphView.NavigateToEventRequested -= NavigateToEvent;
             GraphView.TransitionFlagsChangedFromGraph -= OnTransitionFlagsChangedFromGraph;
+            GraphView.ShowAnimationRequested -= OnShowAnimationRequested;
             GraphView.TransitionDeletedFromGraph += OnTransitionDeletedFromGraph;
             GraphView.NodeRenamedOnGraph += OnNodeRenamedOnGraph;
             GraphView.NodeAddedToGraph += OnNodeAddedToGraph;
@@ -479,6 +480,7 @@ namespace SageHavokEditor
             GraphView.StatusText_ += OnGraphStatus;
             GraphView.NavigateToEventRequested += NavigateToEvent;
             GraphView.TransitionFlagsChangedFromGraph += OnTransitionFlagsChangedFromGraph;
+            GraphView.ShowAnimationRequested += OnShowAnimationRequested;
         }
 
         private void OnTransitionFlagsChangedFromGraph(
