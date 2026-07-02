@@ -21,8 +21,9 @@ namespace SageHavokEditor.UI
     {
         public GraphViewLevel Level { get; set; }
         public string Label { get; set; } = "";          // display in breadcrumb bar
-        public string MachineFilter { get; set; } = "";
-        public string RootObjectId { get; set; } = "";   // state that was drilled into
+        public string MachineFilter { get; set; } = "";  // StateMachine view: which machine
+        public string RootObjectId { get; set; } = "";   // GeneratorHierarchy view: state drilled into
+        public string GeneratorRef { get; set; } = "";   // GeneratorHierarchy view: that state's generator ref (the graph root)
     }
 
     // ── Debug UI models ───────────────────────────────────────────────────────────
@@ -162,8 +163,12 @@ namespace SageHavokEditor.UI
 
 
         // ── Navigation stack ──────────────────────────────────────────────────
+        // Navigation is a single stack whose TOP is always the view currently on screen
+        // and whose BOTTOM is the root state-machine view. This supports arbitrary drill
+        // depth (machine → state's generator → nested machine → its state's generator → …)
+        // with Back / breadcrumb-jump popping to any ancestor.
         private readonly Stack<GraphBreadcrumb> _navStack = new();
-        private GraphBreadcrumb? _currentLevel;
+        private GraphBreadcrumb? CurrentView => _navStack.Count > 0 ? _navStack.Peek() : null;
 
         // ── Pan / zoom ────────────────────────────────────────────────────────
         private readonly ScaleTransform _scale = new(1, 1);
@@ -397,8 +402,9 @@ namespace SageHavokEditor.UI
             if (!_manager.ObjectMap.TryGetValue(node.Id, out var obj)) return;
 
             // What can we drill into?
-            // State node → show its generator hierarchy
-            // SM node    → show its states (already the default view, zoom in)
+            //   State node → show its generator hierarchy
+            //   SM node    → open that machine's state graph (it may be nested inside a
+            //                generator chain, e.g. H2H_SpecialIdle_State's sub-behaviour).
             if (obj.ClassName == "hkbStateMachineStateInfo")
             {
                 var genRef = obj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
@@ -409,101 +415,143 @@ namespace SageHavokEditor.UI
                     return;
                 }
 
-                // Push current level onto nav stack
-                _navStack.Push(_currentLevel ?? new GraphBreadcrumb
-                {
-                    Level = GraphViewLevel.StateMachine,
-                    Label = MachineSelector.SelectedItem as string ?? "Graph",
-                    MachineFilter = MachineSelector.SelectedItem as string ?? ""
-                });
-
-                _currentLevel = new GraphBreadcrumb
+                PushView(new GraphBreadcrumb
                 {
                     Level = GraphViewLevel.GeneratorHierarchy,
                     Label = node.Name,
-                    RootObjectId = node.Id
-                };
-
-                UpdateBreadcrumb();
-                BuildGeneratorGraph(genRef, node.Name);
+                    RootObjectId = node.Id,
+                    GeneratorRef = genRef,
+                    // Remember the owning machine so returning here keeps the dropdown honest.
+                    MachineFilter = MachineSelector.SelectedItem as string ?? ""
+                });
             }
             else if (obj.ClassName == "hkbStateMachine")
             {
-                // Already showing states — just select it
+                var smName = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? node.Id;
                 StateSelected?.Invoke(node.Id);
+
+                if (!MachineSelector.Items.Contains(smName))
+                {
+                    _visualHost.ShowOverlayText("This state machine isn't in the machine list",
+                        Color.FromRgb(0x9D, 0x9D, 0x9D));
+                    return;
+                }
+
+                PushView(new GraphBreadcrumb
+                {
+                    Level = GraphViewLevel.StateMachine,
+                    Label = smName,
+                    MachineFilter = smName
+                });
+            }
+        }
+
+        // ── Navigation primitives ─────────────────────────────────────────────
+        // The stack top is the on-screen view. These three keep the stack, the
+        // breadcrumb bar and the rendered graph in lock-step for any drill depth.
+
+        /// <summary>Reset the whole stack to a single root state-machine view.</summary>
+        private void ResetToMachine(string machineName)
+        {
+            _navStack.Clear();
+            _navStack.Push(new GraphBreadcrumb
+            {
+                Level = GraphViewLevel.StateMachine,
+                Label = machineName,
+                MachineFilter = machineName
+            });
+            UpdateBreadcrumb();
+            ShowView(_navStack.Peek());
+        }
+
+        /// <summary>Drill one level deeper into <paramref name="view"/>.</summary>
+        private void PushView(GraphBreadcrumb view)
+        {
+            _navStack.Push(view);
+            UpdateBreadcrumb();
+            ShowView(view);
+        }
+
+        /// <summary>Render the graph for a breadcrumb WITHOUT touching the stack.</summary>
+        private void ShowView(GraphBreadcrumb view)
+        {
+            // Keep the machine dropdown reflecting this view's owning machine (both levels
+            // carry MachineFilter). Detach the handler so this doesn't reset the nav stack.
+            if (!string.IsNullOrEmpty(view.MachineFilter)
+                && (MachineSelector.SelectedItem as string) != view.MachineFilter)
+            {
+                MachineSelector.SelectionChanged -= MachineSelector_SelectionChanged;
+                MachineSelector.SelectedItem = view.MachineFilter;
+                MachineSelector.SelectionChanged += MachineSelector_SelectionChanged;
+            }
+
+            if (view.Level == GraphViewLevel.StateMachine)
+            {
+                BuildStateMachineGraph(view.MachineFilter);
+            }
+            else // GeneratorHierarchy
+            {
+                // Prefer the stored generator ref; fall back to re-resolving from the state.
+                var genRef = view.GeneratorRef;
+                if (string.IsNullOrEmpty(genRef) && _manager != null
+                    && _manager.ObjectMap.TryGetValue(view.RootObjectId, out var st))
+                    genRef = st.Params.FirstOrDefault(p => p.Name == "generator")?.Value ?? "";
+                BuildGeneratorGraph(genRef, view.Label);
             }
         }
 
         private void NavigateBack()
         {
-            if (_navStack.Count == 0) return;
-
-            var prev = _navStack.Pop();
-            _currentLevel = _navStack.Count > 0 ? _navStack.Peek() : null;
-
+            if (_navStack.Count <= 1) return; // bottom is the root machine — nothing above it
+            _navStack.Pop();                  // discard the current view
             UpdateBreadcrumb();
+            ShowView(_navStack.Peek());        // render the revealed ancestor
+        }
 
-            if (prev.Level == GraphViewLevel.StateMachine)
-            {
-                // Restore the machine selector and rebuild state graph
-                if (!string.IsNullOrEmpty(prev.MachineFilter))
-                {
-                    // Re-select in dropdown without triggering SelectionChanged recursion
-                    MachineSelector.SelectionChanged -= MachineSelector_SelectionChanged;
-                    MachineSelector.SelectedItem = prev.MachineFilter;
-                    MachineSelector.SelectionChanged += MachineSelector_SelectionChanged;
-                }
-                BuildStateMachineGraph(prev.MachineFilter);
-            }
+        /// <summary>Pop until <paramref name="target"/> is the current view (breadcrumb click).</summary>
+        private void NavigateToCrumb(GraphBreadcrumb target)
+        {
+            if (!_navStack.Contains(target)) return;
+            while (_navStack.Count > 1 && _navStack.Peek() != target) _navStack.Pop();
+            UpdateBreadcrumb();
+            ShowView(_navStack.Peek());
         }
 
         private void UpdateBreadcrumb()
         {
             BreadcrumbPanel.Children.Clear();
 
-            // Root crumb
-            var root = MakecrumbButton("⚙ Graph", () =>
-            {
-                _navStack.Clear();
-                _currentLevel = null;
-                UpdateBreadcrumb();
-                if (MachineSelector.SelectedItem is string m)
-                    BuildStateMachineGraph(m);
-            });
-            BreadcrumbPanel.Children.Add(root);
-
-            // Intermediate crumbs from stack (bottom to top)
+            // The stack, bottom (root machine) to top (current view). Every crumb except
+            // the top is clickable and jumps straight to that level; the top is where we are.
             var crumbs = _navStack.Reverse().ToList();
-            foreach (var crumb in crumbs)
+            for (int i = 0; i < crumbs.Count; i++)
             {
-                BreadcrumbPanel.Children.Add(MakeSeparator());
-                var c = crumb; // capture
-                BreadcrumbPanel.Children.Add(MakecrumbButton(crumb.Label, () =>
+                if (i > 0) BreadcrumbPanel.Children.Add(MakeSeparator());
+
+                var crumb = crumbs[i];
+                var label = i == 0 ? "⚙ " + crumb.Label : crumb.Label;
+
+                if (i < crumbs.Count - 1)
                 {
-                    // Pop back to this crumb
-                    while (_navStack.Count > 0 && _navStack.Peek() != c)
-                        _navStack.Pop();
-                    NavigateBack();
-                }));
+                    var c = crumb; // capture
+                    BreadcrumbPanel.Children.Add(MakecrumbButton(label, () => NavigateToCrumb(c)));
+                }
+                else
+                {
+                    BreadcrumbPanel.Children.Add(new TextBlock
+                    {
+                        Text = label,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4)),
+                        FontSize = 11,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(4, 0, 4, 0)
+                    });
+                }
             }
 
-            // Current level (not clickable — it's where we are)
-            if (_currentLevel != null)
-            {
-                BreadcrumbPanel.Children.Add(MakeSeparator());
-                BreadcrumbPanel.Children.Add(new TextBlock
-                {
-                    Text = _currentLevel.Label,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4)),
-                    FontSize = 11,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(4, 0, 4, 0)
-                });
-            }
-
-            // Back button visibility
-            BtnBack.IsEnabled = _navStack.Count > 0;
+            // Back is available whenever there's an ancestor to return to.
+            BtnBack.IsEnabled = _navStack.Count > 1;
         }
 
         private static Button MakecrumbButton(string label, Action onClick)
@@ -1830,6 +1878,9 @@ namespace SageHavokEditor.UI
                 Name = name,
                 ClassName = obj.ClassName,
                 NodeType = ClassifyNode(obj.ClassName),
+                // A nested state machine can be opened into its own state graph
+                // (see DrillInto) — show the drill affordance so it reads as clickable.
+                CanDrillDown = obj.ClassName == "hkbStateMachine",
                 Tag = obj
             };
             nodes.Add(node);
@@ -2835,12 +2886,7 @@ namespace SageHavokEditor.UI
         private void MachineSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (MachineSelector.SelectedItem is string m)
-            {
-                _navStack.Clear();
-                _currentLevel = null;
-                UpdateBreadcrumb();
-                BuildStateMachineGraph(m);
-            }
+                ResetToMachine(m);
         }
 
         private void BtnBack_Click(object sender, RoutedEventArgs e) => NavigateBack();
@@ -2850,11 +2896,9 @@ namespace SageHavokEditor.UI
 
         private void BtnLayout_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentLevel?.Level == GraphViewLevel.GeneratorHierarchy)
-                BuildGeneratorGraph(_currentLevel.RootObjectId,
-                    _currentLevel.Label);
-            else if (MachineSelector.SelectedItem is string m)
-                BuildStateMachineGraph(m);
+            // Re-layout the current view (whatever depth we're at).
+            if (CurrentView is { } v) ShowView(v);
+            else if (MachineSelector.SelectedItem is string m) BuildStateMachineGraph(m);
         }
 
         private void BtnZoomIn_Click(object sender, RoutedEventArgs e)
@@ -2925,12 +2969,7 @@ namespace SageHavokEditor.UI
                 MachineSelector.Items.Contains(smName) &&
                 (MachineSelector.SelectedItem as string) != smName)
             {
-                MachineSelector.SelectionChanged -= MachineSelector_SelectionChanged;
-                MachineSelector.SelectedItem = smName;
-                MachineSelector.SelectionChanged += MachineSelector_SelectionChanged;
-                _navStack.Clear();
-                _currentLevel = null;
-                BuildStateMachineGraph(smName);
+                ResetToMachine(smName);
             }
 
             // 3. Drill into the owning state, then highlight the clip once the
@@ -3011,22 +3050,18 @@ namespace SageHavokEditor.UI
 
             _pendingRevealTransition = (ownerObjectId, eventId, toStateObjectId);
 
-            // Rebuild the SM state view if we're on a different machine or drilled into a
-            // generator (where transition edges don't exist). BuildStateMachineGraph then
-            // runs RevealTransitionIfPending once its layout completes.
+            // Rebuild the SM state view unless we're already showing exactly that machine's
+            // states (a drilled generator view has no transition edges). BuildStateMachineGraph
+            // then runs RevealTransitionIfPending once its layout completes.
+            bool onTargetStateView = CurrentView?.Level == GraphViewLevel.StateMachine
+                                     && (MachineSelector.SelectedItem as string) == smName;
             bool switchMachine = !string.IsNullOrEmpty(smName) &&
                                  MachineSelector.Items.Contains(smName) &&
-                                 ((MachineSelector.SelectedItem as string) != smName || _currentLevel != null);
+                                 !onTargetStateView;
 
             if (switchMachine)
             {
-                MachineSelector.SelectionChanged -= MachineSelector_SelectionChanged;
-                MachineSelector.SelectedItem = smName;
-                MachineSelector.SelectionChanged += MachineSelector_SelectionChanged;
-                _navStack.Clear();
-                _currentLevel = null;
-                UpdateBreadcrumb();
-                BuildStateMachineGraph(smName);
+                ResetToMachine(smName);
             }
             else
             {
