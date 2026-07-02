@@ -13,5 +13,6 @@ namespace SageHavokEditor.Models.ViewModels
         public string ObjectId { get; set; } = "";    // for navigation on click
         public string ClassName { get; set; } = "";
         public string EventId { get; set; } = "";      // firing event index — set for transitions so the graph can reveal the edge
+        public string ToStateObjectId { get; set; } = ""; // destination state object id — lets the graph reveal the exact edge (stateIds repeat across SMs, so the event id alone is ambiguous)
     }
 }

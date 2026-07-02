@@ -2267,6 +2267,25 @@ namespace SageHavokEditor
             }
         }
 
+        /// <summary>
+        /// Builds a stateId → state-object map for one state machine. stateIds are only
+        /// unique within a machine (they repeat across machines), so transition targets
+        /// must be resolved through this per-SM map, never a global <c>ObjectMap</c> scan.
+        /// </summary>
+        private Dictionary<string, HkObject> ResolveStates(HkObject stateMachine)
+        {
+            var map = new Dictionary<string, HkObject>();
+            var statesRef = stateMachine.Params.FirstOrDefault(p => p.Name == "states")?.Value;
+            if (string.IsNullOrEmpty(statesRef) || statesRef == "null") return map;
+            foreach (var sref in statesRef.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!manager.TryResolve(sref, out var st)) continue;
+                var sid = st.Params.FirstOrDefault(p => p.Name == "stateId")?.Value;
+                if (!string.IsNullOrEmpty(sid)) map.TryAdd(sid, st); // first wins on the rare duplicate
+            }
+            return map;
+        }
+
         private void RefreshEventUsages(IdNamePair ev)
         {
             EventUsageList.Clear();
@@ -2275,38 +2294,45 @@ namespace SageHavokEditor
             var eventIndex = ev.Id; // "0", "1", "18" etc.
 
             // ── Transitions ───────────────────────────────────────────────
-            foreach (var stateObj in manager.ObjectMap.Values
-                .Where(o => o.ClassName == "hkbStateMachineStateInfo"))
+            // Resolve each transition's destination WITHIN its owning state machine.
+            // stateIds are only unique per-SM (they repeat across machines), so a global
+            // "first state with this stateId" scan could name — and later jump to — the
+            // same-numbered state in the wrong machine (the H2HBash "wrong turn" bug).
+            foreach (var sm in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachine"))
             {
-                var fromName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
-                var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
-                if (string.IsNullOrEmpty(transRef) || transRef == "null") continue;
-                if (!manager.TryResolve(transRef, out var transArray)) continue;
+                var smStates = ResolveStates(sm); // stateId -> stateObj, scoped to this SM
 
-                var tp = transArray.Params.FirstOrDefault(p => p.Name == "transitions");
-                if (tp?.Children == null) continue;
-
-                foreach (var tr in tp.Children)
+                foreach (var stateObj in smStates.Values)
                 {
-                    var trEventId = tr.Params.FirstOrDefault(p => p.Name == "eventId")?.Value;
-                    if (trEventId != eventIndex) continue;
+                    var fromName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
+                    var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
+                    if (string.IsNullOrEmpty(transRef) || transRef == "null") continue;
+                    if (!manager.TryResolve(transRef, out var transArray)) continue;
 
-                    var toStateId = tr.Params.FirstOrDefault(p => p.Name == "toStateId")?.Value ?? "";
-                    // resolve toState name
-                    var toStateObj = manager.ObjectMap.Values.FirstOrDefault(o =>
-                        o.ClassName == "hkbStateMachineStateInfo" &&
-                        o.Params.FirstOrDefault(p => p.Name == "stateId")?.Value == toStateId);
-                    var toName = toStateObj?.Params.FirstOrDefault(p => p.Name == "name")?.Value
-                                 ?? $"stateId:{toStateId}";
+                    var tp = transArray.Params.FirstOrDefault(p => p.Name == "transitions");
+                    if (tp?.Children == null) continue;
 
-                    EventUsageList.Add(new EventUsageEntry
+                    foreach (var tr in tp.Children)
                     {
-                        UsageType = "Transition",
-                        Description = $"{fromName}  →  {toName}",
-                        ObjectId = stateObj.Id,
-                        ClassName = "hkbStateMachineStateInfo",
-                        EventId = eventIndex
-                    });
+                        var trEventId = tr.Params.FirstOrDefault(p => p.Name == "eventId")?.Value;
+                        if (trEventId != eventIndex) continue;
+
+                        var toStateId = tr.Params.FirstOrDefault(p => p.Name == "toStateId")?.Value ?? "";
+                        smStates.TryGetValue(toStateId, out var toStateObj);
+                        var toName = toStateObj?.Params.FirstOrDefault(p => p.Name == "name")?.Value
+                                     ?? $"stateId:{toStateId}";
+
+                        EventUsageList.Add(new EventUsageEntry
+                        {
+                            UsageType = "Transition",
+                            Description = $"{fromName}  →  {toName}",
+                            ObjectId = stateObj.Id,
+                            ClassName = "hkbStateMachineStateInfo",
+                            EventId = eventIndex,
+                            ToStateObjectId = toStateObj?.Id ?? ""
+                        });
+                    }
                 }
             }
 
@@ -2322,6 +2348,7 @@ namespace SageHavokEditor
                 if (wtp?.Children == null) continue;
 
                 var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
+                var smStates = ResolveStates(sm); // stateId -> stateObj, scoped to this SM
 
                 foreach (var tr in wtp.Children)
                 {
@@ -2329,9 +2356,7 @@ namespace SageHavokEditor
                     if (trEventId != eventIndex) continue;
 
                     var toStateId = tr.Params.FirstOrDefault(p => p.Name == "toStateId")?.Value ?? "";
-                    var toStateObj = manager.ObjectMap.Values.FirstOrDefault(o =>
-                        o.ClassName == "hkbStateMachineStateInfo" &&
-                        o.Params.FirstOrDefault(p => p.Name == "stateId")?.Value == toStateId);
+                    smStates.TryGetValue(toStateId, out var toStateObj);
                     var toName = toStateObj?.Params.FirstOrDefault(p => p.Name == "name")?.Value
                                  ?? $"stateId:{toStateId}";
 
@@ -2341,7 +2366,8 @@ namespace SageHavokEditor
                         Description = $"★ {smName}  →  {toName}",
                         ObjectId = sm.Id,
                         ClassName = "hkbStateMachine",
-                        EventId = eventIndex
+                        EventId = eventIndex,
+                        ToStateObjectId = toStateObj?.Id ?? ""
                     });
                 }
             }
@@ -2432,7 +2458,7 @@ namespace SageHavokEditor
             // which is what "jump to this transition" intuitively means.
             if ((usage.UsageType == "Transition" || usage.UsageType == "Wildcard")
                 && !string.IsNullOrEmpty(usage.EventId))
-                GraphView.RevealTransition(usage.ObjectId, usage.EventId);
+                GraphView.RevealTransition(usage.ObjectId, usage.EventId, usage.ToStateObjectId);
         }
 
         private void EventFindUsages_Click(object sender, RoutedEventArgs e)

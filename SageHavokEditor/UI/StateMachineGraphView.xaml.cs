@@ -101,7 +101,7 @@ namespace SageHavokEditor.UI
         private bool _panToActive = false;
         private string? _pendingPanToNodeId = null;
         // Deferred event→transition reveal, applied once the SM graph finishes building.
-        private (string ownerObjectId, string eventId)? _pendingRevealTransition = null;
+        private (string ownerObjectId, string eventId, string? toStateObjectId)? _pendingRevealTransition = null;
 
         private Border? _hoverCard;
         private System.Windows.Threading.DispatcherTimer? _hoverTimer;
@@ -1551,7 +1551,13 @@ namespace SageHavokEditor.UI
 
             await System.Threading.Tasks.Task.Run(() =>
             {
+                // Keyed by "machine|stateId", NOT bare stateId: stateIds repeat across
+                // state machines, so a bare-stateId dict silently overwrites (last machine
+                // wins) and transition edges then wire to the wrong machine's node — e.g. a
+                // Troll transition meant for its own stateId 0 landing on H2HBash. Scoping
+                // by machine keeps each edge inside its own SM.
                 var stateIdToNode = new Dictionary<string, GraphNode>();
+                static string NodeKey(string machine, string stateId) => machine + "|" + stateId;
 
                 foreach (var sm in allObjects.Where(o => o.ClassName == "hkbStateMachine"))
                 {
@@ -1594,7 +1600,7 @@ namespace SageHavokEditor.UI
                             Height = 68
                         };
                         localNodes.Add(node);
-                        stateIdToNode[stateId] = node;
+                        stateIdToNode[NodeKey(smName, stateId)] = node;
                     }
                 }
 
@@ -1618,7 +1624,9 @@ namespace SageHavokEditor.UI
                             tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
                         var toStateId = Get("toStateId");
                         var eventId = Get("eventId");
-                        if (!stateIdToNode.TryGetValue(toStateId, out var toNode)) continue;
+                        // Resolve the destination within THIS transition's own machine
+                        // (fromNode.Machine) — never a cross-machine stateId collision.
+                        if (!stateIdToNode.TryGetValue(NodeKey(fromNode.Machine, toStateId), out var toNode)) continue;
 
                         var flags = Get("flags");
                         localEdges.Add(new GraphEdge
@@ -2987,10 +2995,12 @@ namespace SageHavokEditor.UI
         /// <summary>
         /// Reveal the transition that fires on <paramref name="eventId"/> and is owned by
         /// <paramref name="ownerObjectId"/> — a state for a normal transition, or the state
-        /// machine itself for a wildcard. Switches to the owning machine's state view,
-        /// highlights the edge and its destination, and centers on the destination.
+        /// machine itself for a wildcard. <paramref name="toStateObjectId"/> pins the exact
+        /// destination so a state that fires several transitions on the same event resolves
+        /// to the right edge. Switches to the owning machine's state view, highlights the
+        /// edge and its destination, and centers on the destination.
         /// </summary>
-        public void RevealTransition(string ownerObjectId, string eventId)
+        public void RevealTransition(string ownerObjectId, string eventId, string? toStateObjectId = null)
         {
             if (_manager == null || string.IsNullOrEmpty(ownerObjectId) || string.IsNullOrEmpty(eventId)) return;
             if (!_manager.ObjectMap.TryGetValue(ownerObjectId, out var ownerObj)) return;
@@ -2999,7 +3009,7 @@ namespace SageHavokEditor.UI
                 ? ownerObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? ownerObj.Id
                 : FindStateMachineNameContaining(ownerObjectId);
 
-            _pendingRevealTransition = (ownerObjectId, eventId);
+            _pendingRevealTransition = (ownerObjectId, eventId, toStateObjectId);
 
             // Rebuild the SM state view if we're on a different machine or drilled into a
             // generator (where transition edges don't exist). BuildStateMachineGraph then
@@ -3028,10 +3038,10 @@ namespace SageHavokEditor.UI
         private void RevealTransitionIfPending()
         {
             if (_pendingRevealTransition == null) return;
-            var (ownerObjectId, eventId) = _pendingRevealTransition.Value;
+            var (ownerObjectId, eventId, toStateObjectId) = _pendingRevealTransition.Value;
             _pendingRevealTransition = null;
 
-            var edge = FindTransitionEdge(ownerObjectId, eventId);
+            var edge = FindTransitionEdge(ownerObjectId, eventId, toStateObjectId);
             if (edge?.To == null)
             {
                 StatusText_?.Invoke("Transition isn't visible in this view.");
@@ -3045,17 +3055,32 @@ namespace SageHavokEditor.UI
         }
 
         /// <summary>
-        /// Find the graph edge for a transition. Prefers an exact owner match (the edge's
-        /// backing (child, array, owner) tuple), which handles both normal transitions
-        /// (owner = state) and wildcards (owner = state machine); falls back to any edge
-        /// firing on the event.
+        /// Find the graph edge for a transition, matching on the edge's backing
+        /// (child, array, owner) tuple — owner = state for a normal transition, or the
+        /// state machine for a wildcard. When <paramref name="toStateObjectId"/> is known,
+        /// the destination is matched too, so a state that fires several transitions on the
+        /// same event resolves to the right edge.
+        ///
+        /// There is deliberately NO "any edge firing on this event" fallback: that used to
+        /// silently reveal an unrelated transition in a different state (the H2HBash
+        /// "wrong turn"). If the owner's edge isn't in the current view, we return null and
+        /// the caller reports "not visible" instead of jumping somewhere misleading.
         /// </summary>
-        private GraphEdge? FindTransitionEdge(string ownerObjectId, string eventId)
+        private GraphEdge? FindTransitionEdge(string ownerObjectId, string eventId, string? toStateObjectId)
         {
-            var byOwner = _edges.FirstOrDefault(e =>
+            bool OwnerMatch(GraphEdge e) =>
                 e.EventId == eventId &&
-                e.Tag is (HkObject _, HkObject _, HkObject owner) && owner.Id == ownerObjectId);
-            return byOwner ?? _edges.FirstOrDefault(e => e.EventId == eventId);
+                e.Tag is (HkObject _, HkObject _, HkObject owner) && owner.Id == ownerObjectId;
+
+            // Exact: right owner, right event, right destination.
+            if (!string.IsNullOrEmpty(toStateObjectId))
+            {
+                var exact = _edges.FirstOrDefault(e => OwnerMatch(e) && e.To?.Id == toStateObjectId);
+                if (exact != null) return exact;
+            }
+
+            // Right owner + event, destination unknown or not individually in view.
+            return _edges.FirstOrDefault(OwnerMatch);
         }
 
         private string FindStateMachineNameContaining(string stateObjectId)
