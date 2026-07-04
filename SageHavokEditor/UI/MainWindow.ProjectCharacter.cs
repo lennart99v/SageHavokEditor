@@ -481,6 +481,34 @@ namespace SageHavokEditor
             GraphView.NavigateToEventRequested += NavigateToEvent;
             GraphView.TransitionFlagsChangedFromGraph += OnTransitionFlagsChangedFromGraph;
             GraphView.ShowAnimationRequested += OnShowAnimationRequested;
+            GraphView.GraphEditPerformed -= OnGraphEditPerformed;
+            GraphView.GraphEditPerformed += OnGraphEditPerformed;
+        }
+
+        // Records an already-applied structural graph edit (e.g. adding a modifier) as a
+        // single undo step. The graph view has applied `redo` and refreshed itself; here we
+        // just wrap undo/redo with a full graph reload so navigation stays consistent.
+        private void OnGraphEditPerformed(string description, System.Action undo, System.Action redo)
+        {
+            _undoRedo.Record(new EditAction
+            {
+                Description = description,
+                Undo = () =>
+                {
+                    undo();
+                    GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                    RefreshLookups();
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    redo();
+                    GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
+                    RefreshLookups();
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
         }
 
         private void OnTransitionFlagsChangedFromGraph(

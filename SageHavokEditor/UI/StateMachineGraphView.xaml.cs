@@ -194,6 +194,8 @@ namespace SageHavokEditor.UI
         public event Action<string>? NavigateToEventRequested; // (eventId) — jump to the event definition + usages
         public event Action<string>? ShowAnimationRequested;   // (stateObjectId) — open the state's clip animation + tags
         public event Action<HkObject, string, string>? TransitionFlagsChangedFromGraph; // (trChild, oldFlags, newFlags)
+        /// <summary>A structural graph edit that should be recorded as a single undo step: (description, undo, redo).</summary>
+        public event Action<string, Action, Action>? GraphEditPerformed;
 
         // ── Graphviz ──────────────────────────────────────────────────────────
         private static readonly string GraphvizDotPath = Path.Combine(
@@ -444,11 +446,53 @@ namespace SageHavokEditor.UI
                     MachineFilter = smName
                 });
             }
+            else
+            {
+                // Leaf nodes (modifiers, clips, blenders, …) have nothing deeper to open in
+                // the generator hierarchy — double-clicking should surface their editable
+                // parameters in the Object Data panel, same as a single click.
+                StateSelected?.Invoke(node.Id);
+            }
         }
 
         // ── Navigation primitives ─────────────────────────────────────────────
         // The stack top is the on-screen view. These three keep the stack, the
         // breadcrumb bar and the rendered graph in lock-step for any drill depth.
+
+        /// <summary>
+        /// Reset the stack to the behavior graph's root generator hierarchy — the chain
+        /// that sits *above* the top state machine (e.g. RootModifierGenerator →
+        /// RootModifierList → its modifiers → root state machine). These root-level
+        /// modifiers aren't reachable from any per-machine or per-state view.
+        /// </summary>
+        private void ResetToRootGenerator()
+        {
+            if (_manager == null) return;
+
+            var bg = _manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraph");
+            var rootRef = bg?.Params.FirstOrDefault(p => p.Name == "rootGenerator")?.Value;
+            if (bg == null || string.IsNullOrEmpty(rootRef) || rootRef == "null")
+            {
+                _visualHost.ShowOverlayText("No behavior graph root generator found",
+                    Color.FromRgb(0x9D, 0x9D, 0x9D));
+                return;
+            }
+
+            var label = bg.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? "Behavior Graph Root";
+
+            _navStack.Clear();
+            _navStack.Push(new GraphBreadcrumb
+            {
+                Level = GraphViewLevel.GeneratorHierarchy,
+                Label = label,
+                RootObjectId = bg.Id,
+                GeneratorRef = rootRef,
+                MachineFilter = ""   // not tied to a specific machine
+            });
+            UpdateBreadcrumb();
+            ShowView(_navStack.Peek());
+        }
 
         /// <summary>Reset the whole stack to a single root state-machine view.</summary>
         private void ResetToMachine(string machineName)
@@ -498,6 +542,12 @@ namespace SageHavokEditor.UI
                     genRef = st.Params.FirstOrDefault(p => p.Name == "generator")?.Value ?? "";
                 BuildGeneratorGraph(genRef, view.Label);
             }
+        }
+
+        /// <summary>Re-render the current view in place (after an edit adds/removes nodes).</summary>
+        public void RefreshCurrentView()
+        {
+            if (CurrentView is { } v) ShowView(v);
         }
 
         private void NavigateBack()
@@ -620,6 +670,17 @@ namespace SageHavokEditor.UI
             }
 
             menu.Items.Add(inspect);
+
+            // ── Add modifier — on generators (wrap) and modifier lists (append) ──────
+            if (_manager.ObjectMap.TryGetValue(node.Id, out var nodeObj)
+                && (nodeObj.ClassName == "hkbModifierList"
+                    || (nodeObj.ClassName?.Contains("Generator") ?? false)))
+            {
+                var addMod = new MenuItem { Header = "➕ Add modifier…" };
+                addMod.Click += (_, __) => AddModifierToNode(node);
+                menu.Items.Add(addMod);
+            }
+
             menu.Items.Add(addTrans);
             var rename = new MenuItem { Header = "✏ Rename (F2)" };
             rename.Click += (_, __) => StartInlineRename(node);
@@ -1039,6 +1100,134 @@ namespace SageHavokEditor.UI
 
             NodeAddedToGraph?.Invoke(newSM, null);
             StatusText_?.Invoke($"✓ Added state machine '{smName}'");
+        }
+
+        // ── Create modifier ──────────────────────────────────────────────────────
+        // Adds a new modifier to a generator / modifier-list node:
+        //   • hkbModifierList               → append to modifiers[]
+        //   • hkbModifierGenerator (empty)  → fill the modifier slot
+        //   • any other generator           → wrap it in a new hkbModifierGenerator and
+        //     repoint everything that referenced the generator at the wrapper.
+        // The whole change is applied once and recorded as a single undo step.
+        private void AddModifierToNode(GraphNode node)
+        {
+            if (_manager == null) return;
+            if (!_manager.ObjectMap.TryGetValue(node.Id, out var target)) return;
+
+            var picker = new Dialogs.ModifierPickerDialog(ModifierCatalog.ClassNames)
+            { Owner = Window.GetWindow(this) };
+            if (picker.ShowDialog() != true || string.IsNullOrEmpty(picker.SelectedClass)) return;
+
+            var cls = picker.SelectedClass;
+            var mod = ModifierCatalog.CreateDefault(cls);
+            if (mod == null) { StatusText_?.Invoke($"✗ Could not create {cls}"); return; }
+
+            var modId = GenerateNewObjectId();
+            mod.Id = modId;
+            SetParam(mod, "name", $"New_{cls}");
+            _manager.ObjectMap[modId] = mod;   // reserve the id so the wrapper gets a distinct one
+
+            var added = new List<HkObject> { mod };
+
+            // Each captured edit fully restores an HkParam's reference state. Single #id refs
+            // are resolved into Children at load (HavokManager.ResolveParams) and the Value
+            // getter derives from Children — so we must snapshot/restore Children too, not just Value.
+            var edits = new List<(HkParam p, List<HkObject> oldCh, string oldVal, string oldNum,
+                                  List<HkObject> newCh, string newVal, string newNum)>();
+            void Capture(HkParam p, List<HkObject> newCh, string newVal, string newNum)
+                => edits.Add((p, new List<HkObject>(p.Children), p.Value, p.NumElements, newCh, newVal, newNum));
+
+            string describe;
+            var cn = target.ClassName ?? "";
+            var modSlot = target.Params.FirstOrDefault(p => p.Name == "modifier")?.Value;
+
+            if (cn == "hkbModifierList")
+            {
+                var p = target.Params.FirstOrDefault(x => x.Name == "modifiers");
+                if (p == null) { p = new HkParam { Name = "modifiers", Value = "", NumElements = "0" }; target.Params.Add(p); }
+                var toks = (p.Value ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+                toks.Add(modId);
+                // modifiers[] is a text-token array (not resolved into Children) — keep Children as-is.
+                Capture(p, new List<HkObject>(p.Children), string.Join(" ", toks), toks.Count.ToString());
+                describe = $"Add {cls} to {node.Name}";
+            }
+            else if (cn == "hkbModifierGenerator" && (string.IsNullOrEmpty(modSlot) || modSlot == "null"))
+            {
+                var p = target.Params.FirstOrDefault(x => x.Name == "modifier");
+                if (p == null) { p = new HkParam { Name = "modifier", Value = "null" }; target.Params.Add(p); }
+                Capture(p, new List<HkObject> { mod }, modId, p.NumElements);   // resolve into Children like load
+                describe = $"Add {cls} to {node.Name}";
+            }
+            else
+            {
+                // Wrap the target generator in a new hkbModifierGenerator.
+                var wrapper = ModifierCatalog.CreateDefault("hkbModifierGenerator");
+                if (wrapper == null) { _manager.ObjectMap.Remove(modId); StatusText_?.Invoke("✗ Could not create wrapper"); return; }
+                var wrapId = GenerateNewObjectId();
+                wrapper.Id = wrapId;
+                SetParam(wrapper, "name", $"{node.Name}_ModGen");
+                SetParam(wrapper, "generator", target.Id);
+                SetParam(wrapper, "modifier", modId);
+                // Resolve the wrapper's own refs into Children so it reads/saves like a loaded object.
+                wrapper.Params.First(p => p.Name == "generator").InnerObject = target;
+                wrapper.Params.First(p => p.Name == "modifier").InnerObject = mod;
+                added.Add(wrapper);
+
+                // Repoint every existing reference to target → wrapper. Handles both resolved single
+                // refs (stored in Children, e.g. a parent's "generator") and text-token arrays.
+                foreach (var o in _manager.ObjectMap.Values)
+                {
+                    if (o.Id == wrapId || o.Id == modId) continue;
+                    foreach (var p in o.Params)
+                    {
+                        int ci = p.Children.FindIndex(c => c.Id == target.Id);
+                        if (ci >= 0)
+                        {
+                            var newCh = new List<HkObject>(p.Children); newCh[ci] = wrapper;
+                            Capture(p, newCh, string.Join(" ", newCh.Select(c => c.Id)), p.NumElements);
+                        }
+                        else if (p.Children.Count == 0)
+                        {
+                            var toks = (p.Value ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            if (Array.IndexOf(toks, target.Id) >= 0)
+                                Capture(p, new List<HkObject>(),
+                                    string.Join(" ", toks.Select(t => t == target.Id ? wrapId : t)), p.NumElements);
+                        }
+                    }
+                }
+
+                // If the target is the current drill root, follow the wrapper so the refresh keeps it in view.
+                if (CurrentView is { Level: GraphViewLevel.GeneratorHierarchy } cv && cv.GeneratorRef == target.Id)
+                    cv.GeneratorRef = wrapId;
+
+                describe = $"Wrap {node.Name} with {cls}";
+            }
+
+            void Apply()
+            {
+                foreach (var o in added) _manager.ObjectMap[o.Id] = o;
+                foreach (var e in edits)
+                { e.p.Children.Clear(); e.p.Children.AddRange(e.newCh); e.p.Value = e.newVal; e.p.NumElements = e.newNum; }
+            }
+            void Revert()
+            {
+                foreach (var e in edits)
+                { e.p.Children.Clear(); e.p.Children.AddRange(e.oldCh); e.p.Value = e.oldVal; e.p.NumElements = e.oldNum; }
+                foreach (var o in added) _manager.ObjectMap.Remove(o.Id);
+            }
+
+            Apply();                                  // apply the wiring now
+            GraphEditPerformed?.Invoke(describe, Revert, Apply);
+            RefreshCurrentView();
+            StateSelected?.Invoke(modId);             // select the new modifier in Object Data
+            StatusText_?.Invoke($"✓ {describe}");
+        }
+
+        private static void SetParam(HkObject o, string name, string value)
+        {
+            var p = o.Params.FirstOrDefault(x => x.Name == name);
+            if (p != null) p.Value = value;
+            else o.Params.Add(new HkParam { Name = name, Value = value });
         }
 
         private void ExportGraphAsPng()
@@ -1908,6 +2097,15 @@ namespace SageHavokEditor.UI
             var modRef = obj.Params.FirstOrDefault(p => p.Name == "modifier")?.Value;
             if (!string.IsNullOrEmpty(modRef) && modRef != "null")
                 WalkGenerator(modRef, node, nodes, edges, visited, depth + 1);
+
+            // hkbModifierList → modifiers[] (plural array — each entry is a modifier)
+            var modifiersParam = obj.Params.FirstOrDefault(p => p.Name == "modifiers");
+            if (modifiersParam != null)
+            {
+                foreach (var mRef in (modifiersParam.Value ?? "")
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    WalkGenerator(mRef, node, nodes, edges, visited, depth + 1);
+            }
 
             // hkbBehaviorReferenceGenerator → behaviorName (leaf — no resolve)
             var behavRef = obj.Params.FirstOrDefault(p => p.Name == "behaviorName")?.Value;
@@ -2890,6 +3088,8 @@ namespace SageHavokEditor.UI
         }
 
         private void BtnBack_Click(object sender, RoutedEventArgs e) => NavigateBack();
+
+        private void BtnGraphRoot_Click(object sender, RoutedEventArgs e) => ResetToRootGenerator();
 
         private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
             => _visualHost.SetSearchQuery(SearchBox.Text);

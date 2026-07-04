@@ -51,6 +51,11 @@
               SelectionChanged="MachineSelector_SelectionChanged"
               DockPanel.Dock="Left"/>
 
+                <!-- Behavior graph root (root modifier chain above the top state machine) -->
+                <Button x:Name="BtnGraphRoot" Content="⌂ Root" DockPanel.Dock="Left"
+            Click="BtnGraphRoot_Click" Padding="8,4" Margin="2,3"
+            ToolTip="Jump to the behavior graph root — root generator &amp; root modifier list"/>
+
                 <!-- Toolbar buttons (right side) -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Margin="4,3">
                     <TextBox x:Name="SearchBox" Width="120" Padding="3"

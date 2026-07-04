@@ -21,6 +21,8 @@
         <converters:ReferenceCheckConverter      x:Key="ReferenceCheckConverter"/>
         <BooleanToVisibilityConverter            x:Key="BooleanToVisibilityConverter"/>
         <converters:NullToVisibilityConverter    x:Key="NullToVisibilityConverter"/>
+        <converters:ParamKindConverter           x:Key="ParamKindConverter"/>
+        <converters:BoolParamValueConverter      x:Key="BoolParamValueConverter"/>
 
         <HierarchicalDataTemplate DataType="{x:Type models:BehaviorNodeData}"
                                   ItemsSource="{Binding Children}">
@@ -1436,7 +1438,36 @@
                                                    VerticalAlignment="Top" Margin="0,4,6,0"
                                                    TextWrapping="Wrap" ToolTip="{Binding Name}"/>
                                         <StackPanel Grid.Column="1">
+                                            <!-- Boolean params (true/false) edit as a checkbox; writes back
+                                                 through the same Value setter as the text box below. -->
+                                            <CheckBox Margin="0,4,0,0" HorizontalAlignment="Left" FontSize="11"
+                                                      VerticalContentAlignment="Center"
+                                                      Foreground="{DynamicResource InputTextBrush}"
+                                                      Content="{Binding Value}"
+                                                      IsChecked="{Binding Value, Mode=TwoWay, Converter={StaticResource BoolParamValueConverter}}">
+                                                <CheckBox.Style>
+                                                    <Style TargetType="CheckBox">
+                                                        <!-- Default via Setter (not an inline value) so the trigger can override it.
+                                                             A local Visibility="Collapsed" would beat the trigger and hide it forever. -->
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Value, Converter={StaticResource ParamKindConverter}}" Value="bool">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </CheckBox.Style>
+                                            </CheckBox>
                                             <Grid>
+                                                <Grid.Style>
+                                                    <Style TargetType="Grid">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Value, Converter={StaticResource ParamKindConverter}}" Value="bool">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Grid.Style>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
