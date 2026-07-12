@@ -10,7 +10,7 @@
         xmlns:models="clr-namespace:SageHavokEditor.Models"
         xmlns:system="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
-        Title="Skyrim Havok Behavior Editor" Height="700" Width="1200"
+        Title="Sage Havok Editor" Height="700" Width="1200"
         Background="{DynamicResource BgDarkBrush}"
         WindowStyle="None"
         AllowsTransparency="False"

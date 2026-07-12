@@ -40,14 +40,17 @@ without shipping modified behavior files.
 dotnet build SageHavokEditor/SageHavokEditor.csproj -c Release
 ```
 
-To produce a single-file, self-contained `win-x64` release bundle in
-`SageHavokEditor/SageHavokEditor_Dist/`:
+To produce a release build, run:
 
 ```pwsh
-dotnet publish SageHavokEditor/SageHavokEditor.csproj -c Release
 cd SageHavokEditor
 .\PrepareRelease.bat
 ```
+
+It publishes a single-file, self-contained `win-x64` build, drops the exe in
+`SageHavokEditor/SageHavokEditor_Dist/`, and zips it as
+`SageHavokEditor_v<version>.zip` ready to upload. The version comes from
+`<Version>` in `SageHavokEditor.csproj` — bump it there before a release.
 
 ## Project layout
 

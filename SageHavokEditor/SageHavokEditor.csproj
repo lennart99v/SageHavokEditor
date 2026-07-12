@@ -7,6 +7,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <Configurations>Debug;Release;Architect</Configurations>
+	  <Product>Sage Havok Editor</Product>
+	  <Version>0.4.0</Version>
+	  <FileVersion>0.4.0.0</FileVersion>
+	  <AssemblyVersion>0.4.0.0</AssemblyVersion>
 	  <SelfContained>true</SelfContained>
 	  <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 	  <PublishSingleFile>true</PublishSingleFile>

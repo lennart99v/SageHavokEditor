@@ -366,3 +366,4 @@ FodyWeavers.xsd
 # Release bundle produced by PrepareRelease.bat
 *_Dist/
 *_Dist.zip
+SageHavokEditor_v*.zip
