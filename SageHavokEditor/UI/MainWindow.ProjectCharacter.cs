@@ -483,6 +483,16 @@ namespace SageHavokEditor
             GraphView.ShowAnimationRequested += OnShowAnimationRequested;
             GraphView.GraphEditPerformed -= OnGraphEditPerformed;
             GraphView.GraphEditPerformed += OnGraphEditPerformed;
+
+            // Assignment, not subscription — the graph needs the new variable's index back.
+            // Resync afterwards: the graph holds a snapshot of the variable list, and
+            // syncVariableIndex is resolved against it by position.
+            GraphView.AddVariableRequested = (name, type) =>
+            {
+                int idx = AddBehaviorVariable(name, type);
+                if (idx >= 0) GraphView.RefreshVariables(VariableList.ToList());
+                return idx;
+            };
         }
 
         // Records an already-applied structural graph edit (e.g. adding a modifier) as a

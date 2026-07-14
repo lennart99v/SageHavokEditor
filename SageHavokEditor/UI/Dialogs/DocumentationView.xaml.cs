@@ -176,9 +176,13 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Delete Transition — removes the transition.\n\n" +
                 "Live debugging\n" +
                 "• Active states glow with an animated green outline.\n" +
-                "• When a transition fires, its edge pulses green so you can trace the flow as it happens.\n\n" +
+                "• When a transition fires, its edge pulses green so you can trace the flow as it happens.\n" +
+                "• 🐞 Enable live-debug tracking — right-click a state machine node, or empty canvas with " +
+                "a machine selected, to make that machine report its active state to the debugger. Only " +
+                "machines with syncVariableIndex set can be tracked; see Why Active States Are Empty.\n\n" +
                 "Right-click context menus are available on nodes, edges, and empty canvas space " +
-                "for additional actions including Add State, Add State Machine, and Re-layout.");
+                "for additional actions including Add State, Add State Machine, Enable live-debug " +
+                "tracking, and Re-layout.");
 
             AddSection("tab_variables", "Variables Tab",
                 "Lists every behaviour variable (hkbBehaviorGraphData / hkbBehaviorGraphStringData).\n\n" +
@@ -263,6 +267,42 @@ namespace SageHavokEditor.UI.Dialogs
 
             AddNavHeader("Advanced");
 
+            AddSection("debug_tracking", "Why Active States Are Empty",
+                "Connecting successfully and still seeing an empty Active States list is the most common " +
+                "live-debug question, and it is usually not a broken setup.\n\n" +
+                "How active states are read\n" +
+                "A state machine does not expose its current state to the game directly. It can only " +
+                "mirror it into a behaviour variable — the one named by the machine's syncVariableIndex " +
+                "parameter. The editor therefore asks the plugin to watch only those machines whose " +
+                "syncVariableIndex is set (0 or higher), and the plugin reports the state by reading " +
+                "that variable back. A machine with syncVariableIndex = -1 has no readable state, so it " +
+                "can never light up.\n\n" +
+                "Most state machines are not synced\n" +
+                "This is normal, and it is true of vanilla files too. In vanilla 0_master.hkx only 11 of " +
+                "112 state machines are synced (via iSyncSprintState and currentDefaultState). Vanilla " +
+                "WeapEquip.hkx has none at all. So a custom behaviour graph with no synced machines shows " +
+                "no active states — exactly like the vanilla file it replaces.\n\n" +
+                "How to tell\n" +
+                "• The status bar reports the config sent to the plugin, e.g. Config: 17 vars, 2 SMs.\n" +
+                "• If it reads 0 of N state machines tracked — none have syncVariableIndex set, that is " +
+                "the whole diagnosis. Live variables will still update normally; only state highlighting " +
+                "is unavailable.\n\n" +
+                "Enable tracking for a machine\n" +
+                "• In the Graph tab, right-click the state machine node — or right-click empty canvas " +
+                "with the machine selected in the machine dropdown — and choose " +
+                "🐞 Enable live-debug tracking.\n" +
+                "• The editor adds an int variable named i‹MachineName›_State and points that machine's " +
+                "syncVariableIndex at it. The machine will now write its current state ID into the " +
+                "variable, which is what the debugger reads.\n" +
+                "• The change is undoable and is written back on Save. Re-run your Nemesis/Pandora patch " +
+                "so the edited graph reaches the game.\n\n" +
+                "Nested graphs\n" +
+                "If the graph you edited is pulled in by an hkbBehaviorReferenceGenerator (a nested " +
+                "behaviour graph, e.g. a custom WeapEquip replacement referenced from 0_master), the " +
+                "sync variable most likely also has to exist under the same name in the root graph — " +
+                "Havok links a nested graph's variables to the root graph by name. Add a variable with " +
+                "the identical name to 0_master as part of your patch, then test in-game.");
+
             AddSection("tracing_triggers", "Tracing & Editing Triggers",
                 "Behaviour files reference events by a numeric id (e.g. #495), which makes a raw " +
                 "state-machine trigger hard to follow. The editor resolves these for you and gives you " +
@@ -301,11 +341,6 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Browse to a .behaviorpatch file or navigate into a Nemesis/Pandora mod folder.\n" +
                 "• The preview shows every operation with checkboxes — uncheck any you want to skip.\n" +
                 "• Click Apply to commit. The UI refreshes automatically.");
-
-            AddSection("theme", "Themes",
-                "Toggle between Dark and Light themes using the ☀ Light / 🌙 Dark button in the toolbar.\n\n" +
-                "All UI elements use DynamicResource brushes so the switch is instant. " +
-                "Graph node colours are fixed and do not change with the theme.");
 
             AddSection("global_search", "Global Search",
                 "Press Ctrl+G or click 🔭 Search All to open the Global Search dialog. This is the " +

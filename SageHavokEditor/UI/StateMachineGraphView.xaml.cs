@@ -124,6 +124,16 @@ namespace SageHavokEditor.UI
 
         };
         private List<IdNamePair> _loadedVariables = new();
+
+        // Shown once per loaded file, so reconnect churn doesn't re-prompt.
+        private bool _noSyncWarningShown;
+
+        /// <summary>
+        /// Adds a behavior variable to the loaded graph (name, Havok type) and returns its
+        /// index, or -1 on failure. Set by MainWindow, which owns the variable list and undo.
+        /// </summary>
+        public Func<string, string, int>? AddVariableRequested { get; set; }
+
         private static readonly Dictionary<DebugActorType, HashSet<string>> _relevantVars = new()
         {
             [DebugActorType.Player] = new()
@@ -366,6 +376,7 @@ namespace SageHavokEditor.UI
             _events = events;
             _eventResolver = new EventResolver(_events);
             _loadedVariables = variables ?? new();
+            _noSyncWarningShown = false;
             var machines = manager.ObjectMap.Values
                 .Where(o => o.ClassName == "hkbStateMachine")
                 .Select(o => o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id)
@@ -380,6 +391,14 @@ namespace SageHavokEditor.UI
             if (_debugger != null)
                 _debugger.SendConfig(BuildDebugConfigFromLoadedFile());
         }
+
+        /// <summary>
+        /// Re-snapshots the behavior variable list. Call after the variable list changes —
+        /// syncVariableIndex is resolved against this by position, so a stale copy silently
+        /// drops state machines from the debug config.
+        /// </summary>
+        public void RefreshVariables(List<IdNamePair> variables)
+            => _loadedVariables = variables ?? new();
 
         public void UpdateCanvasBackground(Color dotColor)
         {
@@ -681,6 +700,15 @@ namespace SageHavokEditor.UI
                 menu.Items.Add(addMod);
             }
 
+            // ── Live-debug tracking — when the node is itself a state machine ────────
+            if (_manager.ObjectMap.TryGetValue(node.Id, out var smObj)
+                && smObj.ClassName == "hkbStateMachine")
+            {
+                var enableSync = new MenuItem { Header = "🐞 Enable live-debug tracking" };
+                enableSync.Click += (_, __) => EnableSyncForMachine(smObj, node.Name);
+                menu.Items.Add(enableSync);
+            }
+
             menu.Items.Add(addTrans);
             var rename = new MenuItem { Header = "✏ Rename (F2)" };
             rename.Click += (_, __) => StartInlineRename(node);
@@ -944,6 +972,20 @@ namespace SageHavokEditor.UI
             var addSM = new MenuItem { Header = "⚙ Add State Machine" };
             addSM.Click += (_, __) => AddNewStateMachine(canvasPoint);
             menu.Items.Add(addSM);
+
+            // ── Live-debug tracking for the machine currently on screen ────
+            var selectedMachine = MachineSelector.SelectedItem as string;
+            if (!string.IsNullOrEmpty(selectedMachine)
+                && selectedMachine != "-- All Machines --"
+                && FindMachineByName(selectedMachine) is HkObject currentSm)
+            {
+                var enableSync = new MenuItem
+                {
+                    Header = $"🐞 Enable live-debug tracking ({selectedMachine})"
+                };
+                enableSync.Click += (_, __) => EnableSyncForMachine(currentSm, selectedMachine);
+                menu.Items.Add(enableSync);
+            }
 
             menu.Items.Add(new Separator
             {
@@ -1412,6 +1454,65 @@ namespace SageHavokEditor.UI
             StatusText_?.Invoke("⏹ Live debugger stopped");
         }
 
+        /// <summary>
+        /// Points a state machine's syncVariableIndex at a fresh int variable, so it mirrors
+        /// its current state ID into that variable and the live debugger can read it back.
+        /// </summary>
+        private void EnableSyncForMachine(HkObject sm, string smName)
+        {
+            var syncParam = sm.Params.FirstOrDefault(p => p.Name == "syncVariableIndex");
+            if (syncParam == null)
+            {
+                StatusText_?.Invoke($"'{smName}' has no syncVariableIndex parameter");
+                return;
+            }
+
+            if (int.TryParse(syncParam.Value, out int existing) && existing >= 0)
+            {
+                var current = existing < _loadedVariables.Count
+                    ? _loadedVariables[existing].Name
+                    : $"index {existing}";
+                StatusText_?.Invoke($"'{smName}' is already tracked via {current}");
+                return;
+            }
+
+            if (AddVariableRequested == null)
+            {
+                StatusText_?.Invoke("Cannot add variables — no graph loaded");
+                return;
+            }
+
+            var safeName = new string(smName.Where(char.IsLetterOrDigit).ToArray());
+            var varName = $"i{safeName}_State";
+
+            var confirm = MessageBox.Show(
+                $"Add int variable '{varName}' and set '{smName}'.syncVariableIndex to it?\n\n"
+                + "The state machine will then write its current state ID into that variable, "
+                + "which is what the live debugger reads to show active states.\n\n"
+                + "Note: if this graph is pulled in by a behavior reference generator (a nested "
+                + "graph), the variable most likely also needs to exist under the same name in the "
+                + "root graph — e.g. 0_master — for the game to expose it.",
+                "Enable live-debug tracking",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.OK) return;
+
+            int idx = AddVariableRequested(varName, "VARIABLE_TYPE_INT32");
+            if (idx < 0) { StatusText_?.Invoke("Could not add variable"); return; }
+
+            syncParam.Value = idx.ToString();
+
+            if (_debugger != null)
+                _debugger.SendConfig(BuildDebugConfigFromLoadedFile());
+
+            StatusText_?.Invoke($"✓ '{smName}' now tracked via '{varName}' (index {idx}) — save to keep");
+        }
+
+        private HkObject? FindMachineByName(string smName)
+            => _manager?.ObjectMap.Values.FirstOrDefault(o =>
+                   o.ClassName == "hkbStateMachine" &&
+                   o.Params.FirstOrDefault(p => p.Name == "name")?.Value == smName);
+
         public DebugConfig BuildDebugConfigFromLoadedFile()
         {
             var config = new DebugConfig();
@@ -1425,8 +1526,10 @@ namespace SageHavokEditor.UI
                 config.Variables.Add(new DebugVarEntry { Name = v.Name, Type = isFloat ? "float" : "int" });
             }
 
+            int totalMachines = 0;
             foreach (var sm in _manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
             {
+                totalMachines++;
                 var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value;
                 var syncIdx = sm.Params.FirstOrDefault(p => p.Name == "syncVariableIndex")?.Value;
                 if (string.IsNullOrEmpty(smName) || !int.TryParse(syncIdx, out int idx) || idx < 0) continue;
@@ -1434,10 +1537,38 @@ namespace SageHavokEditor.UI
                 config.StateMachines.Add(new DebugSMEntry { VariableName = _loadedVariables[idx].Name, SmName = smName });
             }
 
-            // ── DIAGNOSTIC ───────────────────────────────────────────────────────
-            StatusText_?.Invoke($"Config: {config.Variables.Count} vars, {config.StateMachines.Count} SMs");
             System.Diagnostics.Debug.WriteLine($"[Config] vars={config.Variables.Count}, SMs={config.StateMachines.Count}");
-            // ─────────────────────────────────────────────────────────────────────
+
+            // A state machine can only report its active state through the behavior
+            // variable named by syncVariableIndex. With none set, the plugin has
+            // nothing to read and the Active States panel stays empty — say so rather
+            // than leaving the user staring at a blank list.
+            if (totalMachines > 0 && config.StateMachines.Count == 0)
+            {
+                StatusText_?.Invoke(
+                    $"⚠ Config: {config.Variables.Count} vars, 0 of {totalMachines} state machines tracked "
+                    + "— none have syncVariableIndex set");
+
+                if (!_noSyncWarningShown)
+                {
+                    _noSyncWarningShown = true;
+                    MessageBox.Show(
+                        $"None of the {totalMachines} state machine(s) in this graph have "
+                        + "'syncVariableIndex' set, so active-state tracking is unavailable for it.\n\n"
+                        + "Live variables will still update normally.\n\n"
+                        + "To track a machine's states, right-click the graph and choose "
+                        + "\"Enable live-debug tracking\" — that adds an int variable and points "
+                        + "the machine's syncVariableIndex at it.",
+                        "No trackable state machines",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+            }
+            else
+            {
+                StatusText_?.Invoke(
+                    $"Config: {config.Variables.Count} vars, {config.StateMachines.Count} SMs");
+            }
 
             return config;
         }

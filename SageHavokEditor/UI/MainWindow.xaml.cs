@@ -3876,6 +3876,29 @@ namespace SageHavokEditor
 
         private void BtnAddVariable_Click(object sender, RoutedEventArgs e)
         {
+            // Pick type
+            var typeDialog = new InputDialog("Variable type:", "VARIABLE_TYPE_FLOAT") { Owner = this };
+            if (typeDialog.ShowDialog() != true) return;
+            var varType = typeDialog.InputText?.Trim();
+            if (string.IsNullOrEmpty(varType)) return;
+
+            var newIndex = AddBehaviorVariable($"NewVariable_{VariableList.Count}", varType);
+            if (newIndex < 0) return;
+
+            // Select and rename immediately
+            var newVar = VariableList[newIndex];
+            VariablesList.SelectedItem = newVar;
+            VariablesList.ScrollIntoView(newVar);
+            StatusText.Text = $"✓ Variable added (index {newIndex})";
+        }
+
+        /// <summary>
+        /// Appends a behavior variable to the loaded graph — string data, variableInfos,
+        /// default value, and the UI list — and records it as a single undoable action.
+        /// Returns the new variable's index, or -1 if the graph has no string data.
+        /// </summary>
+        public int AddBehaviorVariable(string newName, string varType)
+        {
             var strData = manager.ObjectMap.Values
                 .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
             var graphData = manager.ObjectMap.Values
@@ -3883,16 +3906,9 @@ namespace SageHavokEditor
             var valueSet = manager.ObjectMap.Values
                 .FirstOrDefault(o => o.ClassName == "hkbVariableValueSet");
 
-            if (strData == null) { MessageBox.Show("No hkbBehaviorGraphStringData found."); return; }
-
-            // Pick type
-            var typeDialog = new InputDialog("Variable type:", "VARIABLE_TYPE_FLOAT") { Owner = this };
-            if (typeDialog.ShowDialog() != true) return;
-            var varType = typeDialog.InputText?.Trim();
-            if (string.IsNullOrEmpty(varType)) return;
+            if (strData == null) { MessageBox.Show("No hkbBehaviorGraphStringData found."); return -1; }
 
             var newIndex = VariableList.Count;
-            var newName = $"NewVariable_{newIndex}";
 
             // 1 — Add to variableNames string list
             var namesParam = strData.Params.FirstOrDefault(p => p.Name == "variableNames");
@@ -3965,10 +3981,7 @@ namespace SageHavokEditor
             });
             UpdateUndoRedoButtons();
 
-            // Select and rename immediately
-            VariablesList.SelectedItem = newVar;
-            VariablesList.ScrollIntoView(newVar);
-            StatusText.Text = $"✓ Variable added (index {newIndex})";
+            return newIndex;
         }
 
         private void BtnDeleteVariable_Click(object sender, RoutedEventArgs e)
