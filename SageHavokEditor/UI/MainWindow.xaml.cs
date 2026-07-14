@@ -3576,6 +3576,97 @@ namespace SageHavokEditor
         }
 
         // ── Add button ────────────────────────────────────────────────────────────────
+        /// <summary>
+        /// Adds a state to the selected machine straight from the SM Inspector, without building
+        /// the graph — the graph is expensive for machines with hundreds of states, and this is the
+        /// only way to add one to a machine you never want to render.
+        /// </summary>
+        private void BtnAddSmState_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager == null) { MessageBox.Show("Load a behavior file first."); return; }
+            if (_selectedSM == null) { MessageBox.Show("Select a state machine first."); return; }
+
+            var smName = _selectedSM.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? _selectedSM.Id;
+
+            var statesParam = _selectedSM.Params.FirstOrDefault(p => p.Name == "states");
+            if (statesParam == null)
+            {
+                statesParam = new HkParam { Name = "states", Value = "", NumElements = "0" };
+                _selectedSM.Params.Add(statesParam);
+            }
+
+            // stateId only has to be unique within THIS machine — they restart per state machine —
+            // so scope the max to this machine's own states rather than the whole file.
+            int nextStateId = (statesParam.Value ?? "")
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(r => manager.TryResolve(r, out var so)
+                    ? (int.TryParse(so.Params.FirstOrDefault(p => p.Name == "stateId")?.Value, out int n) ? n : -1)
+                    : -1)
+                .DefaultIfEmpty(-1)
+                .Max() + 1;
+
+            var nameDialog = new InputDialog("Add State",
+                $"Name for the new state in '{smName}':", $"NewState_{nextStateId}") { Owner = this };
+            if (nameDialog.ShowDialog() != true) return;
+            var stateName = nameDialog.InputText?.Trim();
+            if (string.IsNullOrEmpty(stateName)) return;
+
+            var newId = GenerateNewObjectId();
+            var newState = new HkObject
+            {
+                Id = newId,
+                ClassName = "hkbStateMachineStateInfo",
+                Signature = "0xed7f9d0",
+                Params = new List<HkParam>
+                {
+                    new HkParam { Name = "listeners",   Value = "",    NumElements = "0" },
+                    new HkParam { Name = "generator",   Value = "null" },
+                    new HkParam { Name = "name",        Value = stateName },
+                    new HkParam { Name = "stateId",     Value = nextStateId.ToString() },
+                    new HkParam { Name = "probability", Value = "1.000000" },
+                    new HkParam { Name = "enable",      Value = "true" },
+                    new HkParam { Name = "transitions", Value = "null" },
+                }
+            };
+
+            // "states" is a text-token array of refs (Children stays empty), so appending to Value
+            // is correct here — unlike a single ref, which lives in Children.
+            var oldValue = statesParam.Value ?? "";
+            var oldNum = statesParam.NumElements;
+            var newValue = string.IsNullOrWhiteSpace(oldValue) ? newId : oldValue.Trim() + " " + newId;
+
+            void Apply()
+            {
+                manager.ObjectMap[newId] = newState;
+                statesParam.Value = newValue;
+                statesParam.NumElements = newValue
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries).Length.ToString();
+                RefreshLookups();
+                RefreshSmInspector(_selectedSM);
+            }
+            void Revert()
+            {
+                statesParam.Value = oldValue;
+                statesParam.NumElements = oldNum;
+                manager.ObjectMap.Remove(newId);
+                RefreshLookups();
+                RefreshSmInspector(_selectedSM);
+            }
+
+            Apply();
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Add state '{stateName}' to {smName}",
+                Undo = () => { _suppressUndoRecord = true; Revert(); _suppressUndoRecord = false; },
+                Redo = () => { _suppressUndoRecord = true; Apply(); _suppressUndoRecord = false; }
+            });
+            UpdateUndoRedoButtons();
+
+            StatusText.Text = $"✓ State '{stateName}' added to {smName} "
+                            + $"(stateId {nextStateId}, {newId}) — it has no generator yet";
+        }
+
         private void BtnAddSmTransition_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedSM == null) { MessageBox.Show("Select a state machine first."); return; }

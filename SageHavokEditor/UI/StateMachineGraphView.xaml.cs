@@ -1076,13 +1076,16 @@ namespace SageHavokEditor.UI
 
             if (sm == null) { MessageBox.Show("Select a specific state machine first."); return; }
 
-            // Generate new IDs
+            // Generate new IDs. stateId only has to be unique within THIS machine — they restart
+            // per state machine — so scope the max to this machine's states, not the whole file,
+            // which would otherwise hand a 3-state machine a stateId like 700.
             var stateId = GenerateNewObjectId();
-            var maxStateId = _manager.ObjectMap.Values
-                .Where(o => o.ClassName == "hkbStateMachineStateInfo")
-                .Select(o => int.TryParse(
-                    o.Params.FirstOrDefault(p => p.Name == "stateId")?.Value, out int n) ? n : 0)
-                .DefaultIfEmpty(0).Max() + 1;
+            var maxStateId = (sm.Params.FirstOrDefault(p => p.Name == "states")?.Value ?? "")
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(r => _manager.TryResolve(r, out var so) && so != null
+                    ? (int.TryParse(so.Params.FirstOrDefault(p => p.Name == "stateId")?.Value, out int n) ? n : -1)
+                    : -1)
+                .DefaultIfEmpty(-1).Max() + 1;
 
             var newState = new HkObject
             {

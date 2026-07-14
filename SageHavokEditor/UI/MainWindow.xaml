@@ -952,7 +952,11 @@
                                 <Button x:Name="BtnEditSmTransition" Content="✏ Edit" Width="72" Height="28"
                                         Margin="0,0,6,0" IsEnabled="False" Click="BtnEditSmTransition_Click"/>
                                 <Button x:Name="BtnDeleteSmTransition" Content="🗑 Delete" Width="80" Height="28"
+                                        Margin="0,0,12,0"
                                         IsEnabled="False" Click="BtnDeleteSmTransition_Click"/>
+                                <Button Content="+ Add State" Width="100" Height="28"
+                                        Click="BtnAddSmState_Click"
+                                        ToolTip="Add a new state to this state machine — no graph needed"/>
                             </StackPanel>
                             <!-- Remove IsReadOnly="True" from the DataGrid, add it per-column instead -->
                             <DataGrid Grid.Row="2" x:Name="SmTransitionsGrid"

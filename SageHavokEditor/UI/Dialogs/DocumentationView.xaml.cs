@@ -230,6 +230,9 @@ namespace SageHavokEditor.UI.Dialogs
                 "• + Add Transition — opens a dialog to pick source state, target state, event, and flags. " +
                 "Choose ★ WILDCARD (any state) as the source to create a wildcard; see " +
                 "Creating a Wildcard Transition.\n" +
+                "• + Add State — adds a new state to the selected machine without building the graph. " +
+                "Useful for very large machines, and the fastest route generally. The new state starts " +
+                "with no generator, so give it one (see Adding a New Animation) before using it.\n" +
                 "• Edit and Delete buttons act on the selected row.\n" +
                 "• Wildcard transitions (★ WILDCARD) are shown at the bottom of the list — these are the " +
                 "from-any-state, high-priority triggers also drawn from the ★ ANY node in the Graph tab.\n" +
@@ -307,6 +310,25 @@ namespace SageHavokEditor.UI.Dialogs
                 "under the actor's folder, and be registered in the character file's Animation Names " +
                 "list (Character tab) — otherwise the clip has nothing to play. If you are shipping a " +
                 "Nemesis/Pandora patch, the animation is registered through the patch as usual.");
+
+            AddSection("large_machines", "Working With Very Large State Machines",
+                "Some machines are huge — a few hundred states with thousands of transitions. " +
+                "They are fully editable, but you do not have to render the graph to work on them.\n\n" +
+                "Add a state without the graph\n" +
+                "• SM Inspector tab → select the machine → + Add State.\n" +
+                "• You are asked for a name; the editor picks the next free stateId within that machine " +
+                "and links the state into the machine's states list.\n" +
+                "• The new state starts with no generator. Give it one — the quickest way is the Graph " +
+                "tab's 🎬 New clip generator… on that state (see Adding a New Animation). A state whose " +
+                "generator is null has nothing to play if it is ever entered.\n" +
+                "• Add transitions to it from the same tab with + Add Transition. So a state can be " +
+                "created, wired, and connected entirely from the SM Inspector.\n\n" +
+                "Graph layout on large machines\n" +
+                "The graph uses Graphviz for layout when it is installed (C:\\Program Files\\Graphviz\\" +
+                "bin\\dot.exe) and falls back to a built-in layout otherwise. Both handle large cyclic " +
+                "machines; installing Graphviz simply gives nicer results on dense graphs.\n" +
+                "• Use the machine selector to view one machine at a time rather than -- All Machines --.\n" +
+                "• Fit (F) and the minimap help you find your way around once it is drawn.");
 
             AddSection("wildcard_create", "Creating a Wildcard Transition",
                 "A wildcard fires from ANY state in a machine, rather than from one specific state. " +
