@@ -176,13 +176,16 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Delete Transition — removes the transition.\n\n" +
                 "Live debugging\n" +
                 "• Active states glow with an animated green outline.\n" +
-                "• When a transition fires, its edge pulses green so you can trace the flow as it happens.\n" +
-                "• 🐞 Enable live-debug tracking — right-click a state machine node, or empty canvas with " +
-                "a machine selected, to make that machine report its active state to the debugger. Only " +
-                "machines with syncVariableIndex set can be tracked; see Why Active States Are Empty.\n\n" +
+                "• When a transition fires, its edge pulses green so you can trace the flow as it happens.\n\n" +
+                "Node right-click menu\n" +
+                "• 🎬 New clip generator… — on a state: creates a new hkbClipGenerator and points that " +
+                "state's generator at it in one step. See Adding a New Animation.\n" +
+                "• 🐞 Enable live-debug tracking — on a state machine (or empty canvas with a machine " +
+                "selected): makes that machine report its active state to the debugger. Only machines " +
+                "with syncVariableIndex set can be tracked; see Why Active States Are Empty.\n\n" +
                 "Right-click context menus are available on nodes, edges, and empty canvas space " +
-                "for additional actions including Add State, Add State Machine, Enable live-debug " +
-                "tracking, and Re-layout.");
+                "for additional actions including Add State, Add State Machine, Add modifier, and " +
+                "Re-layout.");
 
             AddSection("tab_variables", "Variables Tab",
                 "Lists every behaviour variable (hkbBehaviorGraphData / hkbBehaviorGraphStringData).\n\n" +
@@ -214,7 +217,10 @@ namespace SageHavokEditor.UI.Dialogs
                 "Lists every hkbClipGenerator in the file.\n\n" +
                 "• Shows the clip name and the animation file it references.\n" +
                 "• Inline editing lets you change the animation path directly or browse with the folder button.\n" +
-                "• The trigger panel at the bottom shows all timed events attached to the selected clip.");
+                "• The trigger panel at the bottom shows all timed events attached to the selected clip.\n" +
+                "• + New Clip Generator — creates a new hkbClipGenerator from scratch. It is created " +
+                "unattached, so nothing references it yet; see Adding a New Animation for why that " +
+                "matters and how to wire it up.");
 
             AddSection("tab_sm_inspector", "SM Inspector Tab",
                 "A full transition editor for a single hkbStateMachine.\n\n" +
@@ -266,6 +272,37 @@ namespace SageHavokEditor.UI.Dialogs
                 "• ✕ removes a bookmark. Bookmarks persist between sessions via AppData.");
 
             AddNavHeader("Advanced");
+
+            AddSection("new_animation", "Adding a New Animation",
+                "Playing a new animation means adding a new hkbClipGenerator — the leaf node that " +
+                "points at an .hkx animation file — and attaching it to a state.\n\n" +
+                "The quick way (recommended)\n" +
+                "• Open the Graph tab, right-click the state that should play the animation, and choose " +
+                "🎬 New clip generator….\n" +
+                "• Enter a name and the animation path (e.g. Animations\\MyAttack.hkx).\n" +
+                "• The editor creates the clip and points that state's generator at it in one step. " +
+                "If the state already had a generator you are asked to confirm the replacement.\n" +
+                "• The whole action is undoable.\n\n" +
+                "Unreferenced clips are dropped on save\n" +
+                "This is the trap to know about. Saving to .hkx writes the object graph starting from " +
+                "the root and following references, so any object that nothing points at is silently " +
+                "discarded — no error, no warning. A clip created on its own and left unattached will " +
+                "simply be gone the next time you open the file.\n" +
+                "• So: always attach the clip to a state's generator before saving as .hkx.\n" +
+                "• + New Clip Generator on the Clips tab creates an unattached clip on purpose (useful " +
+                "if you intend to wire it by hand in the Object Data panel), and warns you that it is " +
+                "not referenced yet.\n" +
+                "• Saving as .xml keeps unreferenced objects, so it is a safe intermediate format if " +
+                "you want to park work in progress.\n\n" +
+                "Sensible defaults\n" +
+                "New clips are created with playbackSpeed 1.0 and animationBindingIndex -1, matching " +
+                "vanilla clips. A playbackSpeed of 0 never advances the animation, so it would look " +
+                "frozen in-game.\n\n" +
+                "Don't forget the animation itself\n" +
+                "The clip only references an animation path. The .hkx animation file still has to exist " +
+                "under the actor's folder, and be registered in the character file's Animation Names " +
+                "list (Character tab) — otherwise the clip has nothing to play. If you are shipping a " +
+                "Nemesis/Pandora patch, the animation is registered through the patch as usual.");
 
             AddSection("debug_tracking", "Why Active States Are Empty",
                 "Connecting successfully and still seeing an empty Active States list is the most common " +
