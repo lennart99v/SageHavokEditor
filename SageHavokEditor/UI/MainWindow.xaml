@@ -504,6 +504,10 @@
                             </StackPanel>
                         </TabItem.Header>
                         <DockPanel Margin="0,5,0,0">
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5,4,5,6">
+                                <Button Content="+ New Clip Generator" Click="BtnAddClip_Click" Padding="8,4"
+                                        ToolTip="Create a new hkbClipGenerator from scratch"/>
+                            </StackPanel>
                             <TextBox DockPanel.Dock="Top" Margin="5,0,5,5" Padding="3" x:Name="ClipSearchBox"
                                      Text="{Binding ClipFilter, UpdateSourceTrigger=PropertyChanged}">
                                 <TextBox.Style>

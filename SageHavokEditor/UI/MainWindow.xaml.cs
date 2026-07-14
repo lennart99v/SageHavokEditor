@@ -3984,6 +3984,92 @@ namespace SageHavokEditor
             return newIndex;
         }
 
+        private void BtnAddClip_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager == null) { MessageBox.Show("Load a behavior file first."); return; }
+
+            var nameDialog = new InputDialog("New Clip Generator", "Clip generator name:", "NewClip") { Owner = this };
+            if (nameDialog.ShowDialog() != true) return;
+            var clipName = nameDialog.InputText?.Trim();
+            if (string.IsNullOrEmpty(clipName)) return;
+
+            if (manager.ObjectMap.Values.Any(o => o.ClassName == "hkbClipGenerator"
+                    && o.Params.Any(p => p.Name == "name" && p.Value == clipName)))
+            {
+                MessageBox.Show($"A clip generator named '{clipName}' already exists.",
+                    "Duplicate name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var pathDialog = new InputDialog("New Clip Generator",
+                "Animation path (relative to meshes\\actors\\<actor>\\):",
+                $"Animations\\{clipName}.hkx") { Owner = this };
+            if (pathDialog.ShowDialog() != true) return;
+            var animPath = pathDialog.InputText?.Trim() ?? "";
+
+            // HKX2's default-constructed instance gives the right signature and the full
+            // param set — no hand-written "0x333b85b9" — but its numeric defaults are zeros.
+            // Real clips use playbackSpeed 1 (0 never advances) and animationBindingIndex -1.
+            var clip = ModifierCatalog.CreateDefault("hkbClipGenerator");
+            if (clip == null) { MessageBox.Show("Could not create hkbClipGenerator."); return; }
+
+            var clipId = GenerateNewObjectId();
+            clip.Id = clipId;
+            SetClipParam(clip, "name", clipName);
+            SetClipParam(clip, "animationName", animPath);
+            SetClipParam(clip, "playbackSpeed", "1.000000");
+            SetClipParam(clip, "animationBindingIndex", "-1");
+
+            void Apply()
+            {
+                manager.ObjectMap[clipId] = clip;
+                RefreshLookups();
+            }
+            void Revert()
+            {
+                manager.ObjectMap.Remove(clipId);
+                RefreshLookups();
+            }
+
+            Apply();
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Add clip generator '{clipName}'",
+                Undo = () => { _suppressUndoRecord = true; Revert(); _suppressUndoRecord = false; },
+                Redo = () => { _suppressUndoRecord = true; Apply(); _suppressUndoRecord = false; }
+            });
+            UpdateUndoRedoButtons();
+
+            var added = ClipList.FirstOrDefault(c => c.Id == clipId);
+            if (added != null)
+            {
+                ClipsList.SelectedItem = added;
+                ClipsList.ScrollIntoView(added);
+            }
+
+            StatusText.Text = $"⚠ Clip generator '{clipName}' added ({clipId}) — not referenced yet";
+
+            MessageBox.Show(
+                $"'{clipName}' was created, but nothing references it yet.\n\n"
+                + "Saving to .hkx serializes the object graph from the root, so an unreferenced "
+                + "clip generator is silently dropped. Point a state's generator at it before you "
+                + "save — set the state's 'generator' parameter to " + clipId + ", or right-click "
+                + "the state in the Graph tab and choose \"🎬 New clip generator…\", which creates "
+                + "and wires one in a single step.\n\n"
+                + "(Saving to .xml keeps it either way.)",
+                "Clip generator is not wired up yet",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
+        private static void SetClipParam(HkObject obj, string name, string value)
+        {
+            var p = obj.Params.FirstOrDefault(x => x.Name == name);
+            if (p != null) p.Value = value;
+            else obj.Params.Add(new HkParam { Name = name, Value = value });
+        }
+
         private void BtnDeleteVariable_Click(object sender, RoutedEventArgs e)
         {
             if (VariablesList.SelectedItem is not IdNamePair variable) return;

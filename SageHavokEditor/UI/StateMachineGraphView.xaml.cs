@@ -700,6 +700,15 @@ namespace SageHavokEditor.UI
                 menu.Items.Add(addMod);
             }
 
+            // ── New clip generator — on states (creates it AND wires it to the state) ──
+            if (_manager.ObjectMap.TryGetValue(node.Id, out var stateNodeObj)
+                && stateNodeObj.ClassName == "hkbStateMachineStateInfo")
+            {
+                var addClip = new MenuItem { Header = "🎬 New clip generator…" };
+                addClip.Click += (_, __) => AddClipGeneratorToState(node);
+                menu.Items.Add(addClip);
+            }
+
             // ── Live-debug tracking — when the node is itself a state machine ────────
             if (_manager.ObjectMap.TryGetValue(node.Id, out var smObj)
                 && smObj.ClassName == "hkbStateMachine")
@@ -1270,6 +1279,100 @@ namespace SageHavokEditor.UI
             var p = o.Params.FirstOrDefault(x => x.Name == name);
             if (p != null) p.Value = value;
             else o.Params.Add(new HkParam { Name = name, Value = value });
+        }
+
+        /// <summary>
+        /// Creates a new hkbClipGenerator and points a state's generator at it. Creating a clip
+        /// on its own is not enough — saving to .hkx serializes from the root, so an unreferenced
+        /// clip is silently pruned. Wiring it here is what makes it survive.
+        /// </summary>
+        private void AddClipGeneratorToState(GraphNode node)
+        {
+            if (_manager == null || !_manager.ObjectMap.TryGetValue(node.Id, out var stateObj)) return;
+
+            var genParam = stateObj.Params.FirstOrDefault(p => p.Name == "generator");
+            var existingRef = genParam?.Value ?? "";
+            bool hasGenerator = !string.IsNullOrEmpty(existingRef) && existingRef != "null";
+
+            if (hasGenerator)
+            {
+                var oldName = _manager.TryResolve(existingRef, out var oldObj) && oldObj != null
+                    ? (oldObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? existingRef)
+                    : existingRef;
+
+                if (MessageBox.Show(
+                        $"'{node.Name}' already points at generator '{oldName}'.\n\n"
+                        + "Replace it with a new clip generator?\n\n"
+                        + "The old generator stays in the file, but this state will no longer "
+                        + "reference it — if nothing else does, it will be dropped when you save to .hkx.",
+                        "Replace generator",
+                        MessageBoxButton.OKCancel,
+                        MessageBoxImage.Warning) != MessageBoxResult.OK)
+                    return;
+            }
+
+            var owner = Window.GetWindow(this);
+
+            var nameDialog = new Dialogs.InputDialog(
+                "New Clip Generator", "Clip generator name:", $"{node.Name}_Clip") { Owner = owner };
+            if (nameDialog.ShowDialog() != true) return;
+            var clipName = nameDialog.InputText?.Trim();
+            if (string.IsNullOrEmpty(clipName)) return;
+
+            var pathDialog = new Dialogs.InputDialog(
+                "New Clip Generator", "Animation path:", $"Animations\\{clipName}.hkx") { Owner = owner };
+            if (pathDialog.ShowDialog() != true) return;
+            var animPath = pathDialog.InputText?.Trim() ?? "";
+
+            // HKX2's defaults are zeros; real clips need playbackSpeed 1 (0 never advances)
+            // and animationBindingIndex -1.
+            var clip = ModifierCatalog.CreateDefault("hkbClipGenerator");
+            if (clip == null) { StatusText_?.Invoke("✗ Could not create hkbClipGenerator"); return; }
+
+            var clipId = GenerateNewObjectId();
+            clip.Id = clipId;
+            SetParam(clip, "name", clipName);
+            SetParam(clip, "animationName", animPath ?? "");
+            SetParam(clip, "playbackSpeed", "1.000000");
+            SetParam(clip, "animationBindingIndex", "-1");
+
+            if (genParam == null)
+            {
+                genParam = new HkParam { Name = "generator", Value = "null" };
+                stateObj.Params.Add(genParam);
+            }
+
+            // HkParam.Value derives from Children when Children is non-empty, so repointing a
+            // resolved single ref means rewriting Children — assigning Value alone is ignored.
+            var oldCh = new List<HkObject>(genParam.Children);
+            var oldVal = genParam.Value;
+            var oldNum = genParam.NumElements;
+
+            void Apply()
+            {
+                _manager.ObjectMap[clipId] = clip;
+                genParam.Children.Clear();
+                genParam.Children.Add(clip);
+                genParam.Value = clipId;
+                genParam.InnerObject = clip;
+            }
+            void Revert()
+            {
+                genParam.Children.Clear();
+                genParam.Children.AddRange(oldCh);
+                genParam.Value = oldVal;
+                genParam.NumElements = oldNum;
+                genParam.InnerObject = oldCh.FirstOrDefault();
+                _manager.ObjectMap.Remove(clipId);
+            }
+
+            Apply();
+
+            var describe = $"Add clip generator '{clipName}' to {node.Name}";
+            GraphEditPerformed?.Invoke(describe, Revert, Apply);
+            RefreshCurrentView();
+            StateSelected?.Invoke(clipId);
+            StatusText_?.Invoke($"✓ {describe}");
         }
 
         private void ExportGraphAsPng()
