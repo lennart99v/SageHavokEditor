@@ -2407,47 +2407,72 @@ namespace SageHavokEditor.UI
             double startX, double startY)
         {
             if (nodes.Count == 0) return;
-            var layers = new Dictionary<string, int>();
-            var inDegree = nodes.ToDictionary(n => n.Id, _ => 0);
-            foreach (var e in edges.Where(e => nodes.Contains(e.From) && nodes.Contains(e.To)))
-                if (inDegree.ContainsKey(e.To.Id)) inDegree[e.To.Id]++;
 
-            foreach (var n in nodes) layers[n.Id] = -1;
+            // Adjacency is precomputed rather than re-scanning `edges` (and calling the
+            // O(n) List.Contains) inside every loop — a 200+ state machine has thousands
+            // of edges and the naive form is O(V·E).
+            var inScope = nodes.Select(n => n.Id).ToHashSet();
+            var outgoing = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+            var incoming = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+            var inDegree = nodes.ToDictionary(n => n.Id, _ => 0);
+
+            foreach (var e in edges)
+            {
+                var f = e.From?.Id; var t = e.To?.Id;
+                if (f == null || t == null) continue;
+                if (!inScope.Contains(f) || !inScope.Contains(t)) continue;
+                if (!outgoing[f].Contains(t)) outgoing[f].Add(t);
+                incoming[t].Add(f);
+                inDegree[t]++;
+            }
+
+            var layers = nodes.ToDictionary(n => n.Id, _ => -1);
+
             var start = nodes.FirstOrDefault(n => n.IsStart)
                      ?? nodes.FirstOrDefault(n => inDegree[n.Id] == 0)
                      ?? nodes[0];
             layers[start.Id] = 0;
 
-            var queue = new Queue<GraphNode>();
-            queue.Enqueue(start);
+            // Plain BFS: a node's layer is fixed the first time it is reached. The previous
+            // form relaxed toward the LONGEST path (`if (layers[next] < nl)`), which never
+            // terminates once the graph has a cycle — and state machines are full of them
+            // (idle → walk → idle). That hung the whole graph build for anyone without
+            // Graphviz installed, on any machine large enough to miss the radial-hub path.
+            var queue = new Queue<string>();
+            queue.Enqueue(start.Id);
             while (queue.Count > 0)
             {
                 var cur = queue.Dequeue();
-                foreach (var next in edges
-                    .Where(e => e.From.Id == cur.Id && nodes.Contains(e.To))
-                    .Select(e => e.To).Distinct())
+                foreach (var next in outgoing[cur])
                 {
-                    int nl = layers[cur.Id] + 1;
-                    if (layers[next.Id] < nl) { layers[next.Id] = nl; queue.Enqueue(next); }
+                    if (layers[next] != -1) continue;      // already settled
+                    layers[next] = layers[cur] + 1;
+                    queue.Enqueue(next);
                 }
             }
 
+            // Nodes unreachable from the start state get stacked past the deepest layer.
             int maxL = layers.Values.Where(v => v >= 0).DefaultIfEmpty(0).Max();
             foreach (var n in nodes.Where(n => layers[n.Id] < 0)) layers[n.Id] = ++maxL;
 
             var groups = nodes.GroupBy(n => layers[n.Id]).OrderBy(g => g.Key)
                 .ToDictionary(g => g.Key, g => g.OrderBy(n => n.Name).ToList());
 
+            // Barycentre passes — order each layer by the mean position of its predecessors
+            // in the layer before it, to reduce edge crossings.
             for (int pass = 0; pass < 3; pass++)
-                foreach (var lkv in groups.OrderBy(k => k.Key))
+                foreach (var key in groups.Keys.OrderBy(k => k).ToList())
                 {
-                    if (!groups.TryGetValue(lkv.Key - 1, out var prev)) continue;
-                    var pos = prev.Select((n, i) => (n.Id, i)).ToDictionary(x => x.Id, x => x.i);
-                    groups[lkv.Key] = lkv.Value.OrderBy(n =>
+                    if (!groups.TryGetValue(key - 1, out var prev)) continue;
+                    var pos = new Dictionary<string, int>();
+                    for (int i = 0; i < prev.Count; i++) pos[prev[i].Id] = i;
+
+                    groups[key] = groups[key].OrderBy(n =>
                     {
-                        var inc = edges.Where(e => e.To.Id == n.Id && pos.ContainsKey(e.From.Id))
-                            .Select(e => (double)pos[e.From.Id]).ToList();
-                        return inc.Count > 0 ? inc.Average() : double.MaxValue;
+                        double sum = 0; int count = 0;
+                        foreach (var src in incoming[n.Id])
+                            if (pos.TryGetValue(src, out int p)) { sum += p; count++; }
+                        return count > 0 ? sum / count : double.MaxValue;
                     }).ToList();
                 }
 
