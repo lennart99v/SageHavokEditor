@@ -660,7 +660,14 @@ namespace SageHavokEditor.UI
             var drill = new MenuItem { Header = "⬇ Drill into generator" };
             drill.Click += (_, __) => DrillInto(node);
 
-            var addTrans = new MenuItem { Header = "➕ Add Transition from this state" };
+            // On the ★ ANY node this adds a wildcard (fires from any state), not a transition
+            // out of a specific state — say so.
+            var addTrans = new MenuItem
+            {
+                Header = node.NodeType == GraphNodeType.Wildcard
+                    ? "➕ Add Wildcard Transition (from any state)"
+                    : "➕ Add Transition from this state"
+            };
             addTrans.Click += (_, __) =>
             {
                 StateSelected?.Invoke(node.Id);

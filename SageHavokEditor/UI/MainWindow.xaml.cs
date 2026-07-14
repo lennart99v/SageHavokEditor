@@ -273,14 +273,18 @@ namespace SageHavokEditor
                  ev.Id.Contains(_eventFilter, StringComparison.OrdinalIgnoreCase));
             GraphView.AddTransitionRequested += (fromObjectId, toStateId) =>
             {
-                // Find the SM that owns this state
-                var parentSM = FindParentSM(fromObjectId);
+                if (!manager.ObjectMap.TryGetValue(fromObjectId, out var fromObj)) return;
+
+                // The ★ ANY node carries the state machine's own id, not a state's — so it is
+                // the machine itself, and the transition to add is a wildcard.
+                var parentSM = fromObj.ClassName == "hkbStateMachine"
+                    ? fromObj
+                    : FindParentSM(fromObjectId);
                 if (parentSM == null) return;
+
                 SelectedSM = parentSM;
                 MainTabControl.SelectedItem = SmInspectorTab;
-                                                  // Pre-select the from state and open dialog
-                OpenTransitionDialog(isAdd: true,
-                    preselectedFromState: manager.ObjectMap[fromObjectId]);
+                OpenTransitionDialog(isAdd: true, preselectedFromState: fromObj);
             };
             LoadBundledSkeletons();
             InitializeSkeletonRegistry();
@@ -3584,6 +3588,39 @@ namespace SageHavokEditor
             OpenTransitionDialog(isAdd: true, preselectedFromState: null);
         }
         // ── Shared Add / Edit popup ───────────────────────────────────────────────────
+        /// <summary>
+        /// Synthetic From-State key for "★ WILDCARD (any state)". Not an object id — it cannot
+        /// collide with one, since real ids are "#NNNN".
+        /// </summary>
+        private const string WildcardFromKey = "__WILDCARD__";
+
+        /// <summary>
+        /// A transition's "transition" param points at an hkbTransitionEffect (the blend used when
+        /// it fires). This used to be hard-coded to "#0141", which is a dangling reference in any
+        /// file that has no such object — and a dangling ref makes saving to .hkx throw. Resolve a
+        /// real effect from the loaded file instead, falling back to null (which Havok allows).
+        /// </summary>
+        private string DefaultTransitionEffectRef()
+        {
+            var effect = manager.ObjectMap.Values
+                    .FirstOrDefault(o => o.ClassName == "hkbBlendingTransitionEffect")
+                ?? manager.ObjectMap.Values
+                    .FirstOrDefault(o => (o.ClassName ?? "").EndsWith("TransitionEffect"));
+            return effect?.Id ?? "null";
+        }
+
+        /// <summary>Adds a Havok flag to a pipe-separated flags string if it isn't already present.</summary>
+        private static string EnsureFlag(string? flags, string flag)
+        {
+            var parts = (flags ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Select(f => f.Trim())
+                .Where(f => f.Length > 0)
+                .ToList();
+            if (parts.Contains(flag)) return string.Join("|", parts);
+            parts.Add(flag);
+            return string.Join("|", parts);
+        }
+
         private void OpenTransitionDialog(bool isAdd, HkObject preselectedFromState)
         {
             var statesParam = _selectedSM?.Params.FirstOrDefault(p => p.Name == "states");
@@ -3608,12 +3645,23 @@ namespace SageHavokEditor
                 .Where(x => x != null)
                 .ToList() ?? new List<IdNamePair>();
 
+            // A wildcard fires from ANY state, so it has no from-state object. It is offered as a
+            // synthetic entry keyed on WildcardFromKey and written to the state machine's
+            // wildcardTransitions array instead of a state's own transitions array.
+            fromOptions.Insert(0, new IdNamePair { Id = WildcardFromKey, Name = "★ WILDCARD (any state)" });
+
             string title, initFromId, initEventId, initToStateId, initFlags;
 
             if (isAdd)
             {
                 title = "Add Transition";
-                initFromId = fromOptions.Count > 0 ? fromOptions[0].Id : null;
+                // Honour the right-clicked node: a state preselects itself; the state machine
+                // (the ★ ANY node) preselects the wildcard entry. Otherwise fall back to the
+                // first real state rather than the wildcard.
+                initFromId = preselectedFromState?.ClassName == "hkbStateMachine"
+                    ? WildcardFromKey
+                    : preselectedFromState?.Id
+                      ?? (fromOptions.Count > 1 ? fromOptions[1].Id : WildcardFromKey);
                 initEventId = EventList.Count > 0 ? EventList[0].Id : null;
                 initToStateId = stateOptions.Count > 0 ? stateOptions[0].Id : null;
                 initFlags = "FLAG_DISABLE_CONDITION";
@@ -3621,7 +3669,10 @@ namespace SageHavokEditor
             else
             {
                 title = "Edit Transition";
-                initFromId = preselectedFromState?.Id ?? _selectedSmRow.OwnerState?.Id;
+                // A wildcard row has no OwnerState — that null IS the wildcard marker.
+                initFromId = preselectedFromState?.Id
+                             ?? _selectedSmRow.OwnerState?.Id
+                             ?? WildcardFromKey;
                 initEventId = _selectedSmRow.EventId;
                 initToStateId = _selectedSmRow.ToStateId;
                 initFlags = _selectedSmRow.Flags;
@@ -3634,12 +3685,17 @@ namespace SageHavokEditor
 
             if (popup.ShowDialog() != true) return;
 
-            // Resolve the chosen from-state HkObject by its ID
+            bool isWildcard = isAdd && popup.ResultFromStateId == WildcardFromKey;
+
+            // Resolve the chosen from-state HkObject by its ID. A wildcard has none by design.
             var fromStateObj = isAdd
-                ? manager.ObjectMap.TryGetValue(popup.ResultFromStateId ?? "", out var fso) ? fso : null
+                ? (isWildcard
+                    ? null
+                    : manager.ObjectMap.TryGetValue(popup.ResultFromStateId ?? "", out var fso) ? fso : null)
                 : preselectedFromState ?? _selectedSmRow.OwnerState;
 
-            if (isAdd && fromStateObj == null) { MessageBox.Show("Could not resolve selected from-state."); return; }
+            if (isAdd && !isWildcard && fromStateObj == null)
+            { MessageBox.Show("Could not resolve selected from-state."); return; }
 
             var resultEventId = popup.ResultEventId;
             var resultToStateId = popup.ResultToStateId;
@@ -3648,9 +3704,17 @@ namespace SageHavokEditor
             if (isAdd)
             {
                 // ── Commit: ADD ──────────────────────────────────────────────────────
-                // Get or create transition array
-                var transRef = fromStateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
+                // Get or create the transition array. A wildcard goes into the state machine's
+                // own wildcardTransitions array; a normal transition into the from-state's.
                 HkObject transArray;
+                HkObject arrayOwner = isWildcard ? _selectedSM : fromStateObj;
+                string arrayParamName = isWildcard ? "wildcardTransitions" : "transitions";
+
+                if (arrayOwner == null)
+                { MessageBox.Show("No state machine selected."); return; }
+
+                var ownerParam = arrayOwner.Params.FirstOrDefault(p => p.Name == arrayParamName);
+                var transRef = ownerParam?.Value;
 
                 if (string.IsNullOrEmpty(transRef) || transRef == "null" ||
                     !manager.TryResolve(transRef, out transArray))
@@ -3668,9 +3732,26 @@ namespace SageHavokEditor
                 }
                     };
                     manager.ObjectMap[newId] = transArray;
-                    var tp2 = fromStateObj.Params.FirstOrDefault(p => p.Name == "transitions");
-                    if (tp2 != null) tp2.Value = newId;
+
+                    // A state machine with no wildcards at all may not carry the param at all,
+                    // so add it rather than assuming it exists.
+                    if (ownerParam == null)
+                    {
+                        ownerParam = new HkParam { Name = arrayParamName, Value = "null" };
+                        arrayOwner.Params.Add(ownerParam);
+                    }
+
+                    // HkParam.Value derives from Children once Children is non-empty, so a resolved
+                    // single ref must be written to Children — assigning Value alone would be lost.
+                    ownerParam.Children.Clear();
+                    ownerParam.Children.Add(transArray);
+                    ownerParam.Value = transArray.Id;
+                    ownerParam.InnerObject = transArray;
                 }
+
+                // Havok only treats a transition as a wildcard if it carries the wildcard flag.
+                if (isWildcard)
+                    resultFlags = EnsureFlag(resultFlags, "FLAG_IS_LOCAL_WILDCARD");
 
                 var newTr = new HkObject
                 {
@@ -3694,7 +3775,7 @@ namespace SageHavokEditor
                         new HkParam { Name = "exitTime",     Value = "0.000000" }
                     }}
                 }},
-                new HkParam { Name = "transition",           Value = "#0141"  },
+                new HkParam { Name = "transition",           Value = DefaultTransitionEffectRef() },
                 new HkParam { Name = "condition",            Value = "null"   },
                 new HkParam { Name = "eventId",              Value = resultEventId   ?? "0" },
                 new HkParam { Name = "toStateId",            Value = resultToStateId ?? "0" },
@@ -3709,8 +3790,9 @@ namespace SageHavokEditor
                 tParam?.Children.Add(newTr);
                 if (tParam != null) tParam.NumElements = tParam.Children.Count.ToString();
 
-                var capturedFromName = fromStateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value
-                                       ?? fromStateObj.Id;
+                var capturedFromName = isWildcard
+                    ? "★ WILDCARD"
+                    : (fromStateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? fromStateObj.Id);
 
                 _undoRedo.Record(new EditAction
                 {

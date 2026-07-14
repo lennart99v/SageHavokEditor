@@ -166,7 +166,9 @@ namespace SageHavokEditor.UI.Dialogs
                 "source node with dashed amber edges to each target state. This makes the otherwise " +
                 "invisible \"random/high-priority\" triggers (e.g. a creature's special-attack or " +
                 "death state) easy to find.\n" +
-                "• Clicking the ★ ANY node opens its state machine in the Object Data panel.\n\n" +
+                "• Clicking the ★ ANY node opens its state machine in the Object Data panel.\n" +
+                "• Right-click the ★ ANY node → ➕ Add Wildcard Transition to create a new one; see " +
+                "Creating a Wildcard Transition.\n\n" +
                 "Edge right-click menu\n" +
                 "• Go to event — jump straight to the triggering event's definition and its full " +
                 "usage list (works on normal and wildcard edges).\n" +
@@ -225,7 +227,9 @@ namespace SageHavokEditor.UI.Dialogs
             AddSection("tab_sm_inspector", "SM Inspector Tab",
                 "A full transition editor for a single hkbStateMachine.\n\n" +
                 "• Select a state machine from the dropdown to load all its transitions.\n" +
-                "• + Add Transition — opens a dialog to pick source state, target state, event, and flags.\n" +
+                "• + Add Transition — opens a dialog to pick source state, target state, event, and flags. " +
+                "Choose ★ WILDCARD (any state) as the source to create a wildcard; see " +
+                "Creating a Wildcard Transition.\n" +
                 "• Edit and Delete buttons act on the selected row.\n" +
                 "• Wildcard transitions (★ WILDCARD) are shown at the bottom of the list — these are the " +
                 "from-any-state, high-priority triggers also drawn from the ★ ANY node in the Graph tab.\n" +
@@ -304,6 +308,32 @@ namespace SageHavokEditor.UI.Dialogs
                 "list (Character tab) — otherwise the clip has nothing to play. If you are shipping a " +
                 "Nemesis/Pandora patch, the animation is registered through the patch as usual.");
 
+            AddSection("wildcard_create", "Creating a Wildcard Transition",
+                "A wildcard fires from ANY state in a machine, rather than from one specific state. " +
+                "Vanilla uses them for things that must be able to interrupt whatever is playing — " +
+                "entering a death or stagger state, a creature's special attack, and so on.\n\n" +
+                "Where they actually live\n" +
+                "A normal transition is stored on its source state (hkbStateMachineStateInfo.transitions). " +
+                "A wildcard has no source state, so it is stored on the state machine itself, in " +
+                "hkbStateMachine.wildcardTransitions. That is why it is drawn from the amber ★ ANY node " +
+                "in the Graph tab instead of from a state.\n\n" +
+                "How to create one\n" +
+                "• SM Inspector tab → + Add Transition, then pick ★ WILDCARD (any state) at the top of " +
+                "the From State dropdown.\n" +
+                "• Or Graph tab → right-click the amber ★ ANY node → ➕ Add Wildcard Transition, which " +
+                "opens the same dialog with ★ WILDCARD already selected.\n" +
+                "• Pick the triggering event and the target state as usual, then confirm.\n\n" +
+                "What the editor does for you\n" +
+                "• The transition is written to the machine's wildcardTransitions array, not to a state. " +
+                "If the machine has no wildcard array yet, one is created and linked.\n" +
+                "• FLAG_IS_LOCAL_WILDCARD is added to the flags automatically — Havok does not treat a " +
+                "transition as a wildcard without it, so a wildcard missing this flag simply never fires.\n" +
+                "• The action is undoable, and the new wildcard appears immediately as a ★ WILDCARD row " +
+                "in the SM Inspector and as a dashed amber edge from ★ ANY in the graph.\n\n" +
+                "Editing and removing\n" +
+                "Wildcard rows behave like any other transition: right-click for Go to event, " +
+                "Enable / Disable transition (FLAG_DISABLED), or Delete.");
+
             AddSection("debug_tracking", "Why Active States Are Empty",
                 "Connecting successfully and still seeing an empty Active States list is the most common " +
                 "live-debug question, and it is usually not a broken setup.\n\n" +
@@ -356,6 +386,9 @@ namespace SageHavokEditor.UI.Dialogs
                 "state, etc.) are usually wildcard transitions that fire from any state. Open the Graph " +
                 "tab and look for the amber ★ ANY node — its dashed edges are exactly those triggers. " +
                 "You can also read them at the bottom of the SM Inspector list (★ WILDCARD).\n\n" +
+                "Add a high-priority / random trigger\n" +
+                "• Pick ★ WILDCARD (any state) as the From State in + Add Transition, or right-click the " +
+                "★ ANY node in the graph. See Creating a Wildcard Transition.\n\n" +
                 "Turn a trigger off\n" +
                 "• Right-click the transition (graph edge or SM Inspector row) → Disable transition. " +
                 "This sets the Havok FLAG_DISABLED flag so it never fires, without deleting it — a " +
