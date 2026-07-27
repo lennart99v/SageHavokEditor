@@ -248,7 +248,12 @@
                         </TextBox>
                     </Border>
                     <TreeView x:Name="ObjectTree" SelectedItemChanged="ObjectTree_SelectedItemChanged"
+                              PreviewMouseRightButtonDown="ObjectTree_PreviewMouseRightButtonDown"
+                              ContextMenuOpening="ObjectTree_ContextMenuOpening"
                               Background="Transparent" BorderThickness="0">
+                        <TreeView.ContextMenu>
+                            <ContextMenu/>
+                        </TreeView.ContextMenu>
                         <TreeView.Resources>
                             <Style TargetType="TreeViewItem">
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>

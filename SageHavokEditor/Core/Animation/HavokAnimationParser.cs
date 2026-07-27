@@ -20,6 +20,7 @@ namespace SageHavokEditor.Core.Animation
         public int NumTracks;                                       // numberOfTransformTracks
         public HkTransform[][] Frames = Array.Empty<HkTransform[]>(); // [frame][bone] LOCAL space, skeleton-sized
         public List<AnimationAnnotation> Annotations = new();
+        public List<string> AnnotationTrackNames = new();           // one entry per annotation track ("" when unnamed)
         public bool TrackCountExceedsBones;                         // real warning (vs. benign "fewer tracks")
 
         public int FrameAt(double timeSeconds)
@@ -117,6 +118,8 @@ namespace SageHavokEditor.Core.Animation
             int ti = 0;
             foreach (var track in annTracks.Elements("hkobject"))
             {
+                clip.AnnotationTrackNames.Add(track.Elements("hkparam")
+                    .FirstOrDefault(p => (string?)p.Attribute("name") == "trackName")?.Value?.Trim() ?? "");
                 var anns = track.Elements("hkparam")
                     .FirstOrDefault(p => (string?)p.Attribute("name") == "annotations");
                 if (anns != null)

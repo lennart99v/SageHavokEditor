@@ -1,0 +1,51 @@
+<Window x:Class="SageHavokEditor.UI.Dialogs.ClipTriggerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clip Trigger" Width="440" MinHeight="210"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgDarkBrush}"
+        WindowStyle="SingleBorderWindow"
+        ResizeMode="NoResize">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Margin="0,0,0,4" Text="Event raised by this trigger:"/>
+        <ComboBox x:Name="CmbEvent" Grid.Row="1" IsEditable="True" Padding="5" Margin="0,0,0,2"/>
+        <TextBlock Grid.Row="2" Margin="0,0,0,10" FontSize="11"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   Text="Pick an existing event, or type a new name to create one."/>
+
+        <Grid Grid.Row="3" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="70"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Time (s):" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBox x:Name="TxtTime" Grid.Column="1" Padding="5" TextChanged="TxtTime_TextChanged"/>
+            <TextBlock Grid.Column="2" Text="Frame:" VerticalAlignment="Center" Margin="12,0,6,0"/>
+            <TextBox x:Name="TxtFrame" Grid.Column="3" Padding="5" TextChanged="TxtFrame_TextChanged"/>
+            <TextBlock x:Name="RangeText" Grid.Column="4" VerticalAlignment="Center" Margin="10,0,0,0"
+                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+        </Grid>
+
+        <CheckBox x:Name="ChkRelEnd" Grid.Row="4" Margin="0,0,0,12"
+                  Content="Anchor to the clip's end (relativeToEndOfClip)"
+                  ToolTip="Stores the time as a negative offset from the end of the clip, so the trigger keeps its distance from the end if a longer animation is swapped in."/>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="OK" Width="70" Margin="0,0,8,0" Click="BtnOk_Click" IsDefault="True"/>
+            <Button Content="Cancel" Width="70" Click="BtnCancel_Click" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

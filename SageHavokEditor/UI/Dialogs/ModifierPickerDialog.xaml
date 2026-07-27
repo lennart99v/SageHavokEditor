@@ -23,7 +23,20 @@
                  ToolTip="Type to filter the list"/>
 
         <ListBox x:Name="List" Grid.Row="2"
-                 MouseDoubleClick="List_MouseDoubleClick"/>
+                 DisplayMemberPath="Name"
+                 MouseDoubleClick="List_MouseDoubleClick">
+            <ListBox.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold"
+                                       Margin="2,6,0,2"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                </GroupStyle>
+            </ListBox.GroupStyle>
+        </ListBox>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,10,0,0">

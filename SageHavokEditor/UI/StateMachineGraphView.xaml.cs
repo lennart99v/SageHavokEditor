@@ -1175,7 +1175,8 @@ namespace SageHavokEditor.UI
             if (_manager == null) return;
             if (!_manager.ObjectMap.TryGetValue(node.Id, out var target)) return;
 
-            var picker = new Dialogs.ModifierPickerDialog(ModifierCatalog.ClassNames)
+            var picker = new Dialogs.ModifierPickerDialog(ModifierCatalog.ClassNames,
+                commonClassNames: ModifierCatalog.CommonClassNames)
             { Owner = Window.GetWindow(this) };
             if (picker.ShowDialog() != true || string.IsNullOrEmpty(picker.SelectedClass)) return;
 
@@ -1185,7 +1186,7 @@ namespace SageHavokEditor.UI
 
             var modId = GenerateNewObjectId();
             mod.Id = modId;
-            SetParam(mod, "name", $"New_{cls}");
+            SetParam(mod, "name", DeriveModifierName(node.Name, cls));
             _manager.ObjectMap[modId] = mod;   // reserve the id so the wrapper gets a distinct one
 
             var added = new List<HkObject> { mod };
@@ -1289,6 +1290,32 @@ namespace SageHavokEditor.UI
             var p = o.Params.FirstOrDefault(x => x.Name == name);
             if (p != null) p.Value = value;
             else o.Params.Add(new HkParam { Name = name, Value = value });
+        }
+
+        /// <summary>
+        /// Default name for a new modifier, derived from the node it's attached to:
+        /// "GetUpFaceUp" + BSIsActiveModifier → "GetUpFaceUp_IsActive". Uniquified
+        /// against existing object names with a _2/_3 suffix.
+        /// </summary>
+        private string DeriveModifierName(string targetName, string cls)
+        {
+            var s = cls;
+            if (s.StartsWith("hkb", StringComparison.Ordinal)) s = s.Substring(3);
+            else if (s.StartsWith("BS", StringComparison.Ordinal)) s = s.Substring(2);
+            if (s.EndsWith("Modifier", StringComparison.Ordinal) && s.Length > "Modifier".Length)
+                s = s.Substring(0, s.Length - "Modifier".Length);
+
+            var baseName = string.IsNullOrWhiteSpace(targetName) ? $"New_{cls}" : $"{targetName}_{s}";
+            if (_manager == null) return baseName;
+
+            var taken = new HashSet<string>(
+                _manager.ObjectMap.Values.Select(o => o.DisplayName), StringComparer.Ordinal);
+            if (!taken.Contains(baseName)) return baseName;
+            for (int i = 2; ; i++)
+            {
+                var candidate = $"{baseName}_{i}";
+                if (!taken.Contains(candidate)) return candidate;
+            }
         }
 
         /// <summary>
@@ -3420,6 +3447,56 @@ namespace SageHavokEditor.UI
         /// owning state, then highlight the clip node. Falls back to highlighting the
         /// owning state if the clip can't be located in the generator graph.
         /// </summary>
+        /// <summary>
+        /// Reveal any behavior object on the canvas: a state machine switches the view
+        /// to it, a state switches to its owning machine and highlights it, and anything
+        /// else (clip, blender, modifier, …) drills into the owning state's generator
+        /// view via <see cref="RevealClipNode"/>, which highlights any id reachable
+        /// through the generator chain.
+        /// </summary>
+        public void RevealGraphObject(string objectId)
+        {
+            if (_manager == null || string.IsNullOrEmpty(objectId)) return;
+            if (!_manager.ObjectMap.TryGetValue(objectId, out var obj)) return;
+
+            if (obj.ClassName == "hkbStateMachine")
+            {
+                var smName = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? obj.Id;
+                if (MachineSelector.Items.Contains(smName))
+                {
+                    if ((MachineSelector.SelectedItem as string) != smName) ResetToMachine(smName);
+                    StatusText_?.Invoke($"📍 {smName}");
+                }
+                else StatusText_?.Invoke($"'{smName}' isn't in the machine list.");
+                return;
+            }
+
+            if (obj.ClassName == "hkbStateMachineStateInfo")
+            {
+                var smName = FindStateMachineNameContaining(objectId);
+                if (!string.IsNullOrEmpty(smName) &&
+                    MachineSelector.Items.Contains(smName) &&
+                    (MachineSelector.SelectedItem as string) != smName)
+                    ResetToMachine(smName);
+
+                // Defer so the highlight lands after the state view (re)builds.
+                Dispatcher.InvokeAsync(() =>
+                {
+                    var node = _nodes.FirstOrDefault(n => n.Id == objectId);
+                    if (node != null)
+                    {
+                        CenterOnNode(node);
+                        _visualHost.HighlightNode(node.Id);
+                        StatusText_?.Invoke($"📍 {node.Name}");
+                    }
+                    else StatusText_?.Invoke("State not found in the current view.");
+                }, System.Windows.Threading.DispatcherPriority.Background);
+                return;
+            }
+
+            RevealClipNode(objectId);
+        }
+
         public void RevealClipNode(string clipObjectId)
         {
             if (_manager == null || string.IsNullOrEmpty(clipObjectId)) return;
@@ -3429,7 +3506,7 @@ namespace SageHavokEditor.UI
             var (smName, stateObj) = FindOwningStateMachineAndState(clipObjectId);
             if (stateObj == null)
             {
-                StatusText_?.Invoke("Clip isn't reachable from any state machine.");
+                StatusText_?.Invoke("Object isn't reachable from any state machine's generator chain.");
                 return;
             }
 

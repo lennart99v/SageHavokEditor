@@ -219,6 +219,7 @@ namespace SageHavokEditor
         private ClipPreviewService _clipPreview = null!;
         private ClipPreviewWindow? _previewWindow;
         private HkObject? _previewableClipObj;
+        private AnimationAnnotationEditor? _annotationEditor;
 
         public MainWindow()
         {
@@ -1248,7 +1249,61 @@ namespace SageHavokEditor
 
             // Let the preview know which bones the clip actually drives, and jump-to-graph
             _previewWindow.View.OnShowInGraph = () => { _previewWindow.Activate(); RevealClipInGraph(clip); };
+
+            // Annotation editing writes back to the animation file on disk.
+            var animFull = res.AnimationFullPath;
+            _previewWindow.View.AnimationPath = animFull;
+            _previewWindow.View.OnAnnotationEdit = string.IsNullOrEmpty(animFull)
+                ? null
+                : edit => ApplyAnnotationEditAsync(animFull, edit, clip, recordUndo: true);
+
+            // Trigger editing mutates the behavior graph in memory (normal undo/save).
+            float dur = res.Clip.Duration;
+            int nFrames = res.Clip.NumFrames;
+            _previewWindow.View.OnTriggerAdd = t => TriggerAddFlow(clip, t, dur, nFrames);
+            _previewWindow.View.OnTriggerEdit = tr => TriggerEditFlow(clip, tr, dur, nFrames);
+            _previewWindow.View.OnTriggerDelete = tr => TriggerDeleteFlow(clip, tr);
+            _previewWindow.View.OnTriggerMove = (tr, t) => TriggerMoveFlow(clip, tr, t, dur);
+
             _previewWindow.View.Show(res.Clip, res.Skeleton, triggers);
+        }
+
+        /// <summary>
+        /// Persist one annotation edit to the animation file, refresh the preview, and
+        /// (for user-initiated edits) record an undo step. Undo/redo re-run the same
+        /// pipeline with the inverse/original edit, so the file on disk always matches.
+        /// </summary>
+        private async Task ApplyAnnotationEditAsync(
+            string animFullPath, AnnotationEdit edit, ClipInfo clip, bool recordUndo)
+        {
+            _annotationEditor ??= new AnimationAnnotationEditor(_hkxConv);
+
+            var result = await _annotationEditor.ApplyAsync(animFullPath, edit);
+            if (!result.Success)
+            {
+                MessageBox.Show($"Annotation edit failed:\n{result.Error}",
+                    "Annotation", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _clipPreview?.InvalidateAnimation(animFullPath);
+            StatusText.Text = $"✓ {edit.Describe()}  →  {Path.GetFileName(animFullPath)}";
+
+            if (recordUndo)
+            {
+                var inverse = edit.Inverse();
+                _undoRedo.Record(new EditAction
+                {
+                    Description = edit.Describe(),
+                    Undo = () => _ = ApplyAnnotationEditAsync(animFullPath, inverse, clip, recordUndo: false),
+                    Redo = () => _ = ApplyAnnotationEditAsync(animFullPath, edit, clip, recordUndo: false),
+                });
+                UpdateUndoRedoButtons();
+            }
+
+            // Reload so the timeline ticks reflect the file's new state.
+            if (_previewWindow?.IsLoaded == true)
+                PreviewClip(clip);
         }
 
         private List<UI.PreviewTrigger> GatherClipTriggers(ClipInfo clip, float duration)
@@ -1263,8 +1318,9 @@ namespace SageHavokEditor
             var triggersParam = triggerArrayObj.Params.FirstOrDefault(p => p.Name == "triggers");
             if (triggersParam?.Children == null) return list;
 
-            foreach (var tr in triggersParam.Children)
+            for (int index = 0; index < triggersParam.Children.Count; index++)
             {
+                var tr = triggersParam.Children[index];
                 string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
                 var relToEnd = Get("relativeToEndOfClip").ToLower() == "true";
 
@@ -1284,10 +1340,302 @@ namespace SageHavokEditor
                 {
                     Time = time,
                     EventName = _eventResolver.Name(eventId),
-                    RelativeToEnd = relToEnd
+                    RelativeToEnd = relToEnd,
+                    Index = index,
+                    EventId = eventId
                 });
             }
             return list;
+        }
+
+        // ── clip trigger editing (behavior-side: in-memory model + normal undo) ──
+
+        private void TriggerAddFlow(ClipInfo clip, float time, float duration, int numFrames)
+        {
+            var dlg = new UI.Dialogs.ClipTriggerDialog("Add Trigger",
+                EventList.Select(ev => ev.Name), null, time, false, duration, numFrames)
+            { Owner = (Window?)_previewWindow ?? this };
+            if (dlg.ShowDialog() != true) return;
+
+            var (eventId, created) = ResolveOrCreateEvent(dlg.EventName);
+            float local = dlg.RelativeToEnd ? dlg.TriggerTime - duration : dlg.TriggerTime;
+            var trig = MakeTriggerObject(local, eventId, dlg.RelativeToEnd);
+
+            ApplyClipTriggerEdit(clip,
+                $"Add trigger '{dlg.EventName}' @ {dlg.TriggerTime:F3}s",
+                list => { list.Add(trig); return null; },
+                created);
+        }
+
+        private void TriggerEditFlow(ClipInfo clip, UI.PreviewTrigger tr, float duration, int numFrames)
+        {
+            var dlg = new UI.Dialogs.ClipTriggerDialog("Edit Trigger",
+                EventList.Select(ev => ev.Name), _eventResolver.Resolve(tr.EventId) ?? "",
+                tr.Time, tr.RelativeToEnd, duration, numFrames)
+            { Owner = (Window?)_previewWindow ?? this };
+            if (dlg.ShowDialog() != true) return;
+
+            var (eventId, created) = ResolveOrCreateEvent(dlg.EventName);
+            float local = dlg.RelativeToEnd ? dlg.TriggerTime - duration : dlg.TriggerTime;
+
+            ApplyClipTriggerEdit(clip,
+                $"Edit trigger '{tr.EventName}' → '{dlg.EventName}' @ {dlg.TriggerTime:F3}s",
+                list =>
+                {
+                    var (old, err) = GuardTrigger(list, tr);
+                    if (err != null) return err;
+                    list[tr.Index] = CloneTriggerWith(old!, local, eventId, dlg.RelativeToEnd);
+                    return null;
+                },
+                created);
+        }
+
+        private void TriggerDeleteFlow(ClipInfo clip, UI.PreviewTrigger tr)
+        {
+            ApplyClipTriggerEdit(clip,
+                $"Delete trigger '{tr.EventName}' @ {tr.Time:F3}s",
+                list =>
+                {
+                    var (_, err) = GuardTrigger(list, tr);
+                    if (err != null) return err;
+                    list.RemoveAt(tr.Index);
+                    return null;
+                },
+                null);
+        }
+
+        private void TriggerMoveFlow(ClipInfo clip, UI.PreviewTrigger tr, float newTime, float duration)
+        {
+            float local = tr.RelativeToEnd ? newTime - duration : newTime;
+            ApplyClipTriggerEdit(clip,
+                $"Move trigger '{tr.EventName}' → {newTime:F3}s",
+                list =>
+                {
+                    var (old, err) = GuardTrigger(list, tr);
+                    if (err != null) return err;
+                    list[tr.Index] = CloneTriggerWith(old!, local, null, null);
+                    return null;
+                },
+                null);
+        }
+
+        /// <summary>Existing event id for a name (case-insensitive), or a not-yet-added
+        /// IdNamePair the apply step will append as part of the same undo action.</summary>
+        private (string id, IdNamePair? created) ResolveOrCreateEvent(string name)
+        {
+            var existing = EventList.FirstOrDefault(ev =>
+                string.Equals(ev.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (existing != null) return (existing.Id, null);
+            return (EventList.Count.ToString(), new IdNamePair
+            {
+                Id = EventList.Count.ToString(),
+                Name = name
+            });
+        }
+
+        private static string TriggerEventId(HkObject tr) =>
+            tr.Params.FirstOrDefault(p => p.Name == "event")?.Children.FirstOrDefault()?
+                .Params.FirstOrDefault(p => p.Name == "id")?.Value ?? "";
+
+        /// <summary>Preview trigger indexes go stale if the array changed since the
+        /// preview loaded — verify the event id at the recorded index still matches.</summary>
+        private static (HkObject? obj, string? err) GuardTrigger(List<HkObject> list, UI.PreviewTrigger tr)
+        {
+            if (tr.Index < 0 || tr.Index >= list.Count || TriggerEventId(list[tr.Index]) != tr.EventId)
+                return (null, "Trigger not found at its recorded position — the preview may be " +
+                              "out of date. Reopen the clip preview and try again.");
+            return (list[tr.Index], null);
+        }
+
+        private static HkObject MakeTriggerObject(float localTime, string eventId, bool relToEnd)
+        {
+            var evObj = new HkObject();
+            evObj.Params.Add(new HkParam { Name = "id", Value = eventId });
+            evObj.Params.Add(new HkParam { Name = "payload", Value = "null" });
+            var evParam = new HkParam { Name = "event" };
+            evParam.Children.Add(evObj);
+
+            return new HkObject
+            {
+                Params =
+                {
+                    new HkParam { Name = "localTime", Value = localTime.ToString("F6", CultureInfo.InvariantCulture) },
+                    evParam,
+                    new HkParam { Name = "relativeToEndOfClip", Value = relToEnd ? "true" : "false" },
+                    new HkParam { Name = "acyclic", Value = "false" },
+                    new HkParam { Name = "isAnnotation", Value = "false" },
+                }
+            };
+        }
+
+        /// <summary>
+        /// New trigger object with the changed fields replaced and everything else
+        /// carried over. Unchanged params are shared by instance (only one of the
+        /// two objects is ever in the live list), so payload objects survive edits.
+        /// Editing replaces the object rather than mutating it in place — that keeps
+        /// undo's before/after list snapshots honest.
+        /// </summary>
+        private static HkObject CloneTriggerWith(HkObject old, float newLocalTime,
+            string? newEventId, bool? newRelToEnd)
+        {
+            string relStr = newRelToEnd == true ? "true" : "false";
+            var o = new HkObject();
+            bool hasTime = false, hasRel = false;
+            foreach (var p in old.Params)
+            {
+                if (p.Name == "localTime")
+                {
+                    o.Params.Add(new HkParam { Name = "localTime", Value = newLocalTime.ToString("F6", CultureInfo.InvariantCulture) });
+                    hasTime = true;
+                }
+                else if (p.Name == "relativeToEndOfClip" && newRelToEnd != null)
+                {
+                    o.Params.Add(new HkParam { Name = "relativeToEndOfClip", Value = relStr });
+                    hasRel = true;
+                }
+                else if (p.Name == "event" && newEventId != null)
+                {
+                    var payload = p.Children.FirstOrDefault()?
+                        .Params.FirstOrDefault(x => x.Name == "payload");
+                    var evObj = new HkObject();
+                    evObj.Params.Add(new HkParam { Name = "id", Value = newEventId });
+                    evObj.Params.Add(payload ?? new HkParam { Name = "payload", Value = "null" });
+                    var evParam = new HkParam { Name = "event" };
+                    evParam.Children.Add(evObj);
+                    o.Params.Add(evParam);
+                }
+                else
+                {
+                    o.Params.Add(p);
+                    if (p.Name == "relativeToEndOfClip") hasRel = true;
+                }
+            }
+            if (!hasTime)
+                o.Params.Insert(0, new HkParam { Name = "localTime", Value = newLocalTime.ToString("F6", CultureInfo.InvariantCulture) });
+            if (!hasRel && newRelToEnd != null)
+                o.Params.Add(new HkParam { Name = "relativeToEndOfClip", Value = relStr });
+            return o;
+        }
+
+        /// <summary>
+        /// Runs one mutation of a clip's trigger list as a single undoable action.
+        /// Creates and wires the hkbClipTriggerArray (with #id, through Children /
+        /// InnerObject — never Value alone) in the same action when the clip has
+        /// none, so it can't be orphan-pruned on .hkx save. Warns before editing an
+        /// array shared by several clip generators. createdEvent (a new behavior
+        /// event the trigger references) is added/removed as part of the same action.
+        /// </summary>
+        private void ApplyClipTriggerEdit(ClipInfo clip, string description,
+            Func<List<HkObject>, string?> mutate, IdNamePair? createdEvent)
+        {
+            if (manager == null || !manager.ObjectMap.TryGetValue(clip.Id, out var clipObj)) return;
+
+            var refParam = clipObj.Params.FirstOrDefault(p => p.Name == "triggers");
+            HkObject? arrayObj = null;
+            bool haveArray = refParam != null && !string.IsNullOrEmpty(refParam.Value)
+                             && refParam.Value != "null"
+                             && manager.TryResolve(refParam.Value, out arrayObj);
+
+            bool createdArray = false;
+            string arrayId;
+            if (haveArray)
+            {
+                arrayId = refParam!.Value;
+                var referrers = manager.ObjectMap.Values
+                    .Where(o => o.Params.Any(p => p.Name == "triggers" && p.Value == arrayId))
+                    .ToList();
+                if (referrers.Count > 1)
+                {
+                    var names = string.Join("\n", referrers.Select(o => $"  • {o.DisplayName} ({o.Id})"));
+                    if (MessageBox.Show(
+                            $"This trigger array ({arrayId}) is shared by {referrers.Count} clip generators:\n\n" +
+                            $"{names}\n\nEditing it changes ALL of them. Continue?",
+                            "Shared Trigger Array", MessageBoxButton.YesNo, MessageBoxImage.Warning)
+                        != MessageBoxResult.Yes)
+                        return;
+                }
+            }
+            else
+            {
+                arrayObj = ModifierCatalog.CreateDefault("hkbClipTriggerArray")
+                           ?? new HkObject { ClassName = "hkbClipTriggerArray", Signature = "0x59c23a0f" };
+                arrayId = GenerateNewObjectId();
+                arrayObj.Id = arrayId;
+                createdArray = true;
+                if (refParam == null)
+                {
+                    refParam = new HkParam { Name = "triggers", Value = "null" };
+                    clipObj.Params.Add(refParam);
+                }
+            }
+
+            var triggersParam = arrayObj!.Params.FirstOrDefault(p => p.Name == "triggers");
+            if (triggersParam == null)
+            {
+                triggersParam = new HkParam { Name = "triggers", NumElements = "0" };
+                arrayObj.Params.Add(triggersParam);
+            }
+
+            var before = new List<HkObject>(triggersParam.Children);
+            var err = mutate(triggersParam.Children);
+            if (err != null)
+            {
+                triggersParam.Children.Clear();
+                triggersParam.Children.AddRange(before);
+                MessageBox.Show(err, "Trigger", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var after = new List<HkObject>(triggersParam.Children);
+
+            var capturedRef = refParam!;
+            void Apply()
+            {
+                if (createdEvent != null && !EventList.Contains(createdEvent))
+                { EventList.Add(createdEvent); RenumberEvents(); }
+                if (createdArray)
+                {
+                    manager.ObjectMap[arrayId] = arrayObj;
+                    capturedRef.InnerObject = arrayObj;   // Value derives from Children
+                }
+                triggersParam.Children.Clear();
+                triggersParam.Children.AddRange(after);
+                triggersParam.NumElements = after.Count.ToString(CultureInfo.InvariantCulture);
+                RefreshAfterTriggerChange(clip);
+            }
+            void Revert()
+            {
+                triggersParam.Children.Clear();
+                triggersParam.Children.AddRange(before);
+                triggersParam.NumElements = before.Count.ToString(CultureInfo.InvariantCulture);
+                if (createdArray)
+                {
+                    manager.ObjectMap.Remove(arrayId);
+                    capturedRef.InnerObject = null;
+                    capturedRef.Value = "null";
+                }
+                if (createdEvent != null)
+                { EventList.Remove(createdEvent); RenumberEvents(); }
+                RefreshAfterTriggerChange(clip);
+            }
+
+            Apply();
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = description,
+                Undo = () => { _suppressUndoRecord = true; Revert(); _suppressUndoRecord = false; },
+                Redo = () => { _suppressUndoRecord = true; Apply(); _suppressUndoRecord = false; },
+            });
+            UpdateUndoRedoButtons();
+            StatusText.Text = $"✓ {description}";
+        }
+
+        private void RefreshAfterTriggerChange(ClipInfo clip)
+        {
+            if (ClipsList?.SelectedItem is ClipInfo sel && sel.Id == clip.Id)
+                RefreshTriggers(clip);
+            if (_previewWindow?.IsLoaded == true)
+                PreviewClip(clip);
         }
 
         private void RevealClipInGraph(ClipInfo clip)
@@ -1580,6 +1928,117 @@ namespace SageHavokEditor
                 : (SolidColorBrush)Application.Current.Resources["TextSecondaryBrush"];
             BtnBookmarkToggle.ToolTip = isBookmarked ? "Remove bookmark" : "Bookmark this object";
             BtnBookmarkToggle.Tag = node.Object;
+        }
+
+        // ── Behavior-tree context menu ───────────────────────────────────────
+
+        // Right-click doesn't select in a TreeView by default — select the item under
+        // the cursor first so the menu acts on what the user clicked.
+        private void ObjectTree_PreviewMouseRightButtonDown(object sender,
+            System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var dep = e.OriginalSource as DependencyObject;
+            while (dep != null && dep is not TreeViewItem)
+                dep = System.Windows.Media.VisualTreeHelper.GetParent(dep);
+            if (dep is TreeViewItem tvi)
+            {
+                tvi.IsSelected = true;
+                tvi.Focus();
+            }
+        }
+
+        private void ObjectTree_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (ObjectTree.ContextMenu == null) return;
+            var menu = ObjectTree.ContextMenu;
+            menu.Items.Clear();
+
+            if (ObjectTree.SelectedItem is not BehaviorNodeData node)
+            {
+                e.Handled = true;
+                return;
+            }
+            var obj = node.Object;   // null for folder rows like "Transitions"
+
+            var jump = new MenuItem { Header = "🧭 Jump to in graph", IsEnabled = obj != null };
+            if (obj != null)
+                jump.Click += (_, __) =>
+                {
+                    MainTabControl.SelectedIndex = 0;   // Graph tab
+                    GraphView.RevealGraphObject(obj.Id);
+                };
+            menu.Items.Add(jump);
+
+            var inspect = new MenuItem { Header = "📄 Inspect in Object Data", IsEnabled = obj != null };
+            if (obj != null) inspect.Click += (_, __) => NavigateToObject(obj.Id);
+            menu.Items.Add(inspect);
+
+            menu.Items.Add(new Separator());
+
+            var copyId = new MenuItem
+            {
+                Header = obj != null ? $"📋 Copy id ({obj.Id})" : "📋 Copy id",
+                IsEnabled = obj != null
+            };
+            if (obj != null)
+                copyId.Click += (_, __) =>
+                {
+                    try { Clipboard.SetText(obj.Id); StatusText.Text = $"Copied {obj.Id}"; }
+                    catch { }
+                };
+            menu.Items.Add(copyId);
+
+            var copyName = new MenuItem { Header = "📋 Copy name", IsEnabled = obj != null };
+            if (obj != null)
+                copyName.Click += (_, __) =>
+                {
+                    try { Clipboard.SetText(obj.DisplayName); StatusText.Text = $"Copied {obj.DisplayName}"; }
+                    catch { }
+                };
+            menu.Items.Add(copyName);
+
+            menu.Items.Add(new Separator());
+
+            bool marked = obj != null && Bookmarks.Any(b => b.Id == obj.Id);
+            var bookmark = new MenuItem
+            {
+                Header = marked ? "★ Remove bookmark" : "🔖 Bookmark",
+                IsEnabled = obj != null
+            };
+            if (obj != null) bookmark.Click += (_, __) => ToggleBookmarkFor(obj);
+            menu.Items.Add(bookmark);
+        }
+
+        private void ToggleBookmarkFor(HkObject obj)
+        {
+            var existing = Bookmarks.FirstOrDefault(b => b.Id == obj.Id);
+            if (existing != null)
+            {
+                Bookmarks.Remove(existing);
+                StatusText.Text = $"Removed bookmark: {obj.DisplayName}";
+            }
+            else
+            {
+                Bookmarks.Add(new BookmarkEntry
+                {
+                    Id = obj.Id,
+                    Name = obj.DisplayName,
+                    ClassName = obj.ClassName
+                });
+                StatusText.Text = $"✓ Bookmarked: {obj.DisplayName}";
+            }
+            SaveBookmarks();
+
+            // Keep the Object Data toggle in sync when it shows this object.
+            if (BtnBookmarkToggle.Tag is HkObject cur && cur.Id == obj.Id)
+            {
+                bool isBookmarked = existing == null;
+                BtnBookmarkToggle.Content = isBookmarked ? "★" : "🔖";
+                BtnBookmarkToggle.Foreground = isBookmarked
+                    ? new SolidColorBrush(Colors.Goldenrod)
+                    : (SolidColorBrush)Application.Current.Resources["TextSecondaryBrush"];
+                BtnBookmarkToggle.ToolTip = isBookmarked ? "Remove bookmark" : "Bookmark this object";
+            }
         }
 
         private readonly HashSet<HkParam> _subscribedParams = new();

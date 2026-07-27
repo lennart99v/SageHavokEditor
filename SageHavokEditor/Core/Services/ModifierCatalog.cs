@@ -58,6 +58,30 @@ namespace SageHavokEditor.Core.Services
             get { EnsureLoaded(); return _classNames!; }
         }
 
+        // Curated shortlist surfaced above the full A–Z list in the picker. Filtered
+        // against the creatable modifier set: hkbModifierGenerator is on the roadmap's
+        // wish list but is a generator, and the picker's only call site wires the chosen
+        // class into a modifier slot — offering it there would produce an invalid graph.
+        private static readonly string[] _commonCandidates =
+        {
+            "hkbModifierList",
+            "BSDirectAtModifier",
+            "BSLookAtModifier",
+            "BSIsActiveModifier",
+            "BSTimerModifier",
+            "hkbModifierGenerator",
+        };
+
+        /// <summary>Curated "common" modifier classes, in curated order.</summary>
+        public static IReadOnlyList<string> CommonClassNames
+        {
+            get
+            {
+                EnsureLoaded();
+                return _commonCandidates.Where(_typesByName.ContainsKey).ToList();
+            }
+        }
+
         /// <summary>
         /// Builds a fresh default <see cref="HkObject"/> for a modifier class (correct
         /// signature + full default params). The caller assigns the final #id and name and

@@ -100,5 +100,25 @@ namespace SageHavokEditor
             get => Get("PreviewAutoplay", "true") == "true";
             set => Set("PreviewAutoplay", value ? "true" : "false");
         }
+
+        /// <summary>Whether the clip preview's annotation list panel is shown.</summary>
+        public static bool PreviewAnnotationList
+        {
+            get => Get("PreviewAnnotationList", "false") == "true";
+            set => Set("PreviewAnnotationList", value ? "true" : "false");
+        }
+
+        /// <summary>Last size of the clip preview window (restored on next popup).</summary>
+        public static int PreviewWindowWidth
+        {
+            get => int.TryParse(Get("PreviewWindowWidth", "900"), out var v) ? v : 900;
+            set => Set("PreviewWindowWidth", value.ToString());
+        }
+
+        public static int PreviewWindowHeight
+        {
+            get => int.TryParse(Get("PreviewWindowHeight", "660"), out var v) ? v : 660;
+            set => Set("PreviewWindowHeight", value.ToString());
+        }
     }
 }

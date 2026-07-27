@@ -13,9 +13,11 @@ namespace SageHavokEditor.UI
 {
     public sealed class PreviewTrigger
     {
-        public float Time;
+        public float Time;                 // absolute clip time (already end-resolved)
         public string EventName = "";
         public bool RelativeToEnd;
+        public int Index = -1;             // position in the hkbClipTriggerArray
+        public string EventId = "";        // stale-check identity for edits
     }
 
     public class ClipPreviewView : UserControl
@@ -24,14 +26,51 @@ namespace SageHavokEditor.UI
 
         private readonly SkeletonElement _skel = new();
         private readonly Slider _scrub = new() { Minimum = 0, Maximum = 1000, Margin = new Thickness(6, 0, 6, 0) };
-        private readonly Button _play = new() { Content = "▶", Width = 30, Margin = new Thickness(0, 0, 6, 0) };
+        // Segoe UI Symbol keeps ▶/⏸ as monochrome text glyphs — the default emoji
+        // presentation of ⏸ renders wider than the button and gets clipped.
+        private readonly Button _play = new()
+        {
+            Content = "▶",
+            Width = 30,
+            Margin = new Thickness(0, 0, 6, 0),
+            Padding = new Thickness(0),
+            FontFamily = new FontFamily("Segoe UI Symbol")
+        };
+        private readonly Button _addBtn = new()
+        {
+            Content = "＋",
+            Width = 30,
+            Margin = new Thickness(0, 0, 6, 0),
+            ToolTip = "Add annotation at playhead (A)",
+            IsEnabled = false
+        };
         private readonly Button _viewBtn = new() { Content = "Side", Width = 52, Margin = new Thickness(6, 0, 0, 0) };
+        private readonly Button _listBtn = new()
+        {
+            Content = "☰",
+            Width = 30,
+            Margin = new Thickness(6, 0, 0, 0),
+            ToolTip = "Annotation list panel"
+        };
         private readonly Button _graphBtn = new() { Content = "Show in graph", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(6, 0, 6, 0) };
         private readonly TextBlock _time = new() { VerticalAlignment = VerticalAlignment.Center, MinWidth = 90, FontSize = 11, Foreground = Brushes.Gainsboro };
         private readonly TextBlock _status = new() { Foreground = Brushes.Gainsboro, Margin = new Thickness(6), FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly Canvas _tickOverlay = new() { IsHitTestVisible = true, Height = 24 };
         private readonly Grid _scrubArea = new();
         private readonly TextBlock _legend = new() { Foreground = Brushes.Gray, Margin = new Thickness(6, 0, 6, 4), FontSize = 11 };
+        private readonly DataGrid _annGrid = new();
+        private readonly DockPanel _annPanel = new() { Width = 300, Visibility = Visibility.Collapsed };
+        private readonly Button _annAddBtn = new()
+        {
+            Content = "＋",
+            Width = 24,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, 4, 6, 2),
+            ToolTip = "Add annotation at playhead",
+            IsEnabled = false
+        };
+        private DataGridTextColumn _colTime = null!, _colTrack = null!, _colText = null!;
+        private bool _refreshingRows;
 
         private readonly DispatcherTimer _timer;
         private readonly Stopwatch _watch = new();
@@ -43,6 +82,25 @@ namespace SageHavokEditor.UI
         /// <summary>Set by the host so "Show in graph" can jump back to the clip's node.</summary>
         public Action? OnShowInGraph;
 
+        /// <summary>
+        /// Set by the host to persist annotation edits to the animation file. When null,
+        /// the timeline stays read-only (no add/edit/delete menus).
+        /// </summary>
+        public Func<Core.Animation.AnnotationEdit, System.Threading.Tasks.Task>? OnAnnotationEdit;
+
+        /// <summary>Full path of the previewed animation file (default name for annotation export).</summary>
+        public string? AnimationPath;
+
+        /// <summary>
+        /// Behavior-side clip trigger editing. The host owns the dialogs (they need
+        /// the graph's event list) and the write-back; the view only raises intent.
+        /// All null → orange ticks stay read-only.
+        /// </summary>
+        public Action<float>? OnTriggerAdd;
+        public Action<PreviewTrigger>? OnTriggerEdit;
+        public Action<PreviewTrigger>? OnTriggerDelete;
+        public Action<PreviewTrigger, float>? OnTriggerMove;
+
         public ClipPreviewView()
         {
             Background = Brushes.Transparent;
@@ -53,13 +111,17 @@ namespace SageHavokEditor.UI
             _tickOverlay.HorizontalAlignment = HorizontalAlignment.Stretch;
             var controls = new DockPanel { Margin = new Thickness(6) };
             DockPanel.SetDock(_play, Dock.Left);
+            DockPanel.SetDock(_addBtn, Dock.Left);
             DockPanel.SetDock(_time, Dock.Left);
             DockPanel.SetDock(_graphBtn, Dock.Right);
             DockPanel.SetDock(_viewBtn, Dock.Right);
+            DockPanel.SetDock(_listBtn, Dock.Right);
             controls.Children.Add(_play);
+            controls.Children.Add(_addBtn);
             controls.Children.Add(_time);
             controls.Children.Add(_graphBtn);
             controls.Children.Add(_viewBtn);
+            controls.Children.Add(_listBtn);
             controls.Children.Add(_scrubArea);
 
             var bottom = new StackPanel();
@@ -67,17 +129,69 @@ namespace SageHavokEditor.UI
             bottom.Children.Add(_legend);
             bottom.Children.Add(controls);
 
+            BuildAnnotationPanel();
+
             var root = new DockPanel();
             DockPanel.SetDock(bottom, Dock.Bottom);
             root.Children.Add(bottom);
+            DockPanel.SetDock(_annPanel, Dock.Right);
+            root.Children.Add(_annPanel);
             root.Children.Add(_skel);
 
             Content = root;
 
             _play.Click += (_, __) => TogglePlay();
             _viewBtn.Click += (_, __) => CycleView();
+            _listBtn.Click += (_, __) =>
+            {
+                bool on = _annPanel.Visibility != Visibility.Visible;
+                _annPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+                AppSettings.PreviewAnnotationList = on;
+            };
+            if (AppSettings.PreviewAnnotationList) _annPanel.Visibility = Visibility.Visible;
             _graphBtn.Click += (_, __) => OnShowInGraph?.Invoke();
             _scrub.ValueChanged += OnScrub;
+            // Right-click on the timeline adds an annotation at that spot; ticks
+            // handle their own right-click (edit/delete) and mark the event handled.
+            _scrubArea.MouseRightButtonUp += OnTimelineRightClick;
+            _addBtn.Click += (_, __) => { if (_clip != null) _ = AddAnnotationFlow(CurrentTime()); };
+            // Double-click: on an annotation/trigger tick → edit it, anywhere else on
+            // the timeline → add an annotation at that spot. Preview-tunneling fires
+            // before the slider can react, so OriginalSource is the actual hit element.
+            _scrubArea.PreviewMouseLeftButtonDown += (_, e) =>
+            {
+                if (e.ClickCount != 2 || _clip == null) return;
+                var ctx = (e.OriginalSource as FrameworkElement)?.DataContext;
+                if (ctx is Core.Animation.AnimationAnnotation a && OnAnnotationEdit != null)
+                {
+                    e.Handled = true;
+                    Stop();
+                    _ = EditAnnotationFlow(a);
+                }
+                else if (ctx is PreviewTrigger tr && OnTriggerEdit != null)
+                {
+                    e.Handled = true;
+                    Stop();
+                    OnTriggerEdit(tr);
+                }
+                else if (OnAnnotationEdit != null)
+                {
+                    e.Handled = true;
+                    Stop();
+                    _ = AddAnnotationFlow(TimeAtPosition(e.GetPosition(_tickOverlay).X));
+                }
+            };
+            // "A" adds at the playhead — hooked on the host window so focus doesn't matter.
+            Loaded += (_, __) =>
+            {
+                var w = Window.GetWindow(this);
+                if (w != null) w.PreviewKeyDown += OnHostKeyDown;
+            };
+            Unloaded += (_, __) =>
+            {
+                var w = Window.GetWindow(this);
+                if (w != null) w.PreviewKeyDown -= OnHostKeyDown;
+            };
             _tickOverlay.SizeChanged += (_, __) => DrawTicks();
             _skel.HorizontalAlignment = HorizontalAlignment.Stretch;
             _skel.VerticalAlignment = VerticalAlignment.Stretch;
@@ -105,11 +219,18 @@ namespace SageHavokEditor.UI
             _time.Text = "";
             _tickOverlay.Children.Clear();
             _graphBtn.IsEnabled = false;
+            _addBtn.IsEnabled = false;
+            RefreshAnnotationRows();
         }
 
         public void Show(AnimationClip clip, Skeleton skeleton, List<PreviewTrigger>? triggers = null)
         {
             Stop();
+            // Same-duration reload (e.g. right after an annotation edit) keeps the
+            // playhead where it was; a different clip starts at 0.
+            double keepT = _clip != null && Math.Abs(_clip.Duration - clip.Duration) < 1e-4
+                ? (_scrub.Value / 1000.0) * clip.Duration
+                : -1;
             _clip = clip;
             _triggers = triggers ?? new List<PreviewTrigger>();
 
@@ -130,17 +251,38 @@ namespace SageHavokEditor.UI
 
             _skel.SetData(world, skeleton.ParentIndices, animated);
             ApplyView();
-            _skel.SetFrame(0);
 
             int animCount = animated.Count(a => a);
             _status.Text = $"{clip.NumFrames} frames · {clip.Duration:F2}s · {clip.NumTracks} tracks · "
     + $"{animCount}/{animated.Length} bones animated"
     + (clip.TrackCountExceedsBones ? "  ⚠ more tracks than bones (wrong skeleton?)" : "");
-            _legend.Text = "purple = animation annotations   ·   orange = clip triggers   ·   Ctrl+click a tick to jump";
+            _legend.Text = OnAnnotationEdit != null
+                ? "purple = animation annotations   ·   orange = clip triggers   ·   Ctrl+click a tick to jump   ·   double-click timeline to add, a tick to edit   ·   drag a tick to move (Alt = no snap)"
+                : "purple = animation annotations   ·   orange = clip triggers   ·   Ctrl+click a tick to jump";
             _graphBtn.IsEnabled = OnShowInGraph != null;
-            UpdateTimeLabel(0);
+            _addBtn.IsEnabled = OnAnnotationEdit != null;
+
+            if (keepT >= 0)
+            {
+                _suppressScrub = true;
+                _scrub.Value = clip.Duration > 0 ? (keepT / clip.Duration) * 1000 : 0;
+                _suppressScrub = false;
+                _skel.SetFrame(clip.FrameAt(keepT));
+                UpdateTimeLabel(keepT);
+            }
+            else
+            {
+                _suppressScrub = true;
+                _scrub.Value = 0;
+                _suppressScrub = false;
+                _skel.SetFrame(0);
+                UpdateTimeLabel(0);
+            }
             DrawTicks();
-            if (AppSettings.PreviewAutoplay) TogglePlay();
+            RefreshAnnotationRows();
+            if (keepT >= 0) HighlightTicks(keepT);
+            // Don't restart playback on an in-place reload — keep the paused pose.
+            if (AppSettings.PreviewAutoplay && keepT < 0) TogglePlay();
         }
 
         private void TogglePlay()
@@ -216,17 +358,22 @@ namespace SageHavokEditor.UI
 
             // annotations — purple, below centerline; triggers — orange, above
             foreach (var a in _clip.Annotations)
-                AddTick(a.Time, a.Text, Brushes.MediumPurple, inset, usable, mid, mid + 8, "anim");
+                AddTick(a.Time, a.Text, Brushes.MediumPurple, inset, usable, mid, mid + 8, "anim", a);
             foreach (var t in _triggers)
-                AddTick(t.Time, t.EventName, Brushes.Orange, inset, usable, mid - 8, mid, "trig");
+                AddTick(t.Time, t.EventName, Brushes.Orange, inset, usable, mid - 8, mid, "trig", trigger: t);
         }
 
         private void AddTick(float time, string text, Brush stroke,
-            double inset, double usable, double y1, double y2, string kind)
+            double inset, double usable, double y1, double y2, string kind,
+            Core.Animation.AnimationAnnotation? annotation = null,
+            PreviewTrigger? trigger = null)
         {
             double x = inset + (time / _clip.Duration) * usable;
 
-
+            // The visible tick is 2px and deliberately not hit-testable; a fat
+            // transparent twin on top carries the tooltip and mouse interactions so
+            // clicking doesn't require pixel hunting. HighlightTicks recolors via the
+            // Tag, which only the visible line has.
             var line = new System.Windows.Shapes.Line
             {
                 X1 = x,
@@ -236,6 +383,21 @@ namespace SageHavokEditor.UI
                 Stroke = stroke,
                 StrokeThickness = 2,
                 Tag = $"{kind}|{time.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                IsHitTestVisible = false,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round
+            };
+            _tickOverlay.Children.Add(line);
+
+            var hit = new System.Windows.Shapes.Line
+            {
+                X1 = x,
+                X2 = x,
+                Y1 = y1,
+                Y2 = y2,
+                Stroke = Brushes.Transparent,
+                StrokeThickness = 12,
+                DataContext = (object?)annotation ?? trigger,   // double-click routing reads this
                 ToolTip = new ToolTip
                 {
                     Content = $"{text}  @ {time:F3}s",
@@ -246,22 +408,571 @@ namespace SageHavokEditor.UI
                     FontSize = 12,
                     Padding = new Thickness(8, 4, 8, 4)
                 },
-                Cursor = System.Windows.Input.Cursors.Hand,
-                StrokeStartLineCap = PenLineCap.Round,
-                StrokeEndLineCap = PenLineCap.Round
+                Cursor = System.Windows.Input.Cursors.Hand
             };
-            // click a tick → seek there
-            line.MouseLeftButtonDown += (_, e) =>
+            // Ctrl+click a tick → seek there; plain press on an editable tick starts
+            // a potential drag-to-move (read-only ticks fall through to the slider).
+            bool pressed = false, dragging = false;
+            double pressX = 0;
+            float dragTime = time;
+            float TickTime() => annotation?.Time ?? trigger?.Time ?? time;
+
+            void MoveTickTo(float t2)
+            {
+                double nx = inset + (t2 / _clip!.Duration) * usable;
+                line.X1 = line.X2 = nx;
+                hit.X1 = hit.X2 = nx;
+            }
+
+            hit.MouseLeftButtonDown += (_, e) =>
             {
                 if (_clip == null) return;
-                // Only seek on Ctrl+click — a plain click falls through to the slider for scrubbing.
-                if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0)
+                if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
+                {
+                    Stop();
+                    _scrub.Value = (time / _clip.Duration) * 1000;   // fires OnScrub → seeks + redraws
+                    e.Handled = true;   // consumed → slider doesn't also move
+                    return;
+                }
+                bool canDrag = (annotation != null && OnAnnotationEdit != null)
+                            || (trigger != null && OnTriggerMove != null);
+                if (!canDrag)
                     return;   // leave e.Handled = false → slider handles it
-                Stop();
-                _scrub.Value = (time / _clip.Duration) * 1000;   // fires OnScrub → seeks + redraws
-                e.Handled = true;   // consumed → slider doesn't also move
+                pressed = true;
+                dragging = false;
+                pressX = e.GetPosition(_tickOverlay).X;
+                dragTime = TickTime();
+                hit.CaptureMouse();
+                e.Handled = true;
             };
-            _tickOverlay.Children.Add(line);
+            if (annotation != null || trigger != null)
+            {
+                hit.MouseMove += (_, e) =>
+                {
+                    if (!pressed || _clip == null) return;
+                    double x = e.GetPosition(_tickOverlay).X;
+                    // 4px dead zone so a sloppy click doesn't become a micro-move
+                    if (!dragging && Math.Abs(x - pressX) < 4) return;
+                    dragging = true;
+                    Stop();
+                    var t2 = TimeAtPosition(x);
+                    if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Alt) == 0)
+                        t2 = SnapToFrame(t2);
+                    dragTime = t2;
+                    MoveTickTo(t2);
+                    // Nearest-frame display, matching AnnotationDialog (FrameAt would wrap at the end)
+                    int fr = Math.Clamp((int)Math.Round(t2 / (_clip.Duration / _clip.NumFrames)), 0, _clip.NumFrames - 1);
+                    _time.Text = $"{t2:F3}s · frame {fr}";
+                };
+                hit.MouseLeftButtonUp += (_, e) =>
+                {
+                    if (!pressed) return;
+                    bool moved = dragging;
+                    pressed = false;
+                    dragging = false;
+                    hit.ReleaseMouseCapture();
+                    if (!moved) return;   // plain click: nothing to commit
+                    e.Handled = true;
+                    if (Math.Abs(dragTime - TickTime()) < 1e-4f)
+                    {
+                        MoveTickTo(TickTime());
+                        UpdateTimeLabel(CurrentTime());
+                        return;
+                    }
+                    if (annotation != null)
+                        _ = OnAnnotationEdit?.Invoke(new Core.Animation.AnnotationEdit
+                        {
+                            Kind = Core.Animation.AnnotationEditKind.Edit,
+                            TrackIndex = annotation.TrackIndex,
+                            OldTime = annotation.Time,
+                            OldText = annotation.Text,
+                            NewTime = dragTime,
+                            NewText = annotation.Text
+                        });
+                    else if (trigger != null)
+                        OnTriggerMove?.Invoke(trigger, dragTime);
+                };
+                // Abnormal capture loss (Alt+Tab, popup…) → snap back, nothing committed.
+                hit.LostMouseCapture += (_, __) =>
+                {
+                    if (!pressed && !dragging) return;
+                    pressed = false;
+                    dragging = false;
+                    MoveTickTo(TickTime());
+                    UpdateTimeLabel(CurrentTime());
+                };
+            }
+            // right-click an annotation tick → edit/delete menu (handled here so the
+            // timeline's own right-click "add" menu doesn't also fire)
+            if (annotation != null)
+                hit.MouseRightButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    if (OnAnnotationEdit == null) return;
+                    var menu = new ContextMenu { PlacementTarget = hit };
+                    var edit = new MenuItem { Header = $"✏ Edit '{annotation.Text}'…" };
+                    edit.Click += async (_, __) => await EditAnnotationFlow(annotation);
+                    var del = new MenuItem { Header = $"🗑 Delete '{annotation.Text}'" };
+                    del.Click += async (_, __) => await OnAnnotationEdit(new Core.Animation.AnnotationEdit
+                    {
+                        Kind = Core.Animation.AnnotationEditKind.Delete,
+                        TrackIndex = annotation.TrackIndex,
+                        OldTime = annotation.Time,
+                        OldText = annotation.Text
+                    });
+                    menu.Items.Add(edit);
+                    menu.Items.Add(del);
+                    menu.IsOpen = true;
+                };
+            // right-click a trigger tick → edit/delete (host-owned dialogs)
+            if (trigger != null)
+                hit.MouseRightButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    if (OnTriggerEdit == null && OnTriggerDelete == null) return;
+                    var menu = new ContextMenu { PlacementTarget = hit };
+                    if (OnTriggerEdit != null)
+                    {
+                        var edit = new MenuItem { Header = $"✏ Edit trigger '{trigger.EventName}'…" };
+                        edit.Click += (_, __) => { Stop(); OnTriggerEdit(trigger); };
+                        menu.Items.Add(edit);
+                    }
+                    if (OnTriggerDelete != null)
+                    {
+                        var del = new MenuItem { Header = $"🗑 Delete trigger '{trigger.EventName}'" };
+                        del.Click += (_, __) => OnTriggerDelete(trigger);
+                        menu.Items.Add(del);
+                    }
+                    menu.IsOpen = true;
+                };
+            _tickOverlay.Children.Add(hit);
+        }
+
+        // ── annotation editing (host persists via OnAnnotationEdit) ─────────────
+
+        private void OnTimelineRightClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (_clip == null) return;
+            e.Handled = true;
+
+            var menu = new ContextMenu { PlacementTarget = _scrubArea };
+            float tClick = TimeAtPosition(e.GetPosition(_tickOverlay).X);
+            if (OnAnnotationEdit != null)
+            {
+                var add = new MenuItem { Header = $"＋ Add annotation @ {SnapToFrame(tClick):F3}s…" };
+                add.Click += async (_, __) => await AddAnnotationFlow(tClick);
+                menu.Items.Add(add);
+            }
+            if (OnTriggerAdd != null)
+            {
+                var addTrig = new MenuItem { Header = $"⚡ Add trigger @ {SnapToFrame(tClick):F3}s…" };
+                addTrig.Click += (_, __) => { Stop(); OnTriggerAdd(SnapToFrame(tClick)); };
+                menu.Items.Add(addTrig);
+            }
+            if (menu.Items.Count > 0)
+                menu.Items.Add(new Separator());
+
+            // hkanno-format interchange — copy/export work even in read-only mode.
+            var copy = new MenuItem
+            {
+                Header = "📋 Copy all annotations (hkanno format)",
+                IsEnabled = _clip.Annotations.Count > 0
+            };
+            copy.Click += (_, __) => Clipboard.SetText(
+                Core.Animation.HkannoFormat.Dump(_clip.Annotations, _clip.Duration, _clip.NumFrames));
+            menu.Items.Add(copy);
+
+            var export = new MenuItem
+            {
+                Header = "📤 Export annotations to .txt…",
+                IsEnabled = _clip.Annotations.Count > 0
+            };
+            export.Click += (_, __) => ExportAnnotationsFlow();
+            menu.Items.Add(export);
+
+            if (OnAnnotationEdit != null)
+            {
+                var import = new MenuItem { Header = "📥 Import & replace from .txt…" };
+                import.Click += async (_, __) => await ImportAnnotationsFileFlow();
+                menu.Items.Add(import);
+
+                var paste = new MenuItem
+                {
+                    Header = "📋 Paste & replace from clipboard",
+                    IsEnabled = Clipboard.ContainsText()
+                };
+                paste.Click += async (_, __) => await ImportAnnotationsTextFlow(
+                    Clipboard.GetText(), "the clipboard");
+                menu.Items.Add(paste);
+            }
+
+            menu.IsOpen = true;
+        }
+
+        // ── hkanno text import/export ───────────────────────────────────────────
+
+        private void ExportAnnotationsFlow()
+        {
+            if (_clip == null) return;
+            var baseName = string.IsNullOrEmpty(AnimationPath)
+                ? "annotations"
+                : System.IO.Path.GetFileNameWithoutExtension(AnimationPath);
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export annotations (hkanno format)",
+                FileName = baseName + ".anno.txt",
+                Filter = "Annotation text (*.txt)|*.txt|All files (*.*)|*.*"
+            };
+            if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
+            System.IO.File.WriteAllText(dlg.FileName,
+                Core.Animation.HkannoFormat.Dump(_clip.Annotations, _clip.Duration, _clip.NumFrames));
+        }
+
+        private async System.Threading.Tasks.Task ImportAnnotationsFileFlow()
+        {
+            if (_clip == null || OnAnnotationEdit == null) return;
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Import annotations (hkanno format)",
+                Filter = "Annotation text (*.txt)|*.txt|All files (*.*)|*.*"
+            };
+            if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
+            await ImportAnnotationsTextFlow(System.IO.File.ReadAllText(dlg.FileName),
+                System.IO.Path.GetFileName(dlg.FileName));
+        }
+
+        /// <summary>
+        /// Parse hkanno-format text and replace the animation's whole annotation set
+        /// with it (single undoable step). Times outside [0, duration] are clamped.
+        /// </summary>
+        private async System.Threading.Tasks.Task ImportAnnotationsTextFlow(string text, string sourceName)
+        {
+            if (_clip == null || OnAnnotationEdit == null) return;
+            Stop();
+
+            var parsed = Core.Animation.HkannoFormat.Parse(text, out var error);
+            if (parsed == null)
+            {
+                MessageBox.Show($"Couldn't parse {sourceName}:\n{error}",
+                    "Import Annotations", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            int clamped = 0;
+            foreach (var a in parsed)
+            {
+                float c = Math.Clamp(a.Time, 0, _clip.Duration);
+                if (Math.Abs(c - a.Time) > 1e-4f) clamped++;
+                a.Time = c;
+            }
+
+            var msg = $"Replace {_clip.Annotations.Count} annotation(s) with " +
+                      $"{parsed.Count} from {sourceName}?" +
+                      (clamped > 0 ? $"\n\n⚠ {clamped} annotation(s) fell outside this clip's " +
+                                     $"{_clip.Duration:F3}s duration and will be clamped." : "");
+            if (MessageBox.Show(msg, "Import Annotations",
+                    MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+                return;
+
+            await OnAnnotationEdit(new Core.Animation.AnnotationEdit
+            {
+                Kind = Core.Animation.AnnotationEditKind.ReplaceAll,
+                OldSet = _clip.Annotations
+                    .Select(a => new Core.Animation.AnimationAnnotation
+                    { Time = a.Time, Text = a.Text, TrackIndex = a.TrackIndex })
+                    .ToList(),
+                NewSet = parsed
+            });
+        }
+
+        // ── annotation list panel (table of all annotations) ────────────────────
+
+        /// <summary>One DataGrid row; Source ties it back to the parsed annotation.</summary>
+        public sealed class AnnotationRow
+        {
+            internal Core.Animation.AnimationAnnotation Source = null!;
+            public string Time { get; set; } = "";
+            public int Frame { get; set; }
+            public int Track { get; set; }
+            public string Text { get; set; } = "";
+        }
+
+        private void BuildAnnotationPanel()
+        {
+            _annGrid.AutoGenerateColumns = false;
+            _annGrid.CanUserAddRows = false;
+            _annGrid.CanUserDeleteRows = false;
+            _annGrid.CanUserResizeRows = false;
+            _annGrid.SelectionMode = DataGridSelectionMode.Single;
+            _annGrid.HeadersVisibility = DataGridHeadersVisibility.Column;
+            _annGrid.RowHeaderWidth = 0;
+            _annGrid.BorderThickness = new Thickness(0);
+
+            _colTime = new DataGridTextColumn
+            {
+                Header = "Time (s)",
+                Binding = new System.Windows.Data.Binding(nameof(AnnotationRow.Time)),
+                Width = 70
+            };
+            _colTrack = new DataGridTextColumn
+            {
+                Header = new TextBlock { Text = "Trk", ToolTip = "Annotation track index" },
+                Binding = new System.Windows.Data.Binding(nameof(AnnotationRow.Track)),
+                IsReadOnly = true,
+                Width = 36
+            };
+            _colText = new DataGridTextColumn
+            {
+                Header = "Text",
+                Binding = new System.Windows.Data.Binding(nameof(AnnotationRow.Text)),
+                Width = new DataGridLength(1, DataGridLengthUnitType.Star)
+            };
+            _annGrid.Columns.Add(_colTime);
+            _annGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = new TextBlock { Text = "Fr", ToolTip = "Frame (nearest to the annotation's time)" },
+                Binding = new System.Windows.Data.Binding(nameof(AnnotationRow.Frame)),
+                IsReadOnly = true,
+                Width = 36
+            });
+            _annGrid.Columns.Add(_colTrack);
+            _annGrid.Columns.Add(_colText);
+
+            // click a row → seek there (rebuilds also change selection; guarded)
+            _annGrid.SelectionChanged += (_, __) =>
+            {
+                if (_refreshingRows || _clip == null || _clip.Duration <= 0) return;
+                if (_annGrid.SelectedItem is not AnnotationRow row) return;
+                Stop();
+                _scrub.Value = (row.Source.Time / _clip.Duration) * 1000;   // fires OnScrub
+            };
+
+            _annGrid.CellEditEnding += OnAnnotationCellEdit;
+
+            // Del on a selected row (not while typing in a cell) → delete the annotation
+            _annGrid.PreviewKeyDown += (_, e) =>
+            {
+                if (e.Key != System.Windows.Input.Key.Delete) return;
+                if (OnAnnotationEdit == null || _annGrid.SelectedItem is not AnnotationRow row) return;
+                if (System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase) return;
+                e.Handled = true;
+                _ = OnAnnotationEdit(new Core.Animation.AnnotationEdit
+                {
+                    Kind = Core.Animation.AnnotationEditKind.Delete,
+                    TrackIndex = row.Source.TrackIndex,
+                    OldTime = row.Source.Time,
+                    OldText = row.Source.Text
+                });
+            };
+
+            // right-click a row → select it, then add/edit/delete menu; right-click
+            // empty space still offers add-at-playhead
+            _annGrid.PreviewMouseRightButtonDown += (_, e) =>
+            {
+                var r = FindRow(e.OriginalSource);
+                if (r != null) _annGrid.SelectedItem = r.Item;
+            };
+            _annGrid.MouseRightButtonUp += (_, e) =>
+            {
+                if (_clip == null || OnAnnotationEdit == null) return;
+                e.Handled = true;
+                var menu = new ContextMenu { PlacementTarget = _annGrid };
+                var add = new MenuItem { Header = $"＋ Add annotation @ {SnapToFrame(CurrentTime()):F3}s…" };
+                add.Click += async (_, __) => await AddAnnotationFlow(CurrentTime());
+                menu.Items.Add(add);
+                if (FindRow(e.OriginalSource)?.Item is AnnotationRow row)
+                {
+                    menu.Items.Add(new Separator());
+                    var edit = new MenuItem { Header = $"✏ Edit '{row.Source.Text}'…" };
+                    edit.Click += async (_, __) => await EditAnnotationFlow(row.Source);
+                    var del = new MenuItem { Header = $"🗑 Delete '{row.Source.Text}'" };
+                    del.Click += async (_, __) => await OnAnnotationEdit(new Core.Animation.AnnotationEdit
+                    {
+                        Kind = Core.Animation.AnnotationEditKind.Delete,
+                        TrackIndex = row.Source.TrackIndex,
+                        OldTime = row.Source.Time,
+                        OldText = row.Source.Text
+                    });
+                    menu.Items.Add(edit);
+                    menu.Items.Add(del);
+                }
+                menu.IsOpen = true;
+            };
+
+            _annAddBtn.Click += (_, __) =>
+            {
+                if (_clip != null && OnAnnotationEdit != null) _ = AddAnnotationFlow(CurrentTime());
+            };
+
+            var title = new TextBlock
+            {
+                Text = "Annotations",
+                Foreground = Brushes.Gainsboro,
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(8, 6, 8, 4),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var header = new DockPanel();
+            DockPanel.SetDock(_annAddBtn, Dock.Right);
+            header.Children.Add(_annAddBtn);
+            header.Children.Add(title);
+            DockPanel.SetDock(header, Dock.Top);
+            _annPanel.Children.Add(header);
+            _annPanel.Children.Add(_annGrid);
+        }
+
+        /// <summary>Walks up from an event source to the DataGridRow it lives in, if any.</summary>
+        private static DataGridRow? FindRow(object source)
+        {
+            var dep = source as DependencyObject;
+            while (dep is System.Windows.Media.Visual && dep is not DataGridRow)
+                dep = System.Windows.Media.VisualTreeHelper.GetParent(dep);
+            return dep as DataGridRow;
+        }
+
+        /// <summary>Inline cell commit → the same Edit pipeline the dialog uses.</summary>
+        private void OnAnnotationCellEdit(object? sender, DataGridCellEditEndingEventArgs e)
+        {
+            if (e.EditAction != DataGridEditAction.Commit) return;
+            if (_clip == null || OnAnnotationEdit == null) return;
+            if (e.Row.Item is not AnnotationRow row || e.EditingElement is not TextBox editor) return;
+
+            var raw = editor.Text.Trim();
+            float newTime = row.Source.Time;
+            string newText = row.Source.Text;
+
+            if (e.Column == _colTime)
+            {
+                if (!float.TryParse(raw.Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out newTime))
+                { RevertRowsLater(); return; }
+                newTime = Math.Clamp(newTime, 0, _clip.Duration);
+            }
+            else if (e.Column == _colText)
+            {
+                if (raw.Length == 0) { RevertRowsLater(); return; }
+                newText = raw;
+            }
+            else return;
+
+            if (newText == row.Source.Text && Math.Abs(newTime - row.Source.Time) < 1e-4f)
+                return;
+
+            _ = OnAnnotationEdit(new Core.Animation.AnnotationEdit
+            {
+                Kind = Core.Animation.AnnotationEditKind.Edit,
+                TrackIndex = row.Source.TrackIndex,
+                OldTime = row.Source.Time,
+                OldText = row.Source.Text,
+                NewTime = newTime,
+                NewText = newText
+            });
+
+            // Can't rebuild ItemsSource inside the edit transaction.
+            void RevertRowsLater() => Dispatcher.BeginInvoke(new Action(RefreshAnnotationRows),
+                DispatcherPriority.Background);
+        }
+
+        private void RefreshAnnotationRows()
+        {
+            _refreshingRows = true;
+            if (_clip == null)
+                _annGrid.ItemsSource = null;
+            else
+            {
+                float dt = _clip.NumFrames > 0 && _clip.Duration > 0 ? _clip.Duration / _clip.NumFrames : 0;
+                _annGrid.ItemsSource = _clip.Annotations.Select(a => new AnnotationRow
+                {
+                    Source = a,
+                    Time = a.Time.ToString("F3", System.Globalization.CultureInfo.InvariantCulture),
+                    Frame = dt > 0 ? Math.Clamp((int)Math.Round(a.Time / dt), 0, _clip.NumFrames - 1) : 0,
+                    Track = a.TrackIndex,
+                    Text = a.Text
+                }).ToList();
+                _colTrack.Visibility = _clip.AnnotationTrackNames.Count > 1
+                    ? Visibility.Visible : Visibility.Collapsed;
+            }
+            _annGrid.IsReadOnly = OnAnnotationEdit == null;
+            _annAddBtn.IsEnabled = _clip != null && OnAnnotationEdit != null;
+            _refreshingRows = false;
+        }
+
+        /// <summary>Timeline x → clip time, using the same inset math as DrawTicks.</summary>
+        private float TimeAtPosition(double x)
+        {
+            if (_clip == null || _clip.Duration <= 0) return 0;
+            double inset = 8;
+            double usable = Math.Max(_tickOverlay.ActualWidth - inset * 2, 1);
+            return (float)Math.Clamp((x - inset) / usable * _clip.Duration, 0, _clip.Duration);
+        }
+
+        private float CurrentTime()
+            => _clip == null ? 0 : (float)((_scrub.Value / 1000.0) * _clip.Duration);
+
+        /// <summary>Nearest frame boundary (frame grid = duration/numFrames, matching FrameAt).</summary>
+        private float SnapToFrame(float t)
+        {
+            if (_clip == null || _clip.NumFrames <= 0 || _clip.Duration <= 0) return t;
+            float dt = _clip.Duration / _clip.NumFrames;
+            return (float)Math.Clamp((float)Math.Round(t / dt) * dt, 0, _clip.Duration);
+        }
+
+        private void OnHostKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key != System.Windows.Input.Key.A) return;
+            if (_clip == null || OnAnnotationEdit == null) return;
+            if (System.Windows.Input.Keyboard.Modifiers != System.Windows.Input.ModifierKeys.None) return;
+            if (System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase) return;
+            e.Handled = true;
+            _ = AddAnnotationFlow(CurrentTime());
+        }
+
+        private async System.Threading.Tasks.Task AddAnnotationFlow(float t)
+        {
+            if (_clip == null || OnAnnotationEdit == null) return;
+            Stop();
+            // Single-track files skip the track row and land on track 0 (hkanno
+            // convention); multi-track files get a track picker defaulting to 0.
+            var dlg = new Dialogs.AnnotationDialog("Add Annotation", "",
+                SnapToFrame(t), _clip.Duration, _clip.NumFrames,
+                _clip.AnnotationTrackNames)
+            { Owner = Window.GetWindow(this) };
+            if (dlg.ShowDialog() != true) return;
+
+            await OnAnnotationEdit(new Core.Animation.AnnotationEdit
+            {
+                Kind = Core.Animation.AnnotationEditKind.Add,
+                TrackIndex = dlg.SelectedTrack,
+                NewTime = dlg.AnnotationTime,
+                NewText = dlg.AnnotationText
+            });
+        }
+
+        private async System.Threading.Tasks.Task EditAnnotationFlow(Core.Animation.AnimationAnnotation a)
+        {
+            if (_clip == null || OnAnnotationEdit == null) return;
+            Stop();
+            // Deliberately unsnapped — an existing annotation keeps its exact time
+            // unless the user changes it.
+            var dlg = new Dialogs.AnnotationDialog("Edit Annotation", a.Text,
+                a.Time, _clip.Duration, _clip.NumFrames,
+                _clip.AnnotationTrackNames, a.TrackIndex, canChangeTrack: false)
+            { Owner = Window.GetWindow(this) };
+            if (dlg.ShowDialog() != true) return;
+
+            if (dlg.AnnotationText == a.Text && Math.Abs(dlg.AnnotationTime - a.Time) < 1e-4f)
+                return;   // no change
+
+            await OnAnnotationEdit(new Core.Animation.AnnotationEdit
+            {
+                Kind = Core.Animation.AnnotationEditKind.Edit,
+                TrackIndex = a.TrackIndex,
+                OldTime = a.Time,
+                OldText = a.Text,
+                NewTime = dlg.AnnotationTime,
+                NewText = dlg.AnnotationText
+            });
         }
 
         private void HighlightTicks(double t)

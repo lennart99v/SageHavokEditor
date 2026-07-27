@@ -41,6 +41,28 @@ namespace SageHavokEditor.Core.Animation
             public AnimationClip? Clip { get; init; }
             public Skeleton? Skeleton { get; init; }
             public bool TrackCountMismatch { get; init; }
+            /// <summary>Resolved on-disk path of the animation — annotation edits target this file.</summary>
+            public string? AnimationFullPath { get; init; }
+        }
+
+        /// <summary>
+        /// Drop the cached XML for one animation so the next preview re-converts it —
+        /// call after writing to the file (e.g. an annotation edit).
+        /// </summary>
+        public void InvalidateAnimation(string sourceFullPath)
+        {
+            if (string.IsNullOrEmpty(sourceFullPath)) return;
+            if (_xmlCache.TryRemove(sourceFullPath, out var cached))
+            {
+                // Only delete our own cache copy — when the source IS the xml, cached == source.
+                try
+                {
+                    if (!string.Equals(cached, sourceFullPath, StringComparison.OrdinalIgnoreCase)
+                        && File.Exists(cached))
+                        File.Delete(cached);
+                }
+                catch { }
+            }
         }
 
         public async Task<PreviewResult> LoadClipAsync(
@@ -67,7 +89,8 @@ namespace SageHavokEditor.Core.Animation
                     Success = true,
                     Clip = clip,
                     Skeleton = skeleton,
-                    TrackCountMismatch = clip.TrackCountExceedsBones
+                    TrackCountMismatch = clip.TrackCountExceedsBones,
+                    AnimationFullPath = animFull
                 };
             }
             catch (Exception ex) { return Fail(ex.Message); }
@@ -160,9 +183,19 @@ namespace SageHavokEditor.UI
         public ClipPreviewWindow()
         {
             Title = "Clip Preview";
-            Width = 520; Height = 480;
+            // The window is recreated on every popup, so restore the last size the
+            // user resized it to (clamped to the screen work area).
+            Width = Math.Clamp(AppSettings.PreviewWindowWidth, 400, SystemParameters.WorkArea.Width);
+            Height = Math.Clamp(AppSettings.PreviewWindowHeight, 360, SystemParameters.WorkArea.Height);
+            MinWidth = 400; MinHeight = 360;
             Background = System.Windows.Media.Brushes.Black;
             Content = View;
+            Closing += (_, __) =>
+            {
+                if (WindowState != WindowState.Normal) return;   // don't save maximized bounds
+                AppSettings.PreviewWindowWidth = (int)Width;
+                AppSettings.PreviewWindowHeight = (int)Height;
+            };
         }
     }
 }
