@@ -50,7 +50,7 @@ namespace SageHavokEditor.UI
             Content = "☰",
             Width = 30,
             Margin = new Thickness(6, 0, 0, 0),
-            ToolTip = "Annotation list panel"
+            ToolTip = "Annotations & triggers panel"
         };
         private readonly Button _graphBtn = new() { Content = "Show in graph", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(6, 0, 6, 0) };
         private readonly TextBlock _time = new() { VerticalAlignment = VerticalAlignment.Center, MinWidth = 90, FontSize = 11, Foreground = Brushes.Gainsboro };
@@ -70,6 +70,17 @@ namespace SageHavokEditor.UI
             IsEnabled = false
         };
         private DataGridTextColumn _colTime = null!, _colTrack = null!, _colText = null!;
+        private readonly DataGrid _trigGrid = new();
+        private readonly Button _trigAddBtn = new()
+        {
+            Content = "⚡",
+            Width = 24,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, 4, 6, 2),
+            ToolTip = "Add trigger at playhead",
+            IsEnabled = false
+        };
+        private DataGridTextColumn _colTrigTime = null!;
         private bool _refreshingRows;
 
         private readonly DispatcherTimer _timer;
@@ -220,7 +231,9 @@ namespace SageHavokEditor.UI
             _tickOverlay.Children.Clear();
             _graphBtn.IsEnabled = false;
             _addBtn.IsEnabled = false;
+            _triggers = new List<PreviewTrigger>();
             RefreshAnnotationRows();
+            RefreshTriggerRows();
         }
 
         public void Show(AnimationClip clip, Skeleton skeleton, List<PreviewTrigger>? triggers = null)
@@ -280,6 +293,7 @@ namespace SageHavokEditor.UI
             }
             DrawTicks();
             RefreshAnnotationRows();
+            RefreshTriggerRows();
             if (keepT >= 0) HighlightTicks(keepT);
             // Don't restart playback on an in-place reload — keep the paused pose.
             if (AppSettings.PreviewAutoplay && keepT < 0) TogglePlay();
@@ -370,24 +384,28 @@ namespace SageHavokEditor.UI
         {
             double x = inset + (time / _clip.Duration) * usable;
 
-            // The visible tick is 2px and deliberately not hit-testable; a fat
-            // transparent twin on top carries the tooltip and mouse interactions so
-            // clicking doesn't require pixel hunting. HighlightTicks recolors via the
-            // Tag, which only the visible line has.
-            var line = new System.Windows.Shapes.Line
+            // The visible marker is a 5-corner pentagon (rectangle with a point aimed
+            // at the track centerline: triggers sit above and point down, annotations
+            // below and point up) and deliberately not hit-testable; a fat transparent
+            // line on top carries the tooltip and mouse interactions so clicking
+            // doesn't require pixel hunting. HighlightTicks borders it via the Tag,
+            // which only the marker has. Points are at x=0 and the marker is placed
+            // by its transform, so drag-moves just slide the transform.
+            const double half = 3.5, notch = 3;
+            var marker = new System.Windows.Shapes.Polygon
             {
-                X1 = x,
-                X2 = x,
-                Y1 = y1,
-                Y2 = y2,
-                Stroke = stroke,
-                StrokeThickness = 2,
+                Fill = stroke,
+                Points = kind == "trig"
+                    ? new PointCollection
+                    { new(-half, y1), new(half, y1), new(half, y2 - notch), new(0, y2), new(-half, y2 - notch) }
+                    : new PointCollection
+                    { new(0, y1), new(half, y1 + notch), new(half, y2), new(-half, y2), new(-half, y1 + notch) },
+                RenderTransform = new TranslateTransform(x, 0),
+                StrokeLineJoin = PenLineJoin.Round,
                 Tag = $"{kind}|{time.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
-                IsHitTestVisible = false,
-                StrokeStartLineCap = PenLineCap.Round,
-                StrokeEndLineCap = PenLineCap.Round
+                IsHitTestVisible = false
             };
-            _tickOverlay.Children.Add(line);
+            _tickOverlay.Children.Add(marker);
 
             var hit = new System.Windows.Shapes.Line
             {
@@ -420,7 +438,7 @@ namespace SageHavokEditor.UI
             void MoveTickTo(float t2)
             {
                 double nx = inset + (t2 / _clip!.Duration) * usable;
-                line.X1 = line.X2 = nx;
+                ((TranslateTransform)marker.RenderTransform).X = nx;
                 hit.X1 = hit.X2 = nx;
             }
 
@@ -804,22 +822,210 @@ namespace SageHavokEditor.UI
                 if (_clip != null && OnAnnotationEdit != null) _ = AddAnnotationFlow(CurrentTime());
             };
 
-            var title = new TextBlock
+            BuildTriggerGrid();
+
+            // Annotations fill the panel; triggers size to content below them and
+            // scroll past ~180px so a long trigger list can't squeeze the annotations out.
+            _trigGrid.MaxHeight = 180;
+            var layout = new Grid();
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            static DockPanel Header(string text, Button addBtn)
             {
-                Text = "Annotations",
-                Foreground = Brushes.Gainsboro,
-                FontSize = 12,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(8, 6, 8, 4),
-                VerticalAlignment = VerticalAlignment.Center
+                var title = new TextBlock
+                {
+                    Text = text,
+                    Foreground = Brushes.Gainsboro,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(8, 6, 8, 4),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                var header = new DockPanel();
+                DockPanel.SetDock(addBtn, Dock.Right);
+                header.Children.Add(addBtn);
+                header.Children.Add(title);
+                return header;
+            }
+
+            var annHeader = Header("Annotations", _annAddBtn);
+            var trigHeader = Header("Triggers", _trigAddBtn);
+            Grid.SetRow(annHeader, 0);
+            Grid.SetRow(_annGrid, 1);
+            Grid.SetRow(trigHeader, 2);
+            Grid.SetRow(_trigGrid, 3);
+            layout.Children.Add(annHeader);
+            layout.Children.Add(_annGrid);
+            layout.Children.Add(trigHeader);
+            layout.Children.Add(_trigGrid);
+            _annPanel.Children.Add(layout);
+        }
+
+        // ── trigger list panel (behavior-side clip triggers, below annotations) ──
+
+        /// <summary>One DataGrid row; Source ties it back to the preview trigger.</summary>
+        public sealed class TriggerRow
+        {
+            internal PreviewTrigger Source = null!;
+            public string Time { get; set; } = "";
+            public int Frame { get; set; }
+            public string Event { get; set; } = "";
+            public string End { get; set; } = "";
+        }
+
+        private void BuildTriggerGrid()
+        {
+            _trigGrid.AutoGenerateColumns = false;
+            _trigGrid.CanUserAddRows = false;
+            _trigGrid.CanUserDeleteRows = false;
+            _trigGrid.CanUserResizeRows = false;
+            _trigGrid.SelectionMode = DataGridSelectionMode.Single;
+            _trigGrid.HeadersVisibility = DataGridHeadersVisibility.Column;
+            _trigGrid.RowHeaderWidth = 0;
+            _trigGrid.BorderThickness = new Thickness(0);
+
+            _colTrigTime = new DataGridTextColumn
+            {
+                Header = "Time (s)",
+                Binding = new System.Windows.Data.Binding(nameof(TriggerRow.Time)),
+                Width = 70
             };
-            var header = new DockPanel();
-            DockPanel.SetDock(_annAddBtn, Dock.Right);
-            header.Children.Add(_annAddBtn);
-            header.Children.Add(title);
-            DockPanel.SetDock(header, Dock.Top);
-            _annPanel.Children.Add(header);
-            _annPanel.Children.Add(_annGrid);
+            _trigGrid.Columns.Add(_colTrigTime);
+            _trigGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = new TextBlock { Text = "Fr", ToolTip = "Frame (nearest to the trigger's time)" },
+                Binding = new System.Windows.Data.Binding(nameof(TriggerRow.Frame)),
+                IsReadOnly = true,
+                Width = 36
+            });
+            // Event names live in the graph's event list, which only the host knows —
+            // renaming goes through the host's edit dialog, so this column stays read-only.
+            _trigGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Event",
+                Binding = new System.Windows.Data.Binding(nameof(TriggerRow.Event)),
+                IsReadOnly = true,
+                Width = new DataGridLength(1, DataGridLengthUnitType.Star)
+            });
+            _trigGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = new TextBlock { Text = "End", ToolTip = "✓ = time is stored relative to the end of the clip" },
+                Binding = new System.Windows.Data.Binding(nameof(TriggerRow.End)),
+                IsReadOnly = true,
+                Width = 36
+            });
+
+            // click a row → seek there (rebuilds also change selection; guarded)
+            _trigGrid.SelectionChanged += (_, __) =>
+            {
+                if (_refreshingRows || _clip == null || _clip.Duration <= 0) return;
+                if (_trigGrid.SelectedItem is not TriggerRow row) return;
+                Stop();
+                _scrub.Value = (row.Source.Time / _clip.Duration) * 1000;   // fires OnScrub
+            };
+
+            _trigGrid.CellEditEnding += OnTriggerCellEdit;
+
+            // Del on a selected row (not while typing in a cell) → delete the trigger
+            _trigGrid.PreviewKeyDown += (_, e) =>
+            {
+                if (e.Key != System.Windows.Input.Key.Delete) return;
+                if (OnTriggerDelete == null || _trigGrid.SelectedItem is not TriggerRow row) return;
+                if (System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase) return;
+                e.Handled = true;
+                OnTriggerDelete(row.Source);
+            };
+
+            // right-click a row → select it, then add/edit/delete menu; right-click
+            // empty space still offers add-at-playhead
+            _trigGrid.PreviewMouseRightButtonDown += (_, e) =>
+            {
+                var r = FindRow(e.OriginalSource);
+                if (r != null) _trigGrid.SelectedItem = r.Item;
+            };
+            _trigGrid.MouseRightButtonUp += (_, e) =>
+            {
+                if (_clip == null) return;
+                e.Handled = true;
+                var menu = new ContextMenu { PlacementTarget = _trigGrid };
+                if (OnTriggerAdd != null)
+                {
+                    var add = new MenuItem { Header = $"⚡ Add trigger @ {SnapToFrame(CurrentTime()):F3}s…" };
+                    add.Click += (_, __) => { Stop(); OnTriggerAdd(SnapToFrame(CurrentTime())); };
+                    menu.Items.Add(add);
+                }
+                if (FindRow(e.OriginalSource)?.Item is TriggerRow row)
+                {
+                    if (menu.Items.Count > 0) menu.Items.Add(new Separator());
+                    if (OnTriggerEdit != null)
+                    {
+                        var edit = new MenuItem { Header = $"✏ Edit trigger '{row.Source.EventName}'…" };
+                        edit.Click += (_, __) => { Stop(); OnTriggerEdit(row.Source); };
+                        menu.Items.Add(edit);
+                    }
+                    if (OnTriggerDelete != null)
+                    {
+                        var del = new MenuItem { Header = $"🗑 Delete trigger '{row.Source.EventName}'" };
+                        del.Click += (_, __) => OnTriggerDelete(row.Source);
+                        menu.Items.Add(del);
+                    }
+                }
+                if (menu.Items.Count > 0) menu.IsOpen = true;
+            };
+
+            _trigAddBtn.Click += (_, __) =>
+            {
+                if (_clip == null || OnTriggerAdd == null) return;
+                Stop();
+                OnTriggerAdd(SnapToFrame(CurrentTime()));
+            };
+        }
+
+        /// <summary>Inline time commit → same move pipeline as dragging a tick (no snap:
+        /// a typed value is exact, matching the annotation grid's time column).</summary>
+        private void OnTriggerCellEdit(object? sender, DataGridCellEditEndingEventArgs e)
+        {
+            if (e.EditAction != DataGridEditAction.Commit) return;
+            if (_clip == null || OnTriggerMove == null) return;
+            if (e.Row.Item is not TriggerRow row || e.EditingElement is not TextBox editor) return;
+            if (e.Column != _colTrigTime) return;
+
+            if (!float.TryParse(editor.Text.Trim().Replace(',', '.'),
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var newTime))
+            {
+                // Can't rebuild ItemsSource inside the edit transaction.
+                Dispatcher.BeginInvoke(new Action(RefreshTriggerRows), DispatcherPriority.Background);
+                return;
+            }
+            newTime = Math.Clamp(newTime, 0, _clip.Duration);
+            if (Math.Abs(newTime - row.Source.Time) < 1e-4f) return;
+            OnTriggerMove(row.Source, newTime);
+        }
+
+        private void RefreshTriggerRows()
+        {
+            _refreshingRows = true;
+            if (_clip == null)
+                _trigGrid.ItemsSource = null;
+            else
+            {
+                float dt = _clip.NumFrames > 0 && _clip.Duration > 0 ? _clip.Duration / _clip.NumFrames : 0;
+                _trigGrid.ItemsSource = _triggers.OrderBy(t => t.Time).Select(t => new TriggerRow
+                {
+                    Source = t,
+                    Time = t.Time.ToString("F3", System.Globalization.CultureInfo.InvariantCulture),
+                    Frame = dt > 0 ? Math.Clamp((int)Math.Round(t.Time / dt), 0, _clip.NumFrames - 1) : 0,
+                    Event = t.EventName,
+                    End = t.RelativeToEnd ? "✓" : ""
+                }).ToList();
+            }
+            _trigGrid.IsReadOnly = OnTriggerMove == null;
+            _trigAddBtn.IsEnabled = _clip != null && OnTriggerAdd != null;
+            _refreshingRows = false;
         }
 
         /// <summary>Walks up from an event source to the DataGridRow it lives in, if any.</summary>
@@ -978,16 +1184,15 @@ namespace SageHavokEditor.UI
         private void HighlightTicks(double t)
         {
             foreach (var child in _tickOverlay.Children)
-                if (child is System.Windows.Shapes.Line ln && ln.Tag is string tag)
+                if (child is System.Windows.Shapes.Polygon marker && marker.Tag is string tag)
                 {
                     var parts = tag.Split('|');
                     bool near = parts.Length == 2 &&
                         double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out var at)
                         && Math.Abs(at - t) < 0.05;
-                    var baseColor = parts[0] == "trig" ? Brushes.Orange : Brushes.MediumPurple;
-                    ln.Stroke = near ? Brushes.Lime : baseColor;
-                    ln.StrokeThickness = near ? 3.5 : 2;
+                    marker.Stroke = near ? Brushes.Lime : null;
+                    marker.StrokeThickness = near ? 1.5 : 0;
                 }
         }
 

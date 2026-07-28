@@ -13,6 +13,7 @@ Planned improvements and polish, grouped by area. Items here are candidates — 
 
 ## Animation / clip preview
 
+- [x] **Trigger list panel in the clip preview.** The ☰ side panel gets a "Triggers" section under the annotations — time, frame, event name, relative-to-end marker — click a row to seek, edit time inline, Del to delete, right-click to add/edit/delete (event changes go through the trigger dialog, which knows the graph's event list).
 - [x] **Add/edit/delete clip triggers on the timeline.** The orange ticks are editable like the purple ones: right-click/double-click to edit (event picker with create-new-event, time/frame, relativeToEndOfClip anchor), drag to move, timeline right-click to add. Creates and wires the hkbClipTriggerArray in the same undoable action when the clip has none; warns before editing an array shared by multiple clips.
 - [x] **Annotation list panel in the clip preview.** Toggleable table (☰) of all annotations — time, frame, track, text — click a row to seek, edit time/text inline, Del to delete.
 - [x] **Track picker for multi-track animations.** The Add-Annotation dialog shows a track dropdown when the file has more than one annotation track (single-track files keep the track-0 default silently).
