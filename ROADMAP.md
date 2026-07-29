@@ -11,6 +11,10 @@ Planned improvements and polish, grouped by area. Items here are candidates — 
 
 - [x] **Right-click context menu on tree items.** Add a context menu when right-clicking nodes in the behavior tree, with more options than are available today. First option: **"Jump to in graph"** — select/reveal that object in the graph view (drill to the right level and highlight the node). Other candidates to consider: copy id/name, inspect in Object Data, bookmark.
 
+## Save / IO
+
+- [ ] **Stop writing empty `numelements=""` attributes in XML saves.** `HkParam.NumElements` defaults to `""` and is serialized even for scalar params, so app-saved XML differs from converter output on every line. Harmless — the XML→HKX conversion accepts it — but it makes hand-diffing saved XML against hkxconv/temp XML noisy. Suppress the attribute when empty (a `ShouldSerializeNumElements()` next to the existing `ShouldSerializeValue()` in HavokModels.cs). Found 2026-07-29 while verifying trigger editing end-to-end.
+
 ## Animation / clip preview
 
 - [x] **Trigger list panel in the clip preview.** The ☰ side panel gets a "Triggers" section under the annotations — time, frame, event name, relative-to-end marker — click a row to seek, edit time inline, Del to delete, right-click to add/edit/delete (event changes go through the trigger dialog, which knows the graph's event list).

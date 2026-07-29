@@ -5,6 +5,88 @@ All notable changes to Sage Havok Editor are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+This cycle is about building things instead of just inspecting them — new clips,
+states, and wildcard transitions from the graph, and full annotation & trigger
+editing in the clip preview.
+
+### Added
+
+**Editing annotations in the clip preview**
+
+- **Add, edit, and delete animation annotations** straight on the preview
+  timeline — right-click or double-click the timeline to add at that spot,
+  a purple tick to edit or delete it, or use the `＋` button / `A` key to add at
+  the playhead. Edits write back to the animation file itself (XML or SE HKX)
+  with a one-time `.bak` beside it, and everything is undoable.
+- **Drag a purple tick** to move an annotation — frame-snapped while dragging,
+  `Alt` for free placement, with a live time + frame readout.
+- **hkanno text interchange** — copy or export the clip's annotations in hkanno's
+  `<time> <text>` format (with the header `hkanno update` expects), and import or
+  paste a set back as one undoable replace. Copy/export also work in read-only
+  previews.
+- **Annotation list panel** (`☰`) — a table of time / frame / track / text.
+  Click a row to seek, edit time and text inline, `Del` to delete, right-click
+  for add/edit/delete. The annotation dialog links its time and frame fields and
+  offers a track picker when the animation has more than one track.
+- The preview window opens bigger (900×660) and remembers the size you resize it
+  to. The playhead survives annotation edits instead of resetting to zero.
+
+**Editing clip triggers**
+
+- **The orange ticks are now editable like the purple ones** — right-click the
+  timeline to add a trigger, right-click/double-click a tick to edit or delete,
+  drag to move. Trigger edits mutate the behavior graph through the normal undo
+  stack and land on the next behavior save — no animation file IO.
+- **Trigger dialog** with an event picker that also creates new events (typed
+  names are added to the behavior's event list as part of the same undo step),
+  linked time/frame fields, and an *anchor to the clip's end* checkbox — anchored
+  triggers store a negative from-the-end time, so they keep their distance from
+  the end if a longer animation is swapped in.
+- A clip with no trigger array gets a new `hkbClipTriggerArray` created and wired
+  in the same action, so it can't be dropped as an orphan on `.hkx` save. Editing
+  an array referenced by several clip generators warns with the list of affected
+  clips first.
+- **Triggers table** in the `☰` panel under the annotations — click to seek, edit
+  time inline, `Del` to delete. Timeline ticks are now little pentagon markers
+  (triggers point down, annotations up) so the two are easy to tell apart.
+
+**Building graphs**
+
+- **`🎬 New clip generator…`** — right-click a state in the graph to create a new
+  clip and point that state's generator at it in one undoable step, so it can
+  never be orphaned. The Clips tab's `+ New Clip Generator` still creates one
+  from scratch, and now warns that it will be dropped on `.hkx` save until
+  something references it.
+- **`➕ Add state`** on a state machine node.
+- **Wildcard transitions can be created**, not just seen — `★ WILDCARD (any
+  state)` is the first entry in the Add Transition dialog's From-State dropdown.
+  The transition is written to the machine's `wildcardTransitions` array with
+  `FLAG_IS_LOCAL_WILDCARD` set, creating the array if the machine has none.
+- **Live-debug tracking can be wired up in-app** — right-click a state machine to
+  give it a sync variable (`syncVariableIndex`) so the live debugger can track
+  its active state, and the app warns when a loaded graph has no trackable
+  machines at all.
+
+**Behavior tree & modifiers**
+
+- **Right-click menu on behavior tree items** — Jump to in graph (drills to the
+  right view and highlights the node), Inspect in Object Data, Copy id / name,
+  and a Bookmark toggle.
+- The Add-Modifier picker leads with a curated **Common** group above the full
+  A–Z list, and new modifiers are named after their target (`GetUpFaceUp` +
+  `BSIsActiveModifier` → `GetUpFaceUp_IsActive`) instead of `New_<Class>`.
+- The in-app Guide covers the new workflows, including a walkthrough for adding
+  a brand-new animation.
+
+### Fixed
+
+- **Graph layout no longer hangs on very large state machines** — the layering
+  pass could loop forever (and was quadratic besides) on 200+ state machines.
+- Editing a trigger whose preview data had gone stale is caught with a clear
+  message instead of editing the wrong trigger.
+
 ## [0.4.0] — 2026-07-12
 
 First release under the **Sage Havok Editor** name. This one is about seeing what
