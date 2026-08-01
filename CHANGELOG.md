@@ -5,6 +5,22 @@ All notable changes to Sage Havok Editor are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **New behavior reference…** on a state's right-click menu in the Graph tab —
+  creates an `hkbBehaviorReferenceGenerator` pointing at another behavior file
+  and wires it as the state's generator in one undoable step, mirroring the
+  clip-generator flow. This is the bridge node for Nemesis/Pandora-style
+  patches that link a custom behavior file into a vanilla graph. Documented in
+  a new Guide section, *Referencing Another Behavior File*.
+
+- The in-app Guide grew a **Clip Preview** section group covering the 0.5.0
+  editing features: the preview window and its pentagon timeline markers,
+  annotation editing, clip trigger editing, hkanno import/export, and the ☰
+  annotation & trigger list panel. The Clips tab section now points at it.
+
 ## [0.5.0] — 2026-07-29
 
 This cycle is about building things instead of just inspecting them — new clips,

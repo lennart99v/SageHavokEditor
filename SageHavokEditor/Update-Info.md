@@ -1,3 +1,7 @@
+0.6.0 Features:
+
+- Graph tab → right-click a state → "🔗 New behavior reference…". Creates an hkbBehaviorReferenceGenerator — the bridge node for Nemesis/Pandora-style patches that link a custom behavior file into a vanilla graph — and points that state's generator at it in one undoable action, same flow as the clip generator: replace-confirmation if the state already has one, wired through Children/InnerObject at creation so it survives the orphan-pruning .hkx save. Node defaults come from HKX2 via ModifierCatalog.CreateDefault (correct signature, no hand-maintained param table). The confirm + wiring halves of the clip flow were extracted into shared helpers (ConfirmReplaceGenerator / WireGeneratorIntoState) so both entries stay in lockstep. The path prompt is deliberately plain text, no file browser — the referenced file usually doesn't exist yet when the bridge is authored. New Guide section "Referencing Another Behavior File" covers the events-link-by-name rule and the sharp edges (typo'd path = silent T-pose in-game, not an error; the referenced file needs its own valid root scaffolding).
+
 0.5.0 Features:
 
 - added a warning when a loaded graph yields 0 syncable SMs, something like "No state machines in this graph have syncVariableIndex set — active-state tracking is unavailable. Live variables will still update."

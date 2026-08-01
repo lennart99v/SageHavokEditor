@@ -182,6 +182,9 @@ namespace SageHavokEditor.UI.Dialogs
                 "Node right-click menu\n" +
                 "• 🎬 New clip generator… — on a state: creates a new hkbClipGenerator and points that " +
                 "state's generator at it in one step. See Adding a New Animation.\n" +
+                "• 🔗 New behavior reference… — on a state: creates a new hkbBehaviorReferenceGenerator " +
+                "pointing at another behavior file and wires it as the state's generator. See " +
+                "Referencing Another Behavior File.\n" +
                 "• 🐞 Enable live-debug tracking — on a state machine (or empty canvas with a machine " +
                 "selected): makes that machine report its active state to the debugger. Only machines " +
                 "with syncVariableIndex set can be tracked; see Why Active States Are Empty.\n\n" +
@@ -220,6 +223,8 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Shows the clip name and the animation file it references.\n" +
                 "• Inline editing lets you change the animation path directly or browse with the folder button.\n" +
                 "• The trigger panel at the bottom shows all timed events attached to the selected clip.\n" +
+                "• ▶ on a row opens the animation in the Clip Preview window, where annotations and " +
+                "triggers can be edited on the timeline — see The Clip Preview.\n" +
                 "• + New Clip Generator — creates a new hkbClipGenerator from scratch. It is created " +
                 "unattached, so nothing references it yet; see Adding a New Animation for why that " +
                 "matters and how to wire it up.");
@@ -278,6 +283,94 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Click a bookmark row to jump straight to that object and open it in Object Data.\n" +
                 "• ✕ removes a bookmark. Bookmarks persist between sessions via AppData.");
 
+            AddNavHeader("Clip Preview");
+
+            AddSection("clip_preview", "The Clip Preview",
+                "A skeleton-aware animation player in its own window. Open it with the ▶ button on a " +
+                "Clips tab row, the ▶ next to an animation name on the Character tab, ▶ Preview in the " +
+                "Object Data panel, or by right-clicking a state in the graph → Show animation & tags.\n\n" +
+                "Playback\n" +
+                "• Play/pause, a scrubbable timeline, and front / side / top camera views.\n" +
+                "• Ctrl+click a timeline tick to seek straight to it.\n" +
+                "• The window remembers the size you resize it to.\n\n" +
+                "Timeline markers\n" +
+                "• Purple pentagons pointing up are annotations — timed text markers stored inside the " +
+                "animation file itself (the hkanno kind).\n" +
+                "• Orange pentagons pointing down are clip triggers — timed behaviour events stored on " +
+                "the clip's hkbClipGenerator in the behaviour graph.\n" +
+                "• Both are editable right on the timeline (see the next two sections), but their edits " +
+                "land in different places: annotation edits write to the animation file, trigger edits " +
+                "are behaviour edits saved with the behaviour file.");
+
+            AddSection("preview_annotations", "Editing Annotations",
+                "Annotations are the timed text markers inside an animation file — the same data hkanno " +
+                "edits from the command line. The preview edits them in place.\n\n" +
+                "Add / edit / delete / move\n" +
+                "• Right-click or double-click the timeline to add an annotation at that spot.\n" +
+                "• The ＋ button next to play — or the A key — adds one at the playhead.\n" +
+                "• Right-click or double-click a purple tick to edit or delete it.\n" +
+                "• Drag a tick to move it — frame-snapped while dragging, hold Alt for free placement, " +
+                "with a live time + frame readout.\n\n" +
+                "The annotation dialog\n" +
+                "• Time and frame fields are linked — edit either and the other follows.\n" +
+                "• Add flows pre-fill the nearest frame boundary; editing keeps the exact time unless " +
+                "you change it.\n" +
+                "• If the animation has more than one annotation track, a track picker appears " +
+                "(new annotations default to track 0, the hkanno convention).\n\n" +
+                "Where the edits go\n" +
+                "• Edits write back to the animation file itself (XML or SE HKX). The first write makes " +
+                "a one-time .bak copy beside the file.\n" +
+                "• Everything is undoable — undo rewrites the file and refreshes the preview — and the " +
+                "playhead stays where it was instead of resetting to zero.");
+
+            AddSection("preview_triggers", "Editing Clip Triggers",
+                "Clip triggers fire a behaviour event at a set time while a clip plays (footsteps, hit " +
+                "frames, weapon swings). Unlike annotations they live in the behaviour graph — on the " +
+                "clip's hkbClipTriggerArray — so editing them is a behaviour edit, not an animation " +
+                "file edit.\n\n" +
+                "Add / edit / delete / move\n" +
+                "• Right-click the timeline → ⚡ Add trigger.\n" +
+                "• Right-click or double-click an orange tick to edit or delete it; drag to move " +
+                "(same frame-snap and Alt behaviour as annotations).\n\n" +
+                "The trigger dialog\n" +
+                "• The event picker lists every existing event — or type a new name and the event is " +
+                "added to the behaviour's event list as part of the same undo step.\n" +
+                "• Time and frame fields are linked; time is always entered as absolute clip time.\n" +
+                "• Anchor to the clip's end stores the time as a negative offset from the end, so the " +
+                "trigger keeps its distance from the end if a longer animation is swapped in later.\n\n" +
+                "Safety\n" +
+                "• Trigger edits go through the normal undo stack and land on the next behaviour save — " +
+                "no animation file IO.\n" +
+                "• A clip with no trigger array gets a new hkbClipTriggerArray created and wired in the " +
+                "same action, so it cannot be dropped as an orphan on .hkx save.\n" +
+                "• If the trigger array is shared by several clip generators, the editor warns you with " +
+                "the list of affected clips before the edit.");
+
+            AddSection("preview_hkanno", "hkanno Import & Export",
+                "The preview speaks hkanno's text format, so annotations round-trip with existing " +
+                "tooling and can be shared as plain text.\n\n" +
+                "• Right-click the timeline to copy all annotations to the clipboard, or export them to " +
+                "a .txt file — complete with the header hkanno update expects, so the file round-trips " +
+                "unchanged. Export defaults to ‹animation›.anno.txt.\n" +
+                "• Import from .txt or paste from clipboard replaces the clip's annotations as one " +
+                "undoable step; undo restores the originals to their original tracks.\n" +
+                "• Out-of-range times are clamped (you are told how many); imported annotations land " +
+                "on track 0.\n" +
+                "• Copy and export also work in read-only previews.");
+
+            AddSection("preview_list", "The Annotation & Trigger List (☰)",
+                "The ☰ button toggles a side panel listing every annotation and trigger in the clip — " +
+                "the fastest way to work through a long timeline. Whether it is open is remembered " +
+                "between sessions.\n\n" +
+                "Annotations table\n" +
+                "• Columns: time / frame / track / text. Click a row to seek there.\n" +
+                "• Time and text edit inline, through the same undoable pipeline as the dialog.\n" +
+                "• Del deletes the selected row; right-click a row for add / edit / delete.\n" +
+                "• The Trk column hides itself when the file has a single track.\n\n" +
+                "Triggers table\n" +
+                "• Sits below the annotations: click to seek, edit time inline, Del to delete.\n\n" +
+                "Read-only previews show the same tables without editing.");
+
             AddNavHeader("Advanced");
 
             AddSection("new_animation", "Adding a New Animation",
@@ -310,6 +403,33 @@ namespace SageHavokEditor.UI.Dialogs
                 "under the actor's folder, and be registered in the character file's Animation Names " +
                 "list (Character tab) — otherwise the clip has nothing to play. If you are shipping a " +
                 "Nemesis/Pandora patch, the animation is registered through the patch as usual.");
+
+            AddSection("behavior_reference", "Referencing Another Behavior File",
+                "An hkbBehaviorReferenceGenerator embeds a whole other behavior graph where a state's " +
+                "generator would normally sit. Vanilla uses it to split the graph across files " +
+                "(0_master pulls in 1hm_behavior, magicbehavior, and so on), and it is the standard " +
+                "bridge for mods: patch a vanilla graph with one new state whose generator is a " +
+                "behavior reference pointing at your own, self-contained behavior file.\n\n" +
+                "Creating one\n" +
+                "• Open the Graph tab, right-click the state, and choose 🔗 New behavior reference….\n" +
+                "• Enter a node name and the referenced file's path. The path is relative to the " +
+                "character project's folder — e.g. Behaviors\\MyMod.hkx for a file next to the vanilla " +
+                "behaviors.\n" +
+                "• The editor creates the node and points the state's generator at it in one undoable " +
+                "step. If the state already had a generator you are asked to confirm the replacement.\n\n" +
+                "How the two graphs talk\n" +
+                "The link is by name: an event (or variable) with the identical name in both files' " +
+                "string data is the same event at runtime. So the events that drive transitions inside " +
+                "the referenced file must also exist in the referencing graph's eventNames — add them " +
+                "on the Events tab of both files as part of the same patch.\n\n" +
+                "Things that bite\n" +
+                "• The referenced file is not opened or validated — the path is stored as text, and a " +
+                "typo becomes a silent T-pose in-game, not an error here.\n" +
+                "• The orphan-pruning rule from Adding a New Animation applies: the reference is wired " +
+                "to the state immediately precisely so it survives the .hkx save.\n" +
+                "• The referenced file must be a valid SSE 64-bit behavior with its own root " +
+                "(hkbBehaviorGraph, string data, variable value set) — building one from a gutted " +
+                "vanilla file that kept its root plumbing is the reliable route.");
 
             AddSection("large_machines", "Working With Very Large State Machines",
                 "Some machines are huge — a few hundred states with thousands of transitions. " +

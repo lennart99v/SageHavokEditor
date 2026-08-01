@@ -707,13 +707,17 @@ namespace SageHavokEditor.UI
                 menu.Items.Add(addMod);
             }
 
-            // ── New clip generator — on states (creates it AND wires it to the state) ──
+            // ── New clip generator / behavior reference — on states (creates AND wires) ──
             if (_manager.ObjectMap.TryGetValue(node.Id, out var stateNodeObj)
                 && stateNodeObj.ClassName == "hkbStateMachineStateInfo")
             {
                 var addClip = new MenuItem { Header = "🎬 New clip generator…" };
                 addClip.Click += (_, __) => AddClipGeneratorToState(node);
                 menu.Items.Add(addClip);
+
+                var addBehRef = new MenuItem { Header = "🔗 New behavior reference…" };
+                addBehRef.Click += (_, __) => AddBehaviorReferenceToState(node);
+                menu.Items.Add(addBehRef);
             }
 
             // ── Live-debug tracking — when the node is itself a state machine ────────
@@ -1326,27 +1330,7 @@ namespace SageHavokEditor.UI
         private void AddClipGeneratorToState(GraphNode node)
         {
             if (_manager == null || !_manager.ObjectMap.TryGetValue(node.Id, out var stateObj)) return;
-
-            var genParam = stateObj.Params.FirstOrDefault(p => p.Name == "generator");
-            var existingRef = genParam?.Value ?? "";
-            bool hasGenerator = !string.IsNullOrEmpty(existingRef) && existingRef != "null";
-
-            if (hasGenerator)
-            {
-                var oldName = _manager.TryResolve(existingRef, out var oldObj) && oldObj != null
-                    ? (oldObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? existingRef)
-                    : existingRef;
-
-                if (MessageBox.Show(
-                        $"'{node.Name}' already points at generator '{oldName}'.\n\n"
-                        + "Replace it with a new clip generator?\n\n"
-                        + "The old generator stays in the file, but this state will no longer "
-                        + "reference it — if nothing else does, it will be dropped when you save to .hkx.",
-                        "Replace generator",
-                        MessageBoxButton.OKCancel,
-                        MessageBoxImage.Warning) != MessageBoxResult.OK)
-                    return;
-            }
+            if (!ConfirmReplaceGenerator(node, stateObj, "clip generator")) return;
 
             var owner = Window.GetWindow(this);
 
@@ -1366,18 +1350,90 @@ namespace SageHavokEditor.UI
             var clip = ModifierCatalog.CreateDefault("hkbClipGenerator");
             if (clip == null) { StatusText_?.Invoke("✗ Could not create hkbClipGenerator"); return; }
 
-            var clipId = GenerateNewObjectId();
-            clip.Id = clipId;
+            clip.Id = GenerateNewObjectId();
             SetParam(clip, "name", clipName);
             SetParam(clip, "animationName", animPath ?? "");
             SetParam(clip, "playbackSpeed", "1.000000");
             SetParam(clip, "animationBindingIndex", "-1");
 
+            WireGeneratorIntoState(node, stateObj, clip,
+                $"Add clip generator '{clipName}' to {node.Name}");
+        }
+
+        /// <summary>
+        /// Creates a new hkbBehaviorReferenceGenerator and points a state's generator at it.
+        /// This is the bridge node of a Nemesis/Pandora-style patch: its behaviorName is a
+        /// project-relative path to a separate behavior file whose graph is pulled in at
+        /// runtime — events link between the two graphs by name.
+        /// </summary>
+        private void AddBehaviorReferenceToState(GraphNode node)
+        {
+            if (_manager == null || !_manager.ObjectMap.TryGetValue(node.Id, out var stateObj)) return;
+            if (!ConfirmReplaceGenerator(node, stateObj, "behavior reference")) return;
+
+            var owner = Window.GetWindow(this);
+
+            var nameDialog = new Dialogs.InputDialog(
+                "New Behavior Reference", "Node name:", $"{node.Name}_Behavior") { Owner = owner };
+            if (nameDialog.ShowDialog() != true) return;
+            var refName = nameDialog.InputText?.Trim();
+            if (string.IsNullOrEmpty(refName)) return;
+
+            var pathDialog = new Dialogs.InputDialog(
+                "New Behavior Reference", "Behavior path (relative to the character project):",
+                "Behaviors\\MyBehavior.hkx") { Owner = owner };
+            if (pathDialog.ShowDialog() != true) return;
+            var behaviorPath = pathDialog.InputText?.Trim() ?? "";
+
+            var gen = ModifierCatalog.CreateDefault("hkbBehaviorReferenceGenerator");
+            if (gen == null) { StatusText_?.Invoke("✗ Could not create hkbBehaviorReferenceGenerator"); return; }
+
+            gen.Id = GenerateNewObjectId();
+            SetParam(gen, "name", refName);
+            SetParam(gen, "behaviorName", behaviorPath);
+
+            WireGeneratorIntoState(node, stateObj, gen,
+                $"Add behavior reference '{refName}' to {node.Name}");
+        }
+
+        /// <summary>
+        /// If the state already points at a generator, asks the user to confirm replacing it
+        /// with a new one of <paramref name="newKind"/>. Returns false on cancel.
+        /// </summary>
+        private bool ConfirmReplaceGenerator(GraphNode node, HkObject stateObj, string newKind)
+        {
+            var existingRef = stateObj.Params.FirstOrDefault(p => p.Name == "generator")?.Value ?? "";
+            if (string.IsNullOrEmpty(existingRef) || existingRef == "null") return true;
+
+            var oldName = _manager!.TryResolve(existingRef, out var oldObj) && oldObj != null
+                ? (oldObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? existingRef)
+                : existingRef;
+
+            return MessageBox.Show(
+                $"'{node.Name}' already points at generator '{oldName}'.\n\n"
+                + $"Replace it with a new {newKind}?\n\n"
+                + "The old generator stays in the file, but this state will no longer "
+                + "reference it — if nothing else does, it will be dropped when you save to .hkx.",
+                "Replace generator",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) == MessageBoxResult.OK;
+        }
+
+        /// <summary>
+        /// Points a state's generator param at a freshly created generator object, as a single
+        /// undo step. Wiring at creation time is what saves the new object from the
+        /// orphan-pruning .hkx save.
+        /// </summary>
+        private void WireGeneratorIntoState(GraphNode node, HkObject stateObj, HkObject gen, string describe)
+        {
+            var genParam = stateObj.Params.FirstOrDefault(p => p.Name == "generator");
             if (genParam == null)
             {
                 genParam = new HkParam { Name = "generator", Value = "null" };
                 stateObj.Params.Add(genParam);
             }
+
+            var genId = gen.Id;
 
             // HkParam.Value derives from Children when Children is non-empty, so repointing a
             // resolved single ref means rewriting Children — assigning Value alone is ignored.
@@ -1387,11 +1443,11 @@ namespace SageHavokEditor.UI
 
             void Apply()
             {
-                _manager.ObjectMap[clipId] = clip;
+                _manager!.ObjectMap[genId] = gen;
                 genParam.Children.Clear();
-                genParam.Children.Add(clip);
-                genParam.Value = clipId;
-                genParam.InnerObject = clip;
+                genParam.Children.Add(gen);
+                genParam.Value = genId;
+                genParam.InnerObject = gen;
             }
             void Revert()
             {
@@ -1400,15 +1456,14 @@ namespace SageHavokEditor.UI
                 genParam.Value = oldVal;
                 genParam.NumElements = oldNum;
                 genParam.InnerObject = oldCh.FirstOrDefault();
-                _manager.ObjectMap.Remove(clipId);
+                _manager!.ObjectMap.Remove(genId);
             }
 
             Apply();
 
-            var describe = $"Add clip generator '{clipName}' to {node.Name}";
             GraphEditPerformed?.Invoke(describe, Revert, Apply);
             RefreshCurrentView();
-            StateSelected?.Invoke(clipId);
+            StateSelected?.Invoke(genId);
             StatusText_?.Invoke($"✓ {describe}");
         }
 
