@@ -941,13 +941,13 @@ namespace SageHavokEditor.UI
                     Add("Start State", "startStateId");
                     var st = Get("states");
                     if (!string.IsNullOrEmpty(st))
-                        rows.Add(("States", st.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length.ToString()));
+                        rows.Add(("States", HkRefList.Tokens(st).Length.ToString()));
                     break;
                 case "hkbBlenderGenerator":
                     Add("Ref. Weight", "referencePoseWeightThreshold");
                     var ch = Get("children");
                     if (!string.IsNullOrEmpty(ch))
-                        rows.Add(("Children", ch.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length.ToString()));
+                        rows.Add(("Children", HkRefList.Tokens(ch).Length.ToString()));
                     break;
                 default:
                     foreach (var p in obj.Params.Where(p =>
@@ -1084,8 +1084,7 @@ namespace SageHavokEditor.UI
             // per state machine — so scope the max to this machine's states, not the whole file,
             // which would otherwise hand a 3-state machine a stateId like 700.
             var stateId = GenerateNewObjectId();
-            var maxStateId = (sm.Params.FirstOrDefault(p => p.Name == "states")?.Value ?? "")
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            var maxStateId = HkRefList.Tokens(sm.Params.FirstOrDefault(p => p.Name == "states")?.Value)
                 .Select(r => _manager.TryResolve(r, out var so) && so != null
                     ? (int.TryParse(so.Params.FirstOrDefault(p => p.Name == "stateId")?.Value, out int n) ? n : -1)
                     : -1)
@@ -1116,8 +1115,7 @@ namespace SageHavokEditor.UI
                 var current = statesParam.Value?.Trim() ?? "";
                 statesParam.Value = string.IsNullOrEmpty(current)
                     ? stateId : current + " " + stateId;
-                statesParam.NumElements = (statesParam.Value
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries).Length).ToString();
+                statesParam.NumElements = HkRefList.Tokens(statesParam.Value).Length.ToString();
             }
 
             // Rebuild graph and select new node
@@ -1211,7 +1209,7 @@ namespace SageHavokEditor.UI
             {
                 var p = target.Params.FirstOrDefault(x => x.Name == "modifiers");
                 if (p == null) { p = new HkParam { Name = "modifiers", Value = "", NumElements = "0" }; target.Params.Add(p); }
-                var toks = (p.Value ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+                var toks = HkRefList.Tokens(p.Value).ToList();
                 toks.Add(modId);
                 // modifiers[] is a text-token array (not resolved into Children) — keep Children as-is.
                 Capture(p, new List<HkObject>(p.Children), string.Join(" ", toks), toks.Count.ToString());
@@ -1254,7 +1252,7 @@ namespace SageHavokEditor.UI
                         }
                         else if (p.Children.Count == 0)
                         {
-                            var toks = (p.Value ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            var toks = HkRefList.Tokens(p.Value);
                             if (Array.IndexOf(toks, target.Id) >= 0)
                                 Capture(p, new List<HkObject>(),
                                     string.Join(" ", toks.Select(t => t == target.Id ? wrapId : t)), p.NumElements);
@@ -2132,8 +2130,7 @@ namespace SageHavokEditor.UI
                     var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
                     if (statesParam == null) continue;
 
-                    foreach (var stateRef in statesParam.Value
-                        .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    foreach (var stateRef in HkRefList.Tokens(statesParam.Value))
                     {
                         if (!_manager.TryResolve(stateRef, out var stateObj)) continue;
 
@@ -2315,8 +2312,7 @@ namespace SageHavokEditor.UI
                     .FirstOrDefault(p => p.Name == "states");
                 if (statesParam == null) continue;
 
-                foreach (var stateRef in (statesParam.Value ?? "")
-                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (var stateRef in HkRefList.Tokens(statesParam.Value))
                 {
                     if (!_manager.TryResolve(stateRef, out var stateObj)) continue;
                     var sidStr = stateObj.Params
@@ -2414,8 +2410,7 @@ namespace SageHavokEditor.UI
             var childrenParam = obj.Params.FirstOrDefault(p => p.Name == "children");
             if (childrenParam != null)
             {
-                foreach (var childRef in (childrenParam.Value ?? "")
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var childRef in HkRefList.Tokens(childrenParam.Value))
                     WalkGenerator(childRef, node, nodes, edges, visited, depth + 1);
             }
 
@@ -2428,8 +2423,7 @@ namespace SageHavokEditor.UI
             var modifiersParam = obj.Params.FirstOrDefault(p => p.Name == "modifiers");
             if (modifiersParam != null)
             {
-                foreach (var mRef in (modifiersParam.Value ?? "")
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var mRef in HkRefList.Tokens(modifiersParam.Value))
                     WalkGenerator(mRef, node, nodes, edges, visited, depth + 1);
             }
 
@@ -2442,8 +2436,7 @@ namespace SageHavokEditor.UI
             var gensParam = obj.Params.FirstOrDefault(p => p.Name == "generators");
             if (gensParam != null)
             {
-                foreach (var gRef in (gensParam.Value ?? "")
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var gRef in HkRefList.Tokens(gensParam.Value))
                     WalkGenerator(gRef, node, nodes, edges, visited, depth + 1);
             }
         }
@@ -2703,9 +2696,8 @@ namespace SageHavokEditor.UI
             {
                 parentSM = _manager.ObjectMap.Values.FirstOrDefault(o =>
                     o.ClassName == "hkbStateMachine" &&
-                    (o.Params.FirstOrDefault(p => p.Name == "states")
-                        ?.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                        .Contains(node.Id) ?? false));
+                    HkRefList.Tokens(o.Params.FirstOrDefault(p => p.Name == "states")?.Value)
+                        .Contains(node.Id));
                 statesParam = parentSM?.Params.FirstOrDefault(p => p.Name == "states");
             }
 
@@ -2718,8 +2710,7 @@ namespace SageHavokEditor.UI
             string oldStatesValue = statesParam?.Value;
             if (statesParam != null)
             {
-                var ids = (statesParam.Value ?? "")
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                var ids = HkRefList.Tokens(statesParam.Value)
                     .Where(id => id != node.Id).ToList();
                 statesParam.Value = string.Join(" ", ids);
                 statesParam.NumElements = ids.Count.ToString();
@@ -3724,7 +3715,7 @@ namespace SageHavokEditor.UI
             foreach (var sm in _manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
             {
                 var states = sm.Params.FirstOrDefault(p => p.Name == "states")?.Value ?? "";
-                if (states.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(stateObjectId))
+                if (HkRefList.Tokens(states).Contains(stateObjectId))
                     return sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
             }
             return "";
@@ -3742,8 +3733,7 @@ namespace SageHavokEditor.UI
                 var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
                 if (statesParam == null) continue;
 
-                foreach (var stateRef in (statesParam.Value ?? "")
-                         .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var stateRef in HkRefList.Tokens(statesParam.Value))
                 {
                     if (!_manager.TryResolve(stateRef, out var stateObj)) continue;
                     var genRef = stateObj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
@@ -3772,12 +3762,12 @@ namespace SageHavokEditor.UI
 
             var children = obj.Params.FirstOrDefault(p => p.Name == "children")?.Value;
             if (children != null)
-                foreach (var c in children.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var c in HkRefList.Tokens(children))
                     if (Check(c)) return true;
 
             var gens = obj.Params.FirstOrDefault(p => p.Name == "generators")?.Value;
             if (gens != null)
-                foreach (var g in gens.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var g in HkRefList.Tokens(gens))
                     if (Check(g)) return true;
 
             var mod = obj.Params.FirstOrDefault(p => p.Name == "modifier")?.Value;

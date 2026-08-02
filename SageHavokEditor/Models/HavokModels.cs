@@ -23,6 +23,17 @@ namespace SageHavokEditor.Models
         }
     }
 
+    // Havok's XML writer wraps long ref arrays across lines, so a "states"-style value can
+    // contain tokens like "#0137\n\t\t\t#0141". Anything splitting a ref list must use these
+    // separators — splitting on ' ' alone silently drops the wrapped refs.
+    public static class HkRefList
+    {
+        public static readonly char[] Separators = { ' ', '\t', '\n', '\r' };
+
+        public static string[] Tokens(string? value) =>
+            (value ?? "").Split(Separators, StringSplitOptions.RemoveEmptyEntries);
+    }
+
     [XmlRoot("hkpackfile")]
     public class HkPackfile
     {

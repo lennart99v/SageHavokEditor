@@ -84,7 +84,7 @@ namespace SageHavokEditor.UI
             var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
             if (statesParam != null)
             {
-                var ids = (statesParam.Value ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ids = HkRefList.Tokens(statesParam.Value);
                 foreach (var id in ids)
                 {
                     if (_manager.TryResolve(id, out var state) && state != null)
