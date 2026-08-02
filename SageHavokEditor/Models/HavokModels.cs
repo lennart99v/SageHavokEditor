@@ -219,6 +219,23 @@ namespace SageHavokEditor.Models
         [XmlIgnore]
         public bool IsValueTypeValid => typeInfo?.IsValid(Value) ?? true;
 
+        /// <summary>
+        /// Recount NumElements from the value's tokens. Only meaningful for pure
+        /// text-token arrays (ref lists): string arrays are counted by Strings,
+        /// inline/cached arrays by Children, and scalars carry no numelements.
+        /// Call from interactive edit paths — NOT from the Value setter, which
+        /// also runs mid-deserialization before Strings/Children are populated
+        /// and would clobber their counts. HKX2 treats numelements as
+        /// authoritative on XML→HKX conversion, so a stale count silently
+        /// truncates the array.
+        /// </summary>
+        public void ResyncNumElements()
+        {
+            if (string.IsNullOrWhiteSpace(NumElements)) return;
+            if (Strings.Count > 0 || Children.Count > 0) return;
+            NumElements = HkRefList.Tokens(_value).Length.ToString();
+        }
+
         public event EventHandler<(string OldValue, string NewValue)>? ValueChanged;
 
         [XmlElement("hkcstring")]

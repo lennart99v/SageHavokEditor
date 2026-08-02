@@ -2099,6 +2099,10 @@ namespace SageHavokEditor
 
             param.ValueChanged += (s, args) =>
             {
+                // Keep numelements honest on every value change, including
+                // undo/redo restores (which suppress undo recording below).
+                (s as HkParam)?.ResyncNumElements();
+
                 if (_suppressUndoRecord || s is not HkParam p) return;
 
                 // Ignore if values are the same or both null/empty
