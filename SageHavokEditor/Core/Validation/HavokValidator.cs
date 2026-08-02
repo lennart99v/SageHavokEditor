@@ -250,6 +250,34 @@ namespace SageHavokEditor.Core.Validation
             // 8. Values that don't parse as their declared Havok type
             issues.AddRange(CheckParamTypes());
 
+            // 9. Name/info array pairing — the runtime aligns eventNames↔eventInfos
+            // and variableNames↔variableInfos by index, so a count mismatch breaks
+            // every entry past the shorter array.
+            var stringData = _manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+            var graphData = _manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphData");
+            if (stringData != null && graphData != null)
+            {
+                void CheckPairing(string namesParam, string infosParam)
+                {
+                    var names = stringData.Params.FirstOrDefault(p => p.Name == namesParam)?.Strings;
+                    var infos = graphData.Params.FirstOrDefault(p => p.Name == infosParam)?.Children;
+                    if (names == null || infos == null || names.Count == infos.Count) return;
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "Error",
+                        ObjectId = graphData.Id,
+                        ObjectClass = graphData.ClassName,
+                        ObjectName = GetName(graphData),
+                        Description = $"{namesParam} has {names.Count} entries but {infosParam} has {infos.Count} — " +
+                                      "the runtime pairs them by index; entries past the shorter array are broken in-game"
+                    });
+                }
+                CheckPairing("eventNames", "eventInfos");
+                CheckPairing("variableNames", "variableInfos");
+            }
+
             return issues;
         }
 

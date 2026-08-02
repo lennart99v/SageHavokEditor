@@ -20,6 +20,7 @@ using SageHavokEditor.Core.Animation;
 using SageHavokEditor.Core.Patching;
 using SageHavokEditor.Core.Services;
 using SageHavokEditor.Core.Skeletons;
+using System.Collections.Specialized;
 using SageHavokEditor.Core.Validation;
 using SageHavokEditor.Models;
 using SageHavokEditor.Models.ViewModels;
@@ -266,6 +267,33 @@ namespace SageHavokEditor
                 var eParam = eventStringData.Params.FirstOrDefault(p => p.Name == "eventNames");
                 if (eParam != null)
                     eParam.NumElements = EventList.Count.ToString();
+
+                // Keep hkbBehaviorGraphData.eventInfos paired by index — the
+                // runtime aligns the two arrays positionally, so an event added
+                // to eventNames without its info record is broken in-game. The
+                // count guards make this a no-op during load population (infos
+                // already exist for every name being re-listed) while still
+                // firing for real adds/removes, undo/redo included.
+                var infos = FindEventInfosParam();
+                if (infos == null) return;
+
+                if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null &&
+                    infos.Children.Count == EventList.Count - e.NewItems.Count)
+                {
+                    int at = e.NewStartingIndex < 0 ? infos.Children.Count
+                        : Math.Min(e.NewStartingIndex, infos.Children.Count);
+                    for (int k = 0; k < e.NewItems.Count; k++)
+                        infos.Children.Insert(at + k, DefaultEventInfo());
+                    infos.NumElements = infos.Children.Count.ToString();
+                }
+                else if (e.Action == NotifyCollectionChangedAction.Remove && e.OldItems != null &&
+                         infos.Children.Count == EventList.Count + e.OldItems.Count)
+                {
+                    for (int k = 0; k < e.OldItems.Count &&
+                         e.OldStartingIndex >= 0 && e.OldStartingIndex < infos.Children.Count; k++)
+                        infos.Children.RemoveAt(e.OldStartingIndex);
+                    infos.NumElements = infos.Children.Count.ToString();
+                }
             };
             EventsView = CollectionViewSource.GetDefaultView(EventList);
             EventsView.Filter = o => o is IdNamePair ev &&
@@ -2571,6 +2599,20 @@ namespace SageHavokEditor
                 {
                     eParam.Strings = EventList.Select(ev => ev.Name).ToList();
                     eParam.Value = string.Join("\n", eParam.Strings);
+
+                    // Reconcile eventInfos to the names count (runtime pairs the
+                    // arrays by index). Repairs files desynced by older editor
+                    // versions, which extended eventNames without eventInfos.
+                    var infosParam = FindEventInfosParam();
+                    if (infosParam != null)
+                    {
+                        while (infosParam.Children.Count < EventList.Count)
+                            infosParam.Children.Add(DefaultEventInfo());
+                        if (infosParam.Children.Count > EventList.Count)
+                            infosParam.Children.RemoveRange(EventList.Count,
+                                infosParam.Children.Count - EventList.Count);
+                        infosParam.NumElements = infosParam.Children.Count.ToString();
+                    }
                 }
             }
 
@@ -3857,6 +3899,20 @@ namespace SageHavokEditor
             EventsListBox.SelectedItem = target;
             BtnDeleteEvent_Click(null, null);
         }
+
+        private HkParam? FindEventInfosParam() =>
+            manager?.ObjectMap?.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphData")
+                ?.Params.FirstOrDefault(p => p.Name == "eventInfos");
+
+        // Inline hkbEventInfo element in the file dialect: single flags param, 0.
+        private static HkObject DefaultEventInfo() => new()
+        {
+            Id = "",
+            ClassName = "",
+            Signature = "",
+            Params = new List<HkParam> { new() { Name = "flags", Value = "0" } }
+        };
 
         // ── EVENTS: Add ───────────────────────────────────────────────────────────
         private void BtnAddEvent_Click(object sender, RoutedEventArgs e)
