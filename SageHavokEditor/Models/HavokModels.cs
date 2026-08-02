@@ -165,6 +165,15 @@ namespace SageHavokEditor.Models
 
         [XmlElement("hkparam")]
         public List<HkParam> Params { get; set; } = new();
+
+        /// <summary>Deep-clone as an inline (anonymous) element — see HkParam.Clone.</summary>
+        public HkObject CloneAsInline() => new()
+        {
+            Id = "",
+            ClassName = ClassName,
+            Signature = Signature,
+            Params = Params.Select(p => p.Clone()).ToList()
+        };
     }
 
     public class HkParam : NotifyBase
@@ -218,6 +227,40 @@ namespace SageHavokEditor.Models
 
         [XmlIgnore]
         public bool IsValueTypeValid => typeInfo?.IsValid(Value) ?? true;
+
+        /// <summary>
+        /// True for array params whose elements are inline (anonymous) hkobjects,
+        /// e.g. hkbStateMachineEventPropertyArray.events. Sticky: set at load by
+        /// HavokTypeCatalog.Annotate and maintained by the add/remove element
+        /// handlers, so the "+ Add element" affordance survives deleting the last
+        /// element (an empty array's element shape is otherwise indistinguishable
+        /// from a ref array's).
+        /// </summary>
+        [XmlIgnore]
+        public bool IsInlineStructArray { get; set; }
+
+        /// <summary>
+        /// Deep-clone this object as an inline (anonymous) element: no id, so it
+        /// serializes nested inside its parent param. Inline grandchildren are
+        /// cloned recursively; cached resolved refs stay shared — a cloned
+        /// reference points at the same target, which is the correct semantic.
+        /// </summary>
+        public HkParam Clone()
+        {
+            var clone = new HkParam
+            {
+                Name = Name,
+                NumElements = NumElements,
+                Strings = new List<string>(Strings),
+                Children = Children
+                    .Select(c => string.IsNullOrEmpty(c.Id) ? c.CloneAsInline() : c)
+                    .ToList(),
+                TypeInfo = TypeInfo,
+                IsInlineStructArray = IsInlineStructArray,
+            };
+            clone.Value = _value;   // raw text, not the getter's Children join
+            return clone;
+        }
 
         /// <summary>
         /// Recount NumElements from the value's tokens. Only meaningful for pure

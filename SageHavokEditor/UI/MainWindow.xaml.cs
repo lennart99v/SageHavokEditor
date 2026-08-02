@@ -2090,6 +2090,94 @@ namespace SageHavokEditor
             }
         }
 
+        // ── Generic element add/remove for inline-struct arrays ──────────────
+
+        private void BtnAddInlineElement_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not HkParam param) return;
+
+            // Prefer a fresh default element from the HKX2 type set (correct
+            // param names + vanilla defaults); fall back to cloning the last
+            // element when the class is unknown or has no serializable default.
+            HkObject? newChild = null;
+            var elementClass = param.TypeInfo?.ElementClassName;
+            if (!string.IsNullOrEmpty(elementClass))
+            {
+                var def = ModifierCatalog.CreateDefault(elementClass);
+                if (def != null)
+                {
+                    newChild = new HkObject { Id = "", ClassName = "", Signature = "", Params = def.Params };
+                    HavokTypeCatalog.Annotate(newChild, elementClass);
+                }
+            }
+            newChild ??= param.Children.LastOrDefault(c => string.IsNullOrEmpty(c.Id))?.CloneAsInline();
+            if (newChild == null)
+            {
+                StatusText.Text = "✗ No template for a new element";
+                return;
+            }
+
+            var oldChildren = new List<HkObject>(param.Children);
+            var oldCount = param.NumElements;
+
+            param.IsInlineStructArray = true;
+            param.Children.Add(newChild);
+            param.NumElements = param.Children.Count.ToString();
+
+            RecordInlineArrayChange(param, oldChildren, oldCount, $"Add element to {param.Name}");
+            ParamsEditor.Items.Refresh();
+            StatusText.Text = $"✓ Added element to {param.Name}";
+        }
+
+        private void BtnRemoveInlineElement_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not HkObject child) return;
+            if (ParamsEditor.ItemsSource is not IEnumerable<HkParam> shown) return;
+            var param = shown.FirstOrDefault(p => p.Children.Contains(child));
+            if (param == null) return;
+
+            var oldChildren = new List<HkObject>(param.Children);
+            var oldCount = param.NumElements;
+
+            // Sticky: keeps "+ Add element" visible after deleting the last one.
+            param.IsInlineStructArray = true;
+            param.Children.Remove(child);
+            param.NumElements = param.Children.Count.ToString();
+
+            RecordInlineArrayChange(param, oldChildren, oldCount, $"Remove element from {param.Name}");
+            ParamsEditor.Items.Refresh();
+            StatusText.Text = $"✓ Removed element from {param.Name}";
+        }
+
+        private void RecordInlineArrayChange(HkParam param,
+            List<HkObject> oldChildren, string oldCount, string description)
+        {
+            var newChildren = new List<HkObject>(param.Children);
+            var newCount = param.NumElements;
+
+            _undoRedo.Record(new EditAction
+            {
+                Description = description,
+                Undo = () =>
+                {
+                    param.Children.Clear();
+                    param.Children.AddRange(oldChildren);
+                    param.NumElements = oldCount;
+                    ParamsEditor.Items.Refresh();
+                    UpdateUndoRedoButtons();
+                },
+                Redo = () =>
+                {
+                    param.Children.Clear();
+                    param.Children.AddRange(newChildren);
+                    param.NumElements = newCount;
+                    ParamsEditor.Items.Refresh();
+                    UpdateUndoRedoButtons();
+                }
+            });
+            UpdateUndoRedoButtons();
+        }
+
         private readonly HashSet<HkParam> _subscribedParams = new();
 
         private void SubscribeParamUndo(HkParam param, string className, string nodeName)

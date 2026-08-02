@@ -37,6 +37,13 @@ namespace SageHavokEditor.Core.Services
         /// <summary>Annotate one object's params (and inline child structs, recursively).</summary>
         public static void Annotate(HkObject obj, string? className)
         {
+            // Structural pass — independent of type metadata, so it also runs for
+            // classes outside the HKX2 type set. Feeds the "+ Add element" UI.
+            foreach (var p in obj.Params)
+                if (!string.IsNullOrWhiteSpace(p.NumElements) &&
+                    p.Children.Any(c => string.IsNullOrEmpty(c.Id)))
+                    p.IsInlineStructArray = true;
+
             if (string.IsNullOrEmpty(className)) return;
             var map = GetClassMap(className);
             if (map == null) return;
