@@ -387,6 +387,11 @@ namespace SageHavokEditor.UI
             foreach (var m in machines) MachineSelector.Items.Add(m);
             MachineSelector.SelectedIndex = machines.Count > 0 ? 1 : 0;
             RebuildStateLookup();
+            // No state machines (ragdoll, skeleton, arbitrary Havok XML): the
+            // machine view would be an empty canvas, so show the object graph
+            // seeded from the file's root instead.
+            if (machines.Count == 0)
+                ResetToRootGenerator();
             // Send config to plugin if debugger is already running
             if (_debugger != null)
                 _debugger.SendConfig(BuildDebugConfigFromLoadedFile());
@@ -491,21 +496,34 @@ namespace SageHavokEditor.UI
             var bg = _manager.ObjectMap.Values
                 .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraph");
             var rootRef = bg?.Params.FirstOrDefault(p => p.Name == "rootGenerator")?.Value;
-            if (bg == null || string.IsNullOrEmpty(rootRef) || rootRef == "null")
+
+            string label, rootObjectId;
+            if (bg != null && !string.IsNullOrEmpty(rootRef) && rootRef != "null")
             {
-                _visualHost.ShowOverlayText("No behavior graph root generator found",
+                label = bg.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? "Behavior Graph Root";
+                rootObjectId = bg.Id;
+            }
+            else if (_manager.RootObject is { } root)
+            {
+                // Not a behavior file (ragdoll, skeleton, character, arbitrary
+                // Havok XML) — seed from the file's declared top-level object.
+                label = $"{root.DisplayName} ({root.ClassName})";
+                rootObjectId = root.Id;
+                rootRef = root.Id;
+            }
+            else
+            {
+                _visualHost.ShowOverlayText("File has no root object — nothing to graph",
                     Color.FromRgb(0x9D, 0x9D, 0x9D));
                 return;
             }
-
-            var label = bg.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? "Behavior Graph Root";
 
             _navStack.Clear();
             _navStack.Push(new GraphBreadcrumb
             {
                 Level = GraphViewLevel.GeneratorHierarchy,
                 Label = label,
-                RootObjectId = bg.Id,
+                RootObjectId = rootObjectId,
                 GeneratorRef = rootRef,
                 MachineFilter = ""   // not tied to a specific machine
             });
@@ -2281,6 +2299,10 @@ namespace SageHavokEditor.UI
             }
 
             _visualHost.SetGraph(_nodes, _edges);
+            if (_nodes.Count == 0)
+                _visualHost.ShowOverlayText(
+                    "No state machines in this file — ⌂ Root shows the object graph",
+                    Color.FromRgb(0x9D, 0x9D, 0x9D));
             _visualHost.ConnectionValidator = (from, to) =>
     from.NodeType == GraphNodeType.State &&
     to.NodeType == GraphNodeType.State &&
@@ -2357,6 +2379,9 @@ namespace SageHavokEditor.UI
             _nodes = localNodes;
             _edges = localEdges;
             _visualHost.SetGraph(_nodes, _edges);
+            if (_nodes.Count == 0)
+                _visualHost.ShowOverlayText("Nothing to display — the root reference didn't resolve",
+                    Color.FromRgb(0x9D, 0x9D, 0x9D));
             _visualHost.ConnectionValidator = (_, __) => false; // generators don't take transitions
             FitToView();
             RedrawMinimapOverlay();
@@ -2425,9 +2450,26 @@ namespace SageHavokEditor.UI
             // Bethesda classes, whose child params are pDefaultGenerator,
             // ChildrenA, pClipGenerator, pBlenderGenerator, pOffsetClipGenerator.
             foreach (var p in obj.Params)
-                foreach (var tok in HkRefList.Tokens(p.Value))
-                    if (tok.StartsWith("#"))
-                        WalkGenerator(tok, node, nodes, edges, visited, depth + 1);
+                WalkParamRefs(p, node, nodes, edges, visited, depth);
+        }
+
+        private void WalkParamRefs(HkParam p, GraphNode owner,
+            List<GraphNode> nodes, List<GraphEdge> edges,
+            HashSet<string> visited, int depth)
+        {
+            foreach (var tok in HkRefList.Tokens(p.Value))
+                if (tok.StartsWith("#"))
+                    WalkGenerator(tok, owner, nodes, edges, visited, depth + 1);
+
+            // Inline (anonymous) hkobjects — array-of-struct params like
+            // hkRootLevelContainer.namedVariants or transition arrays — carry
+            // their refs in nested params, not in Value. p.Children also caches
+            // resolved top-level refs (same id as the Value token, walked
+            // above), so only descend into true inline objects.
+            foreach (var child in p.Children)
+                if (string.IsNullOrEmpty(child.Id) || !_manager.ObjectMap.ContainsKey(child.Id))
+                    foreach (var cp in child.Params)
+                        WalkParamRefs(cp, owner, nodes, edges, visited, depth);
         }
 
         // ── Tree layout for generator hierarchy ───────────────────────────────
