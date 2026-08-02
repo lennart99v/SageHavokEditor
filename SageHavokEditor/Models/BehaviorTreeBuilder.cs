@@ -26,14 +26,17 @@ namespace SageHavokEditor.UI
         {
             var rootNode = new BehaviorNodeData { Name = "Behavior Graph", Type = NodeType.Root };
 
-            // Logic to find top-level state machines
+            // Top-level = state machines nothing else points at. References from
+            // hkbBehaviorGraph don't count — its rootGenerator ref is what makes
+            // a machine top-level in the first place.
+            var childRefs = BuildChildRefSet();
             var topLevelSMs = _manager.ObjectMap.Values
-                .Where(o => o.ClassName == "hkbStateMachine" && !IsReferencedAsChild(o))
+                .Where(o => o.ClassName == "hkbStateMachine" && !childRefs.Contains(o.Id))
                 .OrderBy(o => GetName(o));
 
             foreach (var sm in topLevelSMs)
             {
-                var smNode = BuildStateMachine(sm);
+                var smNode = BuildStateMachine(sm, new HashSet<string>());
                 if (ApplyFilter(smNode, filter.ToLower()))
                 {
                     rootNode.Children.Add(smNode);
@@ -68,18 +71,24 @@ namespace SageHavokEditor.UI
             return node.IsVisible;
         }
 
-        private bool IsReferencedAsChild(HkObject obj)
+        private HashSet<string> BuildChildRefSet()
         {
-            // We only care if it's referenced as a sub-component of another behavior object
-            return _manager.ObjectMap.Values.Any(parent =>
-                parent != obj &&
-                (parent.ClassName == "hkbStateMachine" || (parent.ClassName?.Contains("Generator") ?? false)) &&
-                parent.Params.Any(p => p.Value == obj.Id));
+            var refs = new HashSet<string>();
+            foreach (var parent in _manager.ObjectMap.Values)
+            {
+                if (parent.ClassName == "hkbBehaviorGraph") continue;
+                foreach (var p in parent.Params)
+                    foreach (var tok in HkRefList.Tokens(p.Value))
+                        if (tok.StartsWith("#"))
+                            refs.Add(tok);
+            }
+            return refs;
         }
 
-        private BehaviorNodeData BuildStateMachine(HkObject sm)
+        private BehaviorNodeData BuildStateMachine(HkObject sm, HashSet<string> path)
         {
             var node = new BehaviorNodeData { Name = GetName(sm), Type = NodeType.StateMachine, Object = sm };
+            if (!path.Add(sm.Id)) return node;  // cycle guard
 
             var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
             if (statesParam != null)
@@ -88,13 +97,14 @@ namespace SageHavokEditor.UI
                 foreach (var id in ids)
                 {
                     if (_manager.TryResolve(id, out var state) && state != null)
-                        node.Children.Add(BuildState(state, sm));
+                        node.Children.Add(BuildState(state, sm, path));
                 }
             }
+            path.Remove(sm.Id);
             return node;
         }
 
-        private BehaviorNodeData BuildState(HkObject state, HkObject parentMachine)
+        private BehaviorNodeData BuildState(HkObject state, HkObject parentMachine, HashSet<string> path)
         {
             var stateNode = new BehaviorNodeData { Name = GetName(state), Type = NodeType.State, Object = state };
 
@@ -102,7 +112,7 @@ namespace SageHavokEditor.UI
             if (genParam != null && _manager.TryResolve(genParam.Value, out var gen))
             {
                 var genFolder = new BehaviorNodeData { Name = "Logic (Generator)", Type = NodeType.Generator };
-                var resolvedGen = ResolveGenerator(gen);
+                var resolvedGen = ResolveGenerator(gen, path);
                 if (resolvedGen != null) genFolder.Children.Add(resolvedGen);
                 stateNode.Children.Add(genFolder);
             }
@@ -124,26 +134,31 @@ namespace SageHavokEditor.UI
             return stateNode;
         }
 
-        private BehaviorNodeData? ResolveGenerator(HkObject? generator)
+        private BehaviorNodeData? ResolveGenerator(HkObject? generator, HashSet<string> path)
         {
             if (generator == null) return null;
-            if (generator.ClassName == "hkbStateMachine") return BuildStateMachine(generator);
+            if (generator.ClassName == "hkbStateMachine") return BuildStateMachine(generator, path);
 
             var node = new BehaviorNodeData { Name = $"{GetName(generator)} ({generator.ClassName})", Object = generator };
+            if (!path.Add(generator.Id)) return node;  // cycle guard
 
+            // Generic recursion: follow every #ref in every param, so Bethesda
+            // classes (pDefaultGenerator, ChildrenA, pClipGenerator, …) resolve
+            // the same as the stock hkb param names.
             foreach (var param in generator.Params)
             {
-                if (IsLinkParameter(param.Name) && _manager.TryResolve(param.Value, out var child))
+                foreach (var tok in HkRefList.Tokens(param.Value))
                 {
-                    var resolved = ResolveGenerator(child);
-                    if (resolved != null) node.Children.Add(resolved);
+                    if (tok.StartsWith("#") && _manager.TryResolve(tok, out var child))
+                    {
+                        var resolved = ResolveGenerator(child, path);
+                        if (resolved != null) node.Children.Add(resolved);
+                    }
                 }
             }
+            path.Remove(generator.Id);
             return node;
         }
-
-        private bool IsLinkParameter(string name) =>
-            name == "generator" || name == "modifier" || name == "modifiers" || name == "rootGenerator";
 
         private string GetTargetStateName(HkObject transition, HkObject parentMachine)
         {

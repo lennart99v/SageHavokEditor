@@ -2375,7 +2375,7 @@ namespace SageHavokEditor.UI
         {
             if (string.IsNullOrEmpty(objRef) || objRef == "null") return;
             if (visited.Contains(objRef)) return;  // break cycles
-            if (depth > 12) return;                 // safety limit
+            if (depth > 24) return;                 // safety limit
             if (!_manager.TryResolve(objRef, out var obj)) return;
 
             visited.Add(objRef);
@@ -2399,46 +2399,24 @@ namespace SageHavokEditor.UI
             if (parentNode != null)
                 edges.Add(new GraphEdge { From = parentNode, To = node, EventName = "" });
 
-            // ── Recurse into children depending on class ──────────────────────
-
-            // hkbStateMachineStateInfo → generator
-            var genRef = obj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
-            if (!string.IsNullOrEmpty(genRef) && genRef != "null")
-                WalkGenerator(genRef, node, nodes, edges, visited, depth + 1);
-
-            // hkbBlenderGenerator → children[]
-            var childrenParam = obj.Params.FirstOrDefault(p => p.Name == "children");
-            if (childrenParam != null)
-            {
-                foreach (var childRef in HkRefList.Tokens(childrenParam.Value))
-                    WalkGenerator(childRef, node, nodes, edges, visited, depth + 1);
-            }
-
-            // hkbModifierGenerator → modifier + generator
-            var modRef = obj.Params.FirstOrDefault(p => p.Name == "modifier")?.Value;
-            if (!string.IsNullOrEmpty(modRef) && modRef != "null")
-                WalkGenerator(modRef, node, nodes, edges, visited, depth + 1);
-
-            // hkbModifierList → modifiers[] (plural array — each entry is a modifier)
-            var modifiersParam = obj.Params.FirstOrDefault(p => p.Name == "modifiers");
-            if (modifiersParam != null)
-            {
-                foreach (var mRef in HkRefList.Tokens(modifiersParam.Value))
-                    WalkGenerator(mRef, node, nodes, edges, visited, depth + 1);
-            }
-
-            // hkbBehaviorReferenceGenerator → behaviorName (leaf — no resolve)
+            // hkbBehaviorReferenceGenerator → behaviorName (a file path, not a ref)
             var behavRef = obj.Params.FirstOrDefault(p => p.Name == "behaviorName")?.Value;
             if (!string.IsNullOrEmpty(behavRef))
                 node.SubLabel = $"→ {behavRef}";
 
-            // hkbManualSelectorGenerator / hkbPoseMatchingGenerator → generators[]
-            var gensParam = obj.Params.FirstOrDefault(p => p.Name == "generators");
-            if (gensParam != null)
-            {
-                foreach (var gRef in HkRefList.Tokens(gensParam.Value))
-                    WalkGenerator(gRef, node, nodes, edges, visited, depth + 1);
-            }
+            // A nested state machine stays a leaf here — it drills into its own
+            // state graph (CanDrillDown), so expanding its subtree inline would
+            // duplicate that whole view.
+            if (obj.ClassName == "hkbStateMachine") return;
+
+            // Generic recursion: follow every #ref in every param. A per-class
+            // param whitelist dead-ends on anything it doesn't know — notably the
+            // Bethesda classes, whose child params are pDefaultGenerator,
+            // ChildrenA, pClipGenerator, pBlenderGenerator, pOffsetClipGenerator.
+            foreach (var p in obj.Params)
+                foreach (var tok in HkRefList.Tokens(p.Value))
+                    if (tok.StartsWith("#"))
+                        WalkGenerator(tok, node, nodes, edges, visited, depth + 1);
         }
 
         // ── Tree layout for generator hierarchy ───────────────────────────────
@@ -3751,27 +3729,17 @@ namespace SageHavokEditor.UI
         {
             if (string.IsNullOrEmpty(objRef) || objRef == "null") return false;
             if (objRef == targetId) return true;
-            if (!visited.Add(objRef) || depth > 12) return false;
+            if (!visited.Add(objRef) || depth > 24) return false;
             if (!_manager.TryResolve(objRef, out var obj)) return false;
             if (obj.Id == targetId) return true;
 
-            bool Check(string r) => GeneratorChainContains(r, targetId, visited, depth + 1);
+            // Nested state machines own their subtrees (mirrors WalkGenerator).
+            if (obj.ClassName == "hkbStateMachine") return false;
 
-            var gen = obj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
-            if (gen != null && Check(gen)) return true;
-
-            var children = obj.Params.FirstOrDefault(p => p.Name == "children")?.Value;
-            if (children != null)
-                foreach (var c in HkRefList.Tokens(children))
-                    if (Check(c)) return true;
-
-            var gens = obj.Params.FirstOrDefault(p => p.Name == "generators")?.Value;
-            if (gens != null)
-                foreach (var g in HkRefList.Tokens(gens))
-                    if (Check(g)) return true;
-
-            var mod = obj.Params.FirstOrDefault(p => p.Name == "modifier")?.Value;
-            if (mod != null && Check(mod)) return true;
+            foreach (var p in obj.Params)
+                foreach (var tok in HkRefList.Tokens(p.Value))
+                    if (tok.StartsWith("#") && GeneratorChainContains(tok, targetId, visited, depth + 1))
+                        return true;
 
             return false;
         }
