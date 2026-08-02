@@ -247,7 +247,59 @@ namespace SageHavokEditor.Core.Validation
                 }
             }
 
+            // 8. Values that don't parse as their declared Havok type
+            issues.AddRange(CheckParamTypes());
+
             return issues;
         }
+
+        /// <summary>
+        /// Type-check every param value against its declared Havok type (annotated
+        /// by HavokTypeCatalog at load), nested inline params included. These are
+        /// the values HKX2's XML→HKX conversion would reject with a bare
+        /// FormatException — run before save to fail with a pointable error instead.
+        /// </summary>
+        public List<ValidationIssue> CheckParamTypes()
+        {
+            var issues = new List<ValidationIssue>();
+
+            string GetName(HkObject o) =>
+                o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id;
+
+            foreach (var obj in _manager.ObjectMap.Values)
+                foreach (var param in obj.Params)
+                    CheckParam(obj, param, param.Name, issues, GetName);
+
+            return issues;
+        }
+
+        private static void CheckParam(HkObject owner, HkParam param, string path,
+            List<ValidationIssue> issues, Func<HkObject, string> getName)
+        {
+            if (param.TypeInfo != null && !param.IsValueTypeValid)
+            {
+                issues.Add(new ValidationIssue
+                {
+                    Severity = "Error",
+                    ObjectId = owner.Id,
+                    ObjectClass = owner.ClassName,
+                    ObjectName = getName(owner),
+                    Description = $"{path} = \"{Truncate(param.Value)}\" doesn't match its declared type. {param.TypeInfo.Hint}"
+                });
+            }
+
+            // Inline (anonymous) structs — cached resolved refs are top-level
+            // objects and get checked in their own right.
+            for (int i = 0; i < param.Children.Count; i++)
+            {
+                var child = param.Children[i];
+                if (!string.IsNullOrEmpty(child.Id)) continue;
+                foreach (var cp in child.Params)
+                    CheckParam(owner, cp, $"{path}[{i}].{cp.Name}", issues, getName);
+            }
+        }
+
+        private static string Truncate(string? v) =>
+            (v ?? "").Length <= 40 ? v ?? "" : v!.Substring(0, 37) + "…";
     }
 }

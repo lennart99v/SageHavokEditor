@@ -71,16 +71,34 @@ namespace SageHavokEditor.Models
                 case HkParamKind.Int:
                     if (long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
                         return n >= Min && n <= Max;
-                    return v.Length > 0 && KnownEnumMember != null &&
-                           v.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                            .All(t => KnownEnumMember(t));
+                    return IsFlagCombo(v);
                 case HkParamKind.Enum:
-                    // The numeric form is legal Havok XML alongside the member name.
-                    return EnumChoices == null || EnumChoices.Contains(v) || long.TryParse(v, out _);
+                    // HKX2 reads enums and flags through the same ReadFlag path, so
+                    // pipe-joined member combos and numeric (incl. hex) remainders
+                    // are legal ("FLAG_OUTPUT|FLAG_HIDDEN", "FLAG_RAGDOLL|0x4c0").
+                    // Tokens check against the assembly-wide member index, not just
+                    // EnumChoices — the choices list is a best guess when HKX2
+                    // declares the member as a bare int (member names collide
+                    // across enums), and a wrong guess must not fail validation.
+                    return IsFlagCombo(v);
                 default:
                     return true;
             }
         }
+
+        private bool IsFlagCombo(string v)
+        {
+            if (v.Length == 0) return false;
+            return v.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .All(t => IsNumericToken(t)
+                           || (EnumChoices?.Contains(t) ?? false)
+                           || (KnownEnumMember?.Invoke(t) ?? false));
+        }
+
+        private static bool IsNumericToken(string t) =>
+            long.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+            || (t.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+                long.TryParse(t.Substring(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _));
     }
 
     // Havok's XML writer wraps long ref arrays across lines, so a "states"-style value can

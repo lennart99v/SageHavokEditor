@@ -676,6 +676,11 @@ namespace SageHavokEditor
                 var folder = Path.GetDirectoryName(dlg.FileName)!;
                 await LoadCreatureFolderAsync(folder);
             };
+            var newBehavior = new MenuItem { Header = "✨ New behavior file…" };
+            newBehavior.Click += async (s, _) => await CreateNewBehaviorFileAsync();
+
+            menu.Items.Add(newBehavior);
+            menu.Items.Add(new Separator());
             menu.Items.Add(openCreature);
 
             menu.Items.Add(openFile);
@@ -685,6 +690,50 @@ namespace SageHavokEditor
             menu.IsOpen = true;
         }
 
+
+        /// <summary>
+        /// File → New behavior: writes a minimal valid behavior file (root container,
+        /// behavior graph, graph data/string data/variable value set, empty root state
+        /// machine) to a user-chosen path, then loads it through the normal pipeline so
+        /// the editor state is identical to opening any real file.
+        /// </summary>
+        private async Task CreateNewBehaviorFileAsync()
+        {
+            var sfd = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Create New Behavior File",
+                Filter = "Havok XML|*.xml|Skyrim SE HKX (64-bit)|*.hkx",
+                FileName = "MyBehavior.xml"
+            };
+            if (sfd.ShowDialog() != true) return;
+
+            StatusText.Text = "⏳ Creating behavior…";
+            try
+            {
+                var graphName = Path.GetFileNameWithoutExtension(sfd.FileName);
+                bool asHkx = sfd.FileName.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase);
+
+                if (asHkx)
+                {
+                    var tmpXml = sfd.FileName + ".tmp.xml";
+                    BehaviorTemplateFactory.WriteMinimalBehaviorXml(graphName, graphName + "_Root", tmpXml);
+                    await _hkxConv.XmlToHkxAsync(tmpXml, sfd.FileName);
+                    File.Delete(tmpXml);
+                }
+                else
+                {
+                    BehaviorTemplateFactory.WriteMinimalBehaviorXml(graphName, graphName + "_Root", sfd.FileName);
+                }
+
+                await LoadFileAsync(sfd.FileName);
+                StatusText.Text = $"✓ New behavior created: {Path.GetFileName(sfd.FileName)}";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Could not create behavior file:\n" + ex.Message);
+                StatusText.Text = "Create failed";
+            }
+        }
 
         private async Task LoadCreatureFolderAsync(string actorRoot)
         {
@@ -2306,19 +2355,58 @@ namespace SageHavokEditor
             bool saveAsHkx = sfd.FileName.EndsWith(".hkx",
                 StringComparison.OrdinalIgnoreCase);
 
+            // Values that don't parse as their declared Havok type make the
+            // XML→HKX conversion die deep in HKX2 with a bare FormatException —
+            // catch them here with a pointable error instead. For XML the file
+            // is still writable, so offer to save anyway.
+            var typeIssues = new HavokValidator(manager).CheckParamTypes();
+            if (typeIssues.Count > 0)
+            {
+                var preview = string.Join("\n", typeIssues.Take(10)
+                    .Select(i => $"• {i.ObjectId} {i.ObjectName} ({i.ObjectClass}): {i.Description}"));
+                if (typeIssues.Count > 10) preview += $"\n… and {typeIssues.Count - 10} more";
+
+                if (saveAsHkx)
+                {
+                    MessageBox.Show(
+                        $"Can't save as HKX — {typeIssues.Count} value(s) don't match their declared Havok type, " +
+                        $"and the HKX conversion would reject them:\n\n{preview}\n\n" +
+                        "Fix the highlighted fields (red border in Object Data) and save again.",
+                        "Invalid Values", MessageBoxButton.OK, MessageBoxImage.Error);
+                    StatusText.Text = "Save cancelled — fix invalid values";
+                    return;
+                }
+
+                if (MessageBox.Show(
+                        $"{typeIssues.Count} value(s) don't match their declared Havok type:\n\n{preview}\n\n" +
+                        "They will be written to the XML as-is, and the file will fail HKX conversion " +
+                        "until they're fixed. Save anyway?",
+                        "Invalid Values", MessageBoxButton.YesNo, MessageBoxImage.Warning)
+                    != MessageBoxResult.Yes)
+                {
+                    StatusText.Text = "Save cancelled";
+                    return;
+                }
+            }
+
             StatusText.Text = saveAsHkx ? "⏳ Saving as SE HKX…" : "⏳ Saving XML…";
 
             try
             {
                 if (saveAsHkx)
                 {
-                    // Step 1 — serialize current state to a temp XML
+                    // Serialize to a temp XML, convert to SE HKX; the temp file
+                    // must not survive a failed conversion.
                     var tmpXml = sfd.FileName + ".tmp.xml";
-                    SerializeToFile(tmpXml);
-
-                    // Step 2 — convert temp XML → SE HKX binary
-                    await _hkxConv.XmlToHkxAsync(tmpXml, sfd.FileName);
-                    File.Delete(tmpXml);
+                    try
+                    {
+                        SerializeToFile(tmpXml);
+                        await _hkxConv.XmlToHkxAsync(tmpXml, sfd.FileName);
+                    }
+                    finally
+                    {
+                        if (File.Exists(tmpXml)) File.Delete(tmpXml);
+                    }
 
                     StatusText.Text = "✓ Saved as Skyrim SE HKX";
                 }
@@ -2339,10 +2427,11 @@ namespace SageHavokEditor
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
-                    $"Save failed:\n{ex.Message}\n\n" +
-                    "If saving as HKX, make sure the XML is valid Havok XML " +
-                    "(not a converted-from-LE file).",
+                var hint = saveAsHkx
+                    ? "\n\nThe XML→HKX conversion rejected the file. Run ✓ Validate for a " +
+                      "full report; a converted-from-LE source can also cause this."
+                    : "";
+                MessageBox.Show($"Save failed:\n{ex.Message}{hint}",
                     "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 StatusText.Text = "Save failed";
             }

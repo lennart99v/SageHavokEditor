@@ -23,7 +23,9 @@ namespace SageHavokEditor.UI.Converters
                 return info.Kind switch
                 {
                     HkParamKind.Bool => "bool",
-                    HkParamKind.Enum => "enum",
+                    // A pipe-joined value is a flags combination — a single-select
+                    // ComboBox can't represent it, so those edit as text.
+                    HkParamKind.Enum => s != null && s.Contains('|') ? "text" : "enum",
                     _ => "text"
                 };
 
