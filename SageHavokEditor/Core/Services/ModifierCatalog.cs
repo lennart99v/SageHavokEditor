@@ -105,6 +105,7 @@ namespace SageHavokEditor.Core.Services
             if (obj == null) return null;
 
             SanitizeNullStrings(obj);
+            HavokTypeCatalog.Annotate(obj, className);
             return obj;
         }
 

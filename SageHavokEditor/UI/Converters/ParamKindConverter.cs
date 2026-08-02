@@ -1,25 +1,38 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Windows.Data;
+using SageHavokEditor.Models;
 
 namespace SageHavokEditor.UI.Converters
 {
     /// <summary>
-    /// Classifies a Havok param value so the Object Data editor can pick a control:
-    /// "bool" for true/false toggles, "text" for everything else. Used by DataTriggers
-    /// to swap a CheckBox in for boolean params (e.g. bAnimationDriven, enable).
+    /// Classifies a Havok param so the Object Data editor can pick a control:
+    /// "bool" (CheckBox), "enum" (ComboBox), or "text" (TextBox). Takes
+    /// (Value, TypeInfo) as a MultiBinding: the declared HKX2 type decides when
+    /// known; otherwise falls back to sniffing the value for true/false, which
+    /// keeps classes outside the HKX2 type set behaving as before.
     /// </summary>
-    public class ParamKindConverter : IValueConverter
+    public class ParamKindConverter : IMultiValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
-            var s = (value as string)?.Trim();
+            var s = (values.ElementAtOrDefault(0) as string)?.Trim();
+
+            if (values.ElementAtOrDefault(1) is HkParamTypeInfo info)
+                return info.Kind switch
+                {
+                    HkParamKind.Bool => "bool",
+                    HkParamKind.Enum => "enum",
+                    _ => "text"
+                };
+
             return string.Equals(s, "true", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(s, "false", StringComparison.OrdinalIgnoreCase)
                 ? "bool" : "text";
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-            => Binding.DoNothing;
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+            => throw new NotSupportedException();
     }
 }

@@ -1464,18 +1464,61 @@
                                                              A local Visibility="Collapsed" would beat the trigger and hide it forever. -->
                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Value, Converter={StaticResource ParamKindConverter}}" Value="bool">
+                                                            <DataTrigger Value="bool">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                        <Binding Path="Value"/>
+                                                                        <Binding Path="TypeInfo"/>
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
                                                                 <Setter Property="Visibility" Value="Visible"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
                                                 </CheckBox.Style>
                                             </CheckBox>
+                                            <!-- Enum params (declared type known from HKX2) edit as a
+                                                 fixed-choice dropdown; writes back through the same Value setter. -->
+                                            <ComboBox Margin="0,2,0,0" FontSize="11"
+                                                      ItemsSource="{Binding TypeInfo.EnumChoices}"
+                                                      SelectedItem="{Binding Value, Mode=TwoWay}">
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Value="enum">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                        <Binding Path="Value"/>
+                                                                        <Binding Path="TypeInfo"/>
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+                                            </ComboBox>
                                             <Grid>
                                                 <Grid.Style>
                                                     <Style TargetType="Grid">
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Value, Converter={StaticResource ParamKindConverter}}" Value="bool">
+                                                            <DataTrigger Value="bool">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                        <Binding Path="Value"/>
+                                                                        <Binding Path="TypeInfo"/>
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Value="enum">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                        <Binding Path="Value"/>
+                                                                        <Binding Path="TypeInfo"/>
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
                                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
@@ -1502,6 +1545,12 @@
                                                                 <Setter Property="Foreground" Value="{DynamicResource AccentBlueBrush}"/>
                                                                 <Setter Property="FontWeight" Value="Bold"/>
                                                                 <Setter Property="ToolTip" Value="This is a reference — click ↗ (or Ctrl+Click) to jump to it"/>
+                                                            </DataTrigger>
+                                                            <!-- Value doesn't parse as the param's declared Havok type -->
+                                                            <DataTrigger Binding="{Binding IsValueTypeValid}" Value="False">
+                                                                <Setter Property="BorderBrush" Value="#E0534F"/>
+                                                                <Setter Property="BorderThickness" Value="1.4"/>
+                                                                <Setter Property="ToolTip" Value="{Binding TypeInfo.Hint}"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -1567,6 +1616,14 @@
                                                                                     <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                                                                                         <Setter Property="Background" Value="{DynamicResource BgInputBrush}"/>
                                                                                         <Setter Property="Foreground" Value="{DynamicResource InputTextBrush}"/>
+                                                                                        <Style.Triggers>
+                                                                                            <!-- Value doesn't parse as the param's declared Havok type -->
+                                                                                            <DataTrigger Binding="{Binding IsValueTypeValid}" Value="False">
+                                                                                                <Setter Property="BorderBrush" Value="#E0534F"/>
+                                                                                                <Setter Property="BorderThickness" Value="1.4"/>
+                                                                                                <Setter Property="ToolTip" Value="{Binding TypeInfo.Hint}"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
                                                                                     </Style>
                                                                                 </TextBox.Style>
                                                                             </TextBox>

@@ -24,6 +24,9 @@ namespace SageHavokEditor.Core
             // Recursively resolve #ID references in all params
             foreach (var obj in ObjectMap.Values)
                 ResolveParams(obj);
+
+            // Attach declared-type metadata (drives the type-aware property editor)
+            Services.HavokTypeCatalog.AnnotateAll(ObjectMap.Values);
         }
 
         private void ResolveParams(HkObject obj)

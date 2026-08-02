@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Xml.Serialization;
@@ -20,6 +21,65 @@ namespace SageHavokEditor.Models
             field = value;
             OnPropertyChanged(name);
             return true;
+        }
+    }
+
+    public enum HkParamKind { Text, Bool, Int, Real, Enum }
+
+    /// <summary>
+    /// Declared Havok type of a param, sourced from the HKX2 class definitions
+    /// (see HavokTypeCatalog). One shared instance per (class, param) — never
+    /// mutate after construction.
+    /// </summary>
+    public class HkParamTypeInfo
+    {
+        public HkParamKind Kind { get; init; }
+        public IReadOnlyList<string>? EnumChoices { get; init; }
+        /// <summary>Class of inline child hkobjects (struct members / struct arrays).</summary>
+        public string? ElementClassName { get; init; }
+        public long Min { get; init; } = long.MinValue;
+        public long Max { get; init; } = long.MaxValue;
+
+        /// <summary>
+        /// Membership test over every HKX2 enum member name. Flags fields are
+        /// declared as plain ints in HKX2 but serialize as "FLAG_A|FLAG_B", so
+        /// Int validation falls back to this. Wired up by HavokTypeCatalog.
+        /// </summary>
+        public static Func<string, bool>? KnownEnumMember { get; set; }
+
+        public string Hint => Kind switch
+        {
+            HkParamKind.Bool => "Expected: true or false",
+            HkParamKind.Int  => Min == long.MinValue
+                ? "Expected: a whole number"
+                : $"Expected: a whole number ({Min} … {Max})",
+            HkParamKind.Real => "Expected: a decimal number",
+            HkParamKind.Enum => "Expected: one of the listed values",
+            _ => ""
+        };
+
+        public bool IsValid(string? value)
+        {
+            var v = (value ?? "").Trim();
+            switch (Kind)
+            {
+                case HkParamKind.Bool:
+                    return v.Equals("true", StringComparison.OrdinalIgnoreCase)
+                        || v.Equals("false", StringComparison.OrdinalIgnoreCase);
+                case HkParamKind.Real:
+                    return double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+                case HkParamKind.Int:
+                    if (long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
+                        return n >= Min && n <= Max;
+                    return v.Length > 0 && KnownEnumMember != null &&
+                           v.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .All(t => KnownEnumMember(t));
+                case HkParamKind.Enum:
+                    // The numeric form is legal Havok XML alongside the member name.
+                    return EnumChoices == null || EnumChoices.Contains(v) || long.TryParse(v, out _);
+                default:
+                    return true;
+            }
         }
     }
 
@@ -123,9 +183,23 @@ namespace SageHavokEditor.Models
                 var old = _value;
                 _value = trimmed;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(IsValueTypeValid));
                 ValueChanged?.Invoke(this, (old, trimmed));
             }
         }
+
+        private HkParamTypeInfo? typeInfo;
+
+        /// <summary>Declared Havok type, annotated at load by HavokTypeCatalog. Null = unknown.</summary>
+        [XmlIgnore]
+        public HkParamTypeInfo? TypeInfo
+        {
+            get => typeInfo;
+            set { if (SetField(ref typeInfo, value)) OnPropertyChanged(nameof(IsValueTypeValid)); }
+        }
+
+        [XmlIgnore]
+        public bool IsValueTypeValid => typeInfo?.IsValid(Value) ?? true;
 
         public event EventHandler<(string OldValue, string NewValue)>? ValueChanged;
 
