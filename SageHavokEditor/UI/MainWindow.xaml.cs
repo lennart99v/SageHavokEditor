@@ -2099,9 +2099,15 @@ namespace SageHavokEditor
 
             param.ValueChanged += (s, args) =>
             {
-                // Keep numelements honest on every value change, including
-                // undo/redo restores (which suppress undo recording below).
-                (s as HkParam)?.ResyncNumElements();
+                // Keep the resolved-ref cache and numelements honest on every
+                // value change, including undo/redo restores (which suppress
+                // undo recording below). Order matters: re-resolve first so the
+                // recount sees the rebuilt Children.
+                if (s is HkParam sp)
+                {
+                    sp.ReresolveChildren(manager.Resolve);
+                    sp.ResyncNumElements();
+                }
 
                 if (_suppressUndoRecord || s is not HkParam p) return;
 

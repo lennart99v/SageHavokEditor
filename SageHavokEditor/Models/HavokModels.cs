@@ -232,8 +232,39 @@ namespace SageHavokEditor.Models
         public void ResyncNumElements()
         {
             if (string.IsNullOrWhiteSpace(NumElements)) return;
-            if (Strings.Count > 0 || Children.Count > 0) return;
-            NumElements = HkRefList.Tokens(_value).Length.ToString();
+            if (Strings.Count > 0) return;
+            // Inline structs are managed by dedicated editors; cached resolved
+            // refs (non-inline children) count the same as their text tokens.
+            if (Children.Any(c => string.IsNullOrEmpty(c.Id))) return;
+            NumElements = Children.Count > 0
+                ? Children.Count.ToString()
+                : HkRefList.Tokens(_value).Length.ToString();
+        }
+
+        /// <summary>
+        /// Rebuild the cached resolved-ref Children from the current text value.
+        /// The Value getter prefers the Children join whenever resolved refs are
+        /// cached there, so a text edit that only writes _value silently doesn't
+        /// stick (display and save keep showing the stale ref). Call after
+        /// interactive edits with the owning manager's resolver. If every token
+        /// resolves, the cache is rebuilt — mutating a reference must update
+        /// Children, not just Value. Otherwise (typo, "null", ref not created
+        /// yet) the cache is cleared and the typed text becomes authoritative;
+        /// the save-time broken-reference check reports any bad token.
+        /// </summary>
+        public void ReresolveChildren(Func<string, HkObject?> resolve)
+        {
+            if (Children.Count == 0) return;
+            if (Children.Any(c => string.IsNullOrEmpty(c.Id))) return;  // inline structs
+
+            var toks = HkRefList.Tokens(_value);
+            var resolved = toks.All(t => t.StartsWith("#"))
+                ? toks.Select(resolve).ToList()
+                : null;
+
+            Children.Clear();
+            if (resolved != null && resolved.Count > 0 && resolved.All(o => o != null))
+                foreach (var o in resolved) Children.Add(o!);
         }
 
         public event EventHandler<(string OldValue, string NewValue)>? ValueChanged;
