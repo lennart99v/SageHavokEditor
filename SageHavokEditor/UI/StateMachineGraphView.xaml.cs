@@ -2374,9 +2374,20 @@ namespace SageHavokEditor.UI
             HashSet<string> visited, int depth)
         {
             if (string.IsNullOrEmpty(objRef) || objRef == "null") return;
-            if (visited.Contains(objRef)) return;  // break cycles
             if (depth > 24) return;                 // safety limit
             if (!_manager.TryResolve(objRef, out var obj)) return;
+
+            // Already walked: this is a shared child (Havok graphs are DAGs —
+            // shared modifiers/clips are normal) or a cycle. Keep this parent's
+            // edge to the existing node instead of dropping it, but don't recurse.
+            if (visited.Contains(objRef))
+            {
+                var existing = nodes.FirstOrDefault(n => n.Id == obj.Id);
+                if (existing != null && parentNode != null &&
+                    !edges.Any(e => e.From == parentNode && e.To == existing))
+                    edges.Add(new GraphEdge { From = parentNode, To = existing, EventName = "" });
+                return;
+            }
 
             visited.Add(objRef);
 
