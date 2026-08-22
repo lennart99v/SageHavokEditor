@@ -20,32 +20,25 @@ namespace SageHavokEditor.Core.Validation
             string GetName(HkObject o) =>
                 o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id;
 
-            // 1. Broken references — params with #xxxx values that don't exist in ObjectMap
+            // 1. Broken references — #xxxx tokens that don't exist in ObjectMap.
+            // EnumerateRefs walks inline (anonymous) children too — transition
+            // arrays and hkRootLevelContainer.namedVariants carry their refs in
+            // nested params, not the param value.
             foreach (var obj in _manager.ObjectMap.Values)
             {
-                foreach (var param in obj.Params)
+                foreach (var (path, refId) in EnumerateRefs(obj))
                 {
-                    if (string.IsNullOrEmpty(param.Value)) continue;
-                    if (!param.Value.StartsWith("#")) continue;
-                    if (param.Value == "#0000") continue; // null ref convention
-
-                    // Split space-separated references (e.g. "states" param)
-                    var refs = param.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                        .Where(r => r.StartsWith("#"));
-
-                    foreach (var refId in refs)
+                    if (refId == "#0000") continue; // null ref convention
+                    if (!_manager.ObjectMap.ContainsKey(refId))
                     {
-                        if (!_manager.ObjectMap.ContainsKey(refId))
+                        issues.Add(new ValidationIssue
                         {
-                            issues.Add(new ValidationIssue
-                            {
-                                Severity = "Error",
-                                ObjectId = obj.Id,
-                                ObjectClass = obj.ClassName,
-                                ObjectName = GetName(obj),
-                                Description = $"Broken reference: {param.Name} → {refId} (not found)"
-                            });
-                        }
+                            Severity = "Error",
+                            ObjectId = obj.Id,
+                            ObjectClass = obj.ClassName,
+                            ObjectName = GetName(obj),
+                            Description = $"Broken reference: {path} → {refId} (not found)"
+                        });
                     }
                 }
             }
@@ -53,11 +46,8 @@ namespace SageHavokEditor.Core.Validation
             // 2. Orphaned objects — objects not referenced by anything
             var allRefs = new HashSet<string>();
             foreach (var obj in _manager.ObjectMap.Values)
-                foreach (var param in obj.Params)
-                    if (!string.IsNullOrEmpty(param.Value))
-                        foreach (var r in param.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                            .Where(r => r.StartsWith("#")))
-                            allRefs.Add(r);
+                foreach (var (_, r) in EnumerateRefs(obj))
+                    allRefs.Add(r);
 
             // Top level container is never referenced by anything — exclude it
             var topLevel = _manager.ObjectMap.Values
@@ -93,6 +83,42 @@ namespace SageHavokEditor.Core.Validation
                         ObjectClass = sm.ClassName,
                         ObjectName = GetName(sm),
                         Description = "State machine has no states"
+                    });
+                }
+            }
+
+            // 3b. startStateId that doesn't match any state — the machine has no
+            // valid start state and T-poses silently in-game. Only checked when
+            // the start state actually comes from startStateId: a chooser or a
+            // non-default startStateMode picks the start state some other way.
+            foreach (var sm in _manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachine"))
+            {
+                var statesParam = sm.Params.FirstOrDefault(p => p.Name == "states");
+                if (statesParam == null || string.IsNullOrWhiteSpace(statesParam.Value)) continue;
+
+                var chooser = sm.Params.FirstOrDefault(p => p.Name == "startStateChooser")?.Value;
+                if (!string.IsNullOrEmpty(chooser) && chooser != "null") continue;
+                var mode = sm.Params.FirstOrDefault(p => p.Name == "startStateMode")?.Value;
+                if (!string.IsNullOrEmpty(mode) && !mode.Contains("DEFAULT")) continue;
+
+                var startId = sm.Params.FirstOrDefault(p => p.Name == "startStateId")?.Value ?? "0";
+                var knownIds = HkRefList.Tokens(statesParam.Value)
+                    .Select(r => _manager.TryResolve(r, out var so) && so != null
+                        ? so.Params.FirstOrDefault(p => p.Name == "stateId")?.Value : null)
+                    .Where(id => id != null)
+                    .ToHashSet();
+
+                if (knownIds.Count > 0 && !knownIds.Contains(startId))
+                {
+                    issues.Add(new ValidationIssue
+                    {
+                        Severity = "Error",
+                        ObjectId = sm.Id,
+                        ObjectClass = sm.ClassName,
+                        ObjectName = GetName(sm),
+                        Description = $"startStateId {startId} doesn't match any state " +
+                                      $"(stateIds: {string.Join(", ", knownIds.OrderBy(x => x, StringComparer.Ordinal))})"
                     });
                 }
             }
@@ -150,8 +176,7 @@ namespace SageHavokEditor.Core.Validation
                 if (statesParam == null) continue;
 
                 var stateIds = new Dictionary<string, string>();
-                foreach (var stateRef in (statesParam.Value ?? "")
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var stateRef in HkRefList.Tokens(statesParam.Value))
                 {
                     if (!_manager.TryResolve(stateRef, out var stateObj) || stateObj == null) continue;
                     var stateId = stateObj.Params.FirstOrDefault(p => p.Name == "stateId")?.Value ?? "";
@@ -178,8 +203,7 @@ namespace SageHavokEditor.Core.Validation
                 if (smStatesParam == null) continue;
 
                 var validStateIds = new HashSet<string>();
-                foreach (var sr in (smStatesParam.Value ?? "")
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var sr in HkRefList.Tokens(smStatesParam.Value))
                 {
                     if (_manager.TryResolve(sr, out var so) && so != null)
                     {
@@ -200,8 +224,7 @@ namespace SageHavokEditor.Core.Validation
                             wildcardArrayIds.Add(wtr.GetHashCode().ToString());
                 }
 
-                foreach (var sr in (smStatesParam.Value ?? "")
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var sr in HkRefList.Tokens(smStatesParam.Value))
                 {
                     if (!_manager.TryResolve(sr, out var stateObj) || stateObj == null) continue;
                     var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
@@ -329,5 +352,33 @@ namespace SageHavokEditor.Core.Validation
 
         private static string Truncate(string? v) =>
             (v ?? "").Length <= 40 ? v ?? "" : v!.Substring(0, 37) + "…";
+
+        /// <summary>
+        /// Every #ref token in an object, with its param path — including refs
+        /// inside inline (anonymous) child structs, which top-level-only scans
+        /// miss (transition arrays, hkRootLevelContainer.namedVariants).
+        /// </summary>
+        private static IEnumerable<(string Path, string RefId)> EnumerateRefs(HkObject obj)
+        {
+            foreach (var (path, param) in EnumerateParams(obj))
+                foreach (var tok in HkRefList.Tokens(param.Value))
+                    if (tok.StartsWith("#"))
+                        yield return (path, tok);
+        }
+
+        private static IEnumerable<(string Path, HkParam Param)> EnumerateParams(HkObject obj)
+        {
+            foreach (var p in obj.Params)
+            {
+                yield return (p.Name, p);
+                for (int i = 0; i < p.Children.Count; i++)
+                {
+                    var c = p.Children[i];
+                    if (!string.IsNullOrEmpty(c.Id)) continue;  // cached resolved ref, not inline
+                    foreach (var (subPath, sp) in EnumerateParams(c))
+                        yield return ($"{p.Name}[{i}].{subPath}", sp);
+                }
+            }
+        }
     }
 }
