@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -20,6 +20,8 @@ namespace SageHavokEditor.Core
         public string OriginalPath { get; set; } = "";
         public string HkxPath { get; set; } = "";
         public bool WasHkx { get; set; }
+        /// <summary>Pointer size of the source binary (LE vs SE).</summary>
+        public HkxPlatform Platform { get; set; } = HkxPlatform.Unknown;
         public HkFileType FileType { get; set; }
         public HavokManager? Manager { get; set; }
         public string DisplayName =>
@@ -93,6 +95,7 @@ namespace SageHavokEditor.Core
         private async Task<HkLoadedFile> LoadHkFileAsync(string path)
         {
             string xmlPath; bool wasHkx = false; string hkxPath = path;
+            var platform = HkxPlatform.Unknown;
 
             var fmt = HkxConversionService.DetectFormat(path);
             if (fmt == HkxFormat.HKX)
@@ -101,6 +104,7 @@ namespace SageHavokEditor.Core
                 if (!result.Success || result.XmlPath == null)
                     throw new Exception($"HKX conversion failed for {Path.GetFileName(path)}:\n{result.Error}");
                 xmlPath = result.XmlPath;
+                platform = result.Platform;
                 wasHkx = true;
             }
             else { xmlPath = path; }
@@ -118,6 +122,7 @@ namespace SageHavokEditor.Core
                 OriginalPath = path,
                 HkxPath = hkxPath,
                 WasHkx = wasHkx,
+                Platform = platform,
                 FileType = DetectType(mgr),
                 Manager = mgr
             };

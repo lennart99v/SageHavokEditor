@@ -127,7 +127,13 @@
                     <Button Content="🔭 Search All" Click="BtnGlobalSearch_Click"
                             ToolTip="Search everything — events, states, clips, variables, objects (Ctrl+G). Supports prefixes: event:  state:  clip:  var:  obj:"
                             Margin="0,0,5,0"/>
+                    <Button Content="🔗 Event Xref" Click="BtnEventXref_Click"
+                            ToolTip="Cross-reference every event: what listens to it, what sends it, and which events are unused"
+                            Margin="0,0,5,0"/>
                     <Button Content="⇄ Compare" Click="BtnCompare_Click" Margin="0,0,5,0"/>
+                    <Button Content="🔄 LE ⇄ SE" Click="BtnConvertEdition_Click"
+                            ToolTip="Convert .hkx files between Skyrim LE (32-bit) and Skyrim SE (64-bit). Works on one file or a whole folder; content is preserved exactly."
+                            Margin="0,0,5,0"/>
                     <Button x:Name="BtnDebugger" Content="🎮 Live Debug"
                             Click="BtnDebugger_Click" Padding="8,4" Margin="4,0"/>
                     <Button Content="📦 Patch" Click="BtnGeneratePatch_Click" Margin="0,0,2,0"/>
@@ -727,15 +733,37 @@
                                                                         <DataTrigger Binding="{Binding UsageType}" Value="Property">
                                                                             <Setter Property="Background" Value="#3A2A00"/>
                                                                         </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding UsageType}" Value="Notify">
+                                                                            <Setter Property="Background" Value="#5C2A1A"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding UsageType}" Value="Interval">
+                                                                            <Setter Property="Background" Value="#1A4A4A"/>
+                                                                        </DataTrigger>
                                                                     </Style.Triggers>
                                                                 </Style>
                                                             </Border.Style>
                                                             <TextBlock Text="{Binding UsageType}" FontSize="10" FontWeight="SemiBold"
                                                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
                                                         </Border>
+                                                        <TextBlock VerticalAlignment="Center" Margin="0,0,6,0" FontSize="10"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Text" Value=""/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Direction}" Value="Listens">
+                                                                            <Setter Property="Text" Value="◀ listens"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Direction}" Value="Sends">
+                                                                            <Setter Property="Text" Value="▶ sends"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
                                                         <TextBlock Text="{Binding Description}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                                     </StackPanel>
-                                                    <TextBlock Grid.Row="1" Text="{Binding ClassName}"
+                                                    <TextBlock Grid.Row="1" Text="{Binding SubText}"
                                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                                FontSize="10" Margin="0,1,0,0"/>
                                                 </Grid>
@@ -1683,6 +1711,13 @@
                         <TextBlock Text="📄 " FontSize="11" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding Stats.FileName}" FontSize="11" FontWeight="SemiBold"
                                    Foreground="{DynamicResource AccentBlueBrush}" VerticalAlignment="Center"/>
+                        <!-- Which edition's layout this file came from, so it is
+                             never ambiguous which one Save will write back. -->
+                        <TextBlock Text="{Binding Stats.PlatformLabel}" FontSize="11"
+                                   Margin="8,0,0,0"
+                                   ToolTip="Pointer size of the .hkx this was opened from. Save defaults to the same edition; use the LE ⇄ SE button to convert."
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock Grid.Column="1" Text="{Binding Stats.Summary}" FontSize="11"
                                Foreground="{DynamicResource TextSecondaryBrush}"

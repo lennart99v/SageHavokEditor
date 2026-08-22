@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-service-test</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile the real service, not a copy, so this exercises the same code
+         path the editor's Open/Save/Convert commands use. -->
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
+    <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
+  </ItemGroup>
+
+</Project>

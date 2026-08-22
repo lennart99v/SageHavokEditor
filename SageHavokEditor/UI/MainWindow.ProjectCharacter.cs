@@ -1,4 +1,4 @@
-// ── Add this to MainWindow.cs ─────────────────────────────────────────────────
+﻿// ── Add this to MainWindow.cs ─────────────────────────────────────────────────
 // This is a partial class addition — put it in MainWindow.ProjectCharacter.cs
 // or append to the bottom of MainWindow.cs inside the class body.
 
@@ -34,6 +34,10 @@ namespace SageHavokEditor
 
             _sourceWasHkx = file.WasHkx;
             _originalHkxPath = file.HkxPath;
+            _sourcePlatform = file.Platform;
+            Stats.PlatformLabel = file.Platform == HkxPlatform.Unknown
+                ? string.Empty
+                : file.Platform.DisplayName();
 
             // Run the full existing pipeline
             _validator = new SageHavokEditor.Core.Validation.HavokValidator(manager);

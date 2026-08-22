@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -212,6 +212,9 @@ namespace SageHavokEditor
         private readonly HkxConversionService _hkxConv = new();
         private bool _sourceWasHkx = false;
         private string? _originalHkxPath = null;
+        // Pointer size the file was opened from, so Save defaults back to
+        // the same edition the user loaded.
+        private HkxPlatform _sourcePlatform = HkxPlatform.Unknown;
 
         private bool _debuggerRunning = false;
         private readonly YamlBehaviorImporter _yamlImporter = new();
@@ -821,16 +824,16 @@ namespace SageHavokEditor
                         LoadProjectIntoUI();
                         if (Workspace.ActiveBehavior != null)
                             LoadBehaviorIntoApp(Workspace.BehaviorFile!);
-                        StatusText.Text = "✓ Project loaded";
+                        StatusText.Text = $"✓ Project loaded{FormatSuffix()}";
                         break;
                     case HkFileType.Character:
                         LoadCharacterIntoUI();
-                        StatusText.Text = "✓ Character loaded";
+                        StatusText.Text = $"✓ Character loaded{FormatSuffix()}";
                         break;
                     case HkFileType.Behavior:
                     default:
                         LoadBehaviorIntoApp(Workspace.BehaviorFile!);
-                        StatusText.Text = "✓ Behavior loaded";
+                        StatusText.Text = $"✓ Behavior loaded{FormatSuffix()}";
                         break;
                 }
 
@@ -846,6 +849,13 @@ namespace SageHavokEditor
                 BtnLoad.IsEnabled = true;
             }
         }
+        /// <summary>" — Skyrim LE (32-bit)" etc., so the edition being edited
+        /// is never ambiguous. Empty for files opened from Havok XML.</summary>
+        private string FormatSuffix() =>
+            _sourcePlatform == HkxPlatform.Unknown
+                ? string.Empty
+                : $" — {_sourcePlatform.DisplayName()}";
+
         private async Task LoadYamlFolderAsync(string folderPath)
         {
             StatusText.Text = "⏳ Loading YAML behavior…";
@@ -894,6 +904,8 @@ namespace SageHavokEditor
 
                 _sourceWasHkx = false;
                 _originalHkxPath = null;
+                _sourcePlatform = HkxPlatform.Unknown;
+                Stats.PlatformLabel = string.Empty;
 
                 AddRecentFile(folderPath);
 
@@ -1184,29 +1196,25 @@ namespace SageHavokEditor
             // ------------------------
             TransitionList.Clear();
 
-            var stateIdToName = new Dictionary<string, string>();
-            foreach (var stateObj in manager.ObjectMap.Values
-                .Where(o => o.ClassName == "hkbStateMachineStateInfo"))
-            {
-                var stateId = stateObj.Params.FirstOrDefault(p => p.Name == "stateId")?.Value ?? "";
-                var stateName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
-                if (!string.IsNullOrEmpty(stateId) && !stateIdToName.ContainsKey(stateId))
-                    stateIdToName[stateId] = stateName;
-            }
-
-            foreach (var stateObj in manager.ObjectMap.Values
-                .Where(o => o.ClassName == "hkbStateMachineStateInfo"))
+            // Walk machine by machine. A stateId is unique only within its own state
+            // machine — the same number is reused across machines — so a destination has
+            // to be resolved against the states of the machine that owns the transition.
+            // Resolving through one global stateId→name map names the same-numbered state
+            // from an unrelated machine, so a transition silently claims to lead somewhere
+            // it never goes.
+            void AddTransitionRows(HkObject stateObj, HkObject? ownerSm,
+                                   Dictionary<string, HkObject>? scopedStates)
             {
                 var fromName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
                 var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
 
-                if (string.IsNullOrEmpty(transRef) || transRef == "null") continue;
-                if (!manager.TryResolve(transRef, out var transArrayObj)) continue;
+                if (string.IsNullOrEmpty(transRef) || transRef == "null") return;
+                if (!manager.TryResolve(transRef, out var transArrayObj) || transArrayObj == null) return;
 
                 // transArrayObj is hkbStateMachineTransitionInfoArray
                 // its "transitions" hkparam holds inline <hkobject> children
                 var transitionsParam = transArrayObj.Params.FirstOrDefault(p => p.Name == "transitions");
-                if (transitionsParam?.Children == null || transitionsParam.Children.Count == 0) continue;
+                if (transitionsParam?.Children == null || transitionsParam.Children.Count == 0) return;
 
                 foreach (var tr in transitionsParam.Children)
                 {
@@ -1220,12 +1228,14 @@ namespace SageHavokEditor
                     // blend duration lives inside the transition effect object
                     var blendDuration = "";
                     if (!string.IsNullOrEmpty(effect) && effect != "null"
-                        && manager.TryResolve(effect, out var effectObj))
+                        && manager.TryResolve(effect, out var effectObj) && effectObj != null)
                     {
                         blendDuration = effectObj.Params.FirstOrDefault(p => p.Name == "duration")?.Value ?? "";
                     }
 
-                    stateIdToName.TryGetValue(toStateId, out var toName);
+                    string? toName = null;
+                    if (scopedStates != null && scopedStates.TryGetValue(toStateId, out var toStateObj))
+                        toName = toStateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? toStateObj.Id;
 
                     TransitionList.Add(new TransitionInfo
                     {
@@ -1235,9 +1245,36 @@ namespace SageHavokEditor
                         EventName = _eventResolver.Name(eventId),
                         BlendDuration = blendDuration,
                         Flags = flags,
-                        TransitionEffect = effect
+                        TransitionEffect = effect,
+                        Source = tr,
+                        OwnerStateMachine = ownerSm
                     });
                 }
+            }
+
+            var emittedStates = new HashSet<string>();
+            foreach (var smObj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachine"))
+            {
+                var scopedStates = EventCrossReference.ResolveStates(manager, smObj);
+                var statesRef = smObj.Params.FirstOrDefault(p => p.Name == "states")?.Value;
+
+                foreach (var sref in HkRefList.Tokens(statesRef))
+                {
+                    if (!manager.TryResolve(sref, out var stateObj) || stateObj == null) continue;
+                    if (!emittedStates.Add(stateObj.Id)) continue; // shared state: first owner wins
+                    AddTransitionRows(stateObj, smObj, scopedStates);
+                }
+            }
+
+            // States that no machine lists — orphans left behind by an edit. Their rows
+            // still belong in the tab, but with no owning machine there is nothing to
+            // resolve the destination against, so it stays a raw id rather than a guess.
+            foreach (var stateObj in manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachineStateInfo"))
+            {
+                if (emittedStates.Contains(stateObj.Id)) continue;
+                AddTransitionRows(stateObj, null, null);
             }
 
             // ------------------------
@@ -1959,31 +1996,6 @@ namespace SageHavokEditor
                 StatusText.Text = $"✓ Patch applied — {dialog.LastResult.AppliedCount} ops";
             }
         }
-        private void AddTransition(HkObject tr, string fromName,
-    Dictionary<string, string> stateIdToName)
-        {
-            string Get(string n) => tr.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
-
-            var toStateId = Get("toStateId");
-            var eventId = Get("eventId");
-            var blend = Get("duration");
-            var flags = Get("flags");
-            var effect = Get("transition");
-
-            stateIdToName.TryGetValue(toStateId, out var toName);
-
-            TransitionList.Add(new TransitionInfo
-            {
-                FromState = fromName,
-                ToState = toName ?? $"ID:{toStateId}",
-                EventId = eventId,
-                EventName = _eventResolver.Name(eventId),
-                BlendDuration = blend,
-                Flags = flags,
-                TransitionEffect = effect
-            });
-        }
-
         private void ObjectTree_SelectedItemChanged(object sender,
     RoutedPropertyChangedEventArgs<object> e)
         {
@@ -2458,10 +2470,18 @@ namespace SageHavokEditor
         {
             if (manager?.ObjectMap == null || manager.ObjectMap.Count == 0) return;
 
-            // Default to saving in the same format as the source
-            string defaultFilter = _sourceWasHkx
-                ? "Skyrim SE HKX (64-bit)|*.hkx|Havok XML|*.xml"
-                : "Havok XML|*.xml|Skyrim SE HKX (64-bit)|*.hkx";
+            // Default to saving in the same format AND edition as the source.
+            // The filter index picked in the dialog decides LE vs SE, so both
+            // are always offered; only their order changes.
+            const string seFilter = "Skyrim SE HKX (64-bit)|*.hkx";
+            const string leFilter = "Skyrim LE HKX (32-bit)|*.hkx";
+            const string xmlFilter = "Havok XML|*.xml";
+
+            string defaultFilter =
+                !_sourceWasHkx ? $"{xmlFilter}|{seFilter}|{leFilter}"
+                : _sourcePlatform == HkxPlatform.SkyrimLE
+                    ? $"{leFilter}|{seFilter}|{xmlFilter}"
+                    : $"{seFilter}|{leFilter}|{xmlFilter}";
 
             string defaultName = _sourceWasHkx
     ? Path.GetFileNameWithoutExtension(_originalHkxPath)
@@ -2481,6 +2501,16 @@ namespace SageHavokEditor
             bool saveAsHkx = sfd.FileName.EndsWith(".hkx",
                 StringComparison.OrdinalIgnoreCase);
 
+            // FilterIndex is 1-based over defaultFilter's entries; work out which
+            // edition the chosen entry names.
+            var chosenFilter = defaultFilter.Split('|');
+            var chosenLabel = chosenFilter[Math.Clamp((sfd.FilterIndex - 1) * 2, 0,
+                                                      chosenFilter.Length - 1)];
+            var targetPlatform = chosenLabel.Contains("32-bit")
+                ? HkxPlatform.SkyrimLE
+                : HkxPlatform.SkyrimSE;
+            var editionName = targetPlatform == HkxPlatform.SkyrimLE ? "LE" : "SE";
+
             // Values that don't parse as their declared Havok type make the
             // XML→HKX conversion die deep in HKX2 with a bare FormatException —
             // catch them here with a pointable error instead. For XML the file
@@ -2495,7 +2525,7 @@ namespace SageHavokEditor
                 if (saveAsHkx)
                 {
                     MessageBox.Show(
-                        $"Can't save as HKX — {typeIssues.Count} value(s) don't match their declared Havok type, " +
+                        $"Can't save as {editionName} HKX — {typeIssues.Count} value(s) don't match their declared Havok type, " +
                         $"and the HKX conversion would reject them:\n\n{preview}\n\n" +
                         "Fix the highlighted fields (red border in Object Data) and save again.",
                         "Invalid Values", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -2515,26 +2545,29 @@ namespace SageHavokEditor
                 }
             }
 
-            StatusText.Text = saveAsHkx ? "⏳ Saving as SE HKX…" : "⏳ Saving XML…";
+            StatusText.Text = saveAsHkx
+                ? $"⏳ Saving as {editionName} HKX…"
+                : "⏳ Saving XML…";
 
             try
             {
                 if (saveAsHkx)
                 {
-                    // Serialize to a temp XML, convert to SE HKX; the temp file
-                    // must not survive a failed conversion.
+                    // Serialize to a temp XML, convert to the chosen edition's
+                    // HKX; the temp file must not survive a failed conversion.
                     var tmpXml = sfd.FileName + ".tmp.xml";
                     try
                     {
                         SerializeToFile(tmpXml);
-                        await _hkxConv.XmlToHkxAsync(tmpXml, sfd.FileName);
+                        await _hkxConv.XmlToHkxAsync(tmpXml, sfd.FileName,
+                                                     targetPlatform);
                     }
                     finally
                     {
                         if (File.Exists(tmpXml)) File.Delete(tmpXml);
                     }
 
-                    StatusText.Text = "✓ Saved as Skyrim SE HKX";
+                    StatusText.Text = $"✓ Saved as {targetPlatform.DisplayName()} HKX";
                 }
                 else
                 {
@@ -2547,6 +2580,8 @@ namespace SageHavokEditor
                 {
                     _sourceWasHkx = true;
                     _originalHkxPath = sfd.FileName;
+                    _sourcePlatform = targetPlatform;
+                    Stats.PlatformLabel = targetPlatform.DisplayName();
                 }
 
                 StatusText.Text = $"✓ Saved: {Path.GetFileName(sfd.FileName)}";
@@ -2766,6 +2801,150 @@ namespace SageHavokEditor
             }
         }
 
+        // ── LE ⇄ SE conversion ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Converts .hkx files between Skyrim LE (32-bit) and SE (64-bit).
+        /// Both editions use the same Havok schema, so this is a pure repack:
+        /// the behaviour graph is preserved exactly.
+        /// </summary>
+        private async void BtnConvertEdition_Click(object sender, RoutedEventArgs e)
+        {
+            var menu = new ContextMenu();
+
+            var oneFile = new MenuItem { Header = "📄 Convert a single .hkx…" };
+            oneFile.Click += async (_, __) => await ConvertEditionAsync(folder: false);
+
+            var folder = new MenuItem { Header = "📂 Convert a whole folder (recursive)…" };
+            folder.Click += async (_, __) => await ConvertEditionAsync(folder: true);
+
+            menu.Items.Add(oneFile);
+            menu.Items.Add(folder);
+            menu.PlacementTarget = sender as Button;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+            await Task.CompletedTask;
+        }
+
+        private async Task ConvertEditionAsync(bool folder)
+        {
+            var files = new List<string>();
+            string? rootDir;
+
+            if (folder)
+            {
+                var pick = new Microsoft.Win32.SaveFileDialog
+                {
+                    Title = "Navigate into the folder to convert, then click Save",
+                    FileName = "navigate_to_folder_then_click_save",
+                    Filter = "Any|*.*",
+                    CheckFileExists = false,
+                    CheckPathExists = false
+                };
+                if (pick.ShowDialog() != true) return;
+                rootDir = Path.GetDirectoryName(pick.FileName);
+                if (rootDir == null) return;
+                files.AddRange(Directory.EnumerateFiles(rootDir, "*.hkx",
+                    SearchOption.AllDirectories));
+                if (files.Count == 0)
+                {
+                    MessageBox.Show("No .hkx files found in that folder.",
+                        "Nothing to convert", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+            }
+            else
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "Choose the .hkx file to convert",
+                    Filter = "Skyrim HKX|*.hkx|All files|*.*",
+                    Multiselect = true
+                };
+                if (dlg.ShowDialog() != true) return;
+                files.AddRange(dlg.FileNames);
+                rootDir = Path.GetDirectoryName(files[0]);
+            }
+
+            // Report what we found so the direction choice is informed.
+            var le = files.Count(f => HkxConversionService.DetectPlatform(f) == HkxPlatform.SkyrimLE);
+            var se = files.Count(f => HkxConversionService.DetectPlatform(f) == HkxPlatform.SkyrimSE);
+
+            var target = AskConversionTarget(files.Count, le, se);
+            if (target == HkxPlatform.Unknown) return;
+
+            // Never write over the originals — convert into a sibling folder.
+            var outRoot = Path.Combine(rootDir ?? "",
+                target == HkxPlatform.SkyrimLE ? "converted_LE" : "converted_SE");
+
+            StatusText.Text = $"⏳ Converting {files.Count} file(s) to {target.DisplayName()}…";
+
+            var ok = 0;
+            var skipped = 0;
+            var errors = new List<string>();
+
+            foreach (var src in files)
+            {
+                var platform = HkxConversionService.DetectPlatform(src);
+                if (platform == HkxPlatform.Unknown)
+                {
+                    errors.Add($"{Path.GetFileName(src)}: not a Havok packfile");
+                    continue;
+                }
+                if (platform == target) { skipped++; continue; }
+
+                var rel = rootDir != null && src.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetRelativePath(rootDir, src)
+                    : Path.GetFileName(src);
+                var dst = Path.Combine(outRoot, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+
+                var result = await _hkxConv.ConvertAsync(src, dst, target);
+                if (result.Success) ok++;
+                else errors.Add($"{Path.GetFileName(src)}: {result.Error}");
+            }
+
+            StatusText.Text = $"✓ Converted {ok} file(s) to {target.DisplayName()}";
+
+            var summary = $"Converted {ok} file(s) to {target.DisplayName()}.\n\n" +
+                          $"Written to:\n{outRoot}";
+            if (skipped > 0)
+                summary += $"\n\nSkipped {skipped} file(s) already in that format.";
+            if (errors.Count > 0)
+            {
+                summary += $"\n\n{errors.Count} failed:\n  " +
+                           string.Join("\n  ", errors.Take(10));
+                if (errors.Count > 10) summary += $"\n  … and {errors.Count - 10} more";
+            }
+
+            MessageBox.Show(summary, "LE ⇄ SE Conversion", MessageBoxButton.OK,
+                errors.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+
+        /// <summary>Asks which edition to convert to, defaulting to the opposite
+        /// of whatever the selection mostly contains.</summary>
+        private static HkxPlatform AskConversionTarget(int total, int le, int se)
+        {
+            var detail = $"{total} .hkx file(s): {le} Skyrim LE (32-bit), {se} Skyrim SE (64-bit)";
+            var answer = MessageBox.Show(
+                $"{detail}\n\n" +
+                "Yes  →  convert to Skyrim SE (64-bit)\n" +
+                "No   →  convert to Skyrim LE (32-bit)\n" +
+                "Cancel  →  do nothing\n\n" +
+                "Originals are never modified; results go to a converted_SE / converted_LE " +
+                "folder alongside them.",
+                "Convert between editions",
+                MessageBoxButton.YesNoCancel, MessageBoxImage.Question,
+                le >= se ? MessageBoxResult.Yes : MessageBoxResult.No);
+
+            return answer switch
+            {
+                MessageBoxResult.Yes => HkxPlatform.SkyrimSE,
+                MessageBoxResult.No => HkxPlatform.SkyrimLE,
+                _ => HkxPlatform.Unknown,
+            };
+        }
+
         private void BtnCompare_Click(object sender, RoutedEventArgs e)
         {
             if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
@@ -2959,167 +3138,13 @@ namespace SageHavokEditor
             }
         }
 
-        /// <summary>
-        /// Builds a stateId → state-object map for one state machine. stateIds are only
-        /// unique within a machine (they repeat across machines), so transition targets
-        /// must be resolved through this per-SM map, never a global <c>ObjectMap</c> scan.
-        /// </summary>
-        private Dictionary<string, HkObject> ResolveStates(HkObject stateMachine)
-        {
-            var map = new Dictionary<string, HkObject>();
-            var statesRef = stateMachine.Params.FirstOrDefault(p => p.Name == "states")?.Value;
-            if (string.IsNullOrEmpty(statesRef) || statesRef == "null") return map;
-            foreach (var sref in statesRef.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (!manager.TryResolve(sref, out var st)) continue;
-                var sid = st.Params.FirstOrDefault(p => p.Name == "stateId")?.Value;
-                if (!string.IsNullOrEmpty(sid)) map.TryAdd(sid, st); // first wins on the rare duplicate
-            }
-            return map;
-        }
-
         private void RefreshEventUsages(IdNamePair ev)
         {
             EventUsageList.Clear();
             if (ev == null) return;
 
-            var eventIndex = ev.Id; // "0", "1", "18" etc.
-
-            // ── Transitions ───────────────────────────────────────────────
-            // Resolve each transition's destination WITHIN its owning state machine.
-            // stateIds are only unique per-SM (they repeat across machines), so a global
-            // "first state with this stateId" scan could name — and later jump to — the
-            // same-numbered state in the wrong machine (the H2HBash "wrong turn" bug).
-            foreach (var sm in manager.ObjectMap.Values
-                .Where(o => o.ClassName == "hkbStateMachine"))
-            {
-                var smStates = ResolveStates(sm); // stateId -> stateObj, scoped to this SM
-
-                foreach (var stateObj in smStates.Values)
-                {
-                    var fromName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;
-                    var transRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
-                    if (string.IsNullOrEmpty(transRef) || transRef == "null") continue;
-                    if (!manager.TryResolve(transRef, out var transArray)) continue;
-
-                    var tp = transArray.Params.FirstOrDefault(p => p.Name == "transitions");
-                    if (tp?.Children == null) continue;
-
-                    foreach (var tr in tp.Children)
-                    {
-                        var trEventId = tr.Params.FirstOrDefault(p => p.Name == "eventId")?.Value;
-                        if (trEventId != eventIndex) continue;
-
-                        var toStateId = tr.Params.FirstOrDefault(p => p.Name == "toStateId")?.Value ?? "";
-                        smStates.TryGetValue(toStateId, out var toStateObj);
-                        var toName = toStateObj?.Params.FirstOrDefault(p => p.Name == "name")?.Value
-                                     ?? $"stateId:{toStateId}";
-
-                        EventUsageList.Add(new EventUsageEntry
-                        {
-                            UsageType = "Transition",
-                            Description = $"{fromName}  →  {toName}",
-                            ObjectId = stateObj.Id,
-                            ClassName = "hkbStateMachineStateInfo",
-                            EventId = eventIndex,
-                            ToStateObjectId = toStateObj?.Id ?? ""
-                        });
-                    }
-                }
-            }
-
-            // ── Wildcard transitions ──────────────────────────────────────
-            foreach (var sm in manager.ObjectMap.Values
-                .Where(o => o.ClassName == "hkbStateMachine"))
-            {
-                var wcRef = sm.Params.FirstOrDefault(p => p.Name == "wildcardTransitions")?.Value;
-                if (string.IsNullOrEmpty(wcRef) || wcRef == "null") continue;
-                if (!manager.TryResolve(wcRef, out var wcArray)) continue;
-
-                var wtp = wcArray.Params.FirstOrDefault(p => p.Name == "transitions");
-                if (wtp?.Children == null) continue;
-
-                var smName = sm.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? sm.Id;
-                var smStates = ResolveStates(sm); // stateId -> stateObj, scoped to this SM
-
-                foreach (var tr in wtp.Children)
-                {
-                    var trEventId = tr.Params.FirstOrDefault(p => p.Name == "eventId")?.Value;
-                    if (trEventId != eventIndex) continue;
-
-                    var toStateId = tr.Params.FirstOrDefault(p => p.Name == "toStateId")?.Value ?? "";
-                    smStates.TryGetValue(toStateId, out var toStateObj);
-                    var toName = toStateObj?.Params.FirstOrDefault(p => p.Name == "name")?.Value
-                                 ?? $"stateId:{toStateId}";
-
-                    EventUsageList.Add(new EventUsageEntry
-                    {
-                        UsageType = "Wildcard",
-                        Description = $"★ {smName}  →  {toName}",
-                        ObjectId = sm.Id,
-                        ClassName = "hkbStateMachine",
-                        EventId = eventIndex,
-                        ToStateObjectId = toStateObj?.Id ?? ""
-                    });
-                }
-            }
-
-            // ── Clip triggers ─────────────────────────────────────────────
-            foreach (var clipObj in manager.ObjectMap.Values
-                .Where(o => o.ClassName == "hkbClipGenerator"))
-            {
-                var clipName = clipObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? clipObj.Id;
-                var trigRef = clipObj.Params.FirstOrDefault(p => p.Name == "triggers")?.Value;
-                if (string.IsNullOrEmpty(trigRef) || trigRef == "null") continue;
-                if (!manager.TryResolve(trigRef, out var trigArray)) continue;
-
-                var tp = trigArray.Params.FirstOrDefault(p => p.Name == "triggers");
-                if (tp?.Children == null) continue;
-
-                foreach (var tr in tp.Children)
-                {
-                    var eventParam = tr.Params.FirstOrDefault(p => p.Name == "event");
-                    if (eventParam?.Children?.Count == 0) continue;
-                    var triggerId = eventParam?.Children?[0].Params
-                        .FirstOrDefault(p => p.Name == "id")?.Value;
-                    if (triggerId != eventIndex) continue;
-
-                    var localTime = tr.Params.FirstOrDefault(p => p.Name == "localTime")?.Value ?? "?";
-                    EventUsageList.Add(new EventUsageEntry
-                    {
-                        UsageType = "Trigger",
-                        Description = $"{clipName}  at t={localTime}",
-                        ObjectId = clipObj.Id,
-                        ClassName = "hkbClipGenerator"
-                    });
-                }
-            }
-
-            // ── Generic param scan (enterEventId, exitEventId, etc.) ──────
-            var eventParamNames = new HashSet<string>
-    {
-        "enterEventId", "exitEventId", "returnToPreviousStateEvent",
-        "randomTransitionEventId", "transitionToNextHigherStateEventId",
-        "transitionToNextLowerStateEventId", "syncVariableIndex"
-    };
-
-            foreach (var obj in manager.ObjectMap.Values)
-            {
-                var objName = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? obj.Id;
-                foreach (var param in obj.Params)
-                {
-                    if (!eventParamNames.Contains(param.Name)) continue;
-                    if (param.Value != eventIndex) continue;
-
-                    EventUsageList.Add(new EventUsageEntry
-                    {
-                        UsageType = "Property",
-                        Description = $"{objName}  [{param.Name}]",
-                        ObjectId = obj.Id,
-                        ClassName = obj.ClassName
-                    });
-                }
-            }
+            foreach (var usage in EventCrossReference.Find(manager, ev.Id))
+                EventUsageList.Add(usage);
 
             if (EventUsageList.Count == 0)
                 EventUsageList.Add(new EventUsageEntry
@@ -3194,47 +3219,109 @@ namespace SageHavokEditor
                 foreach (var b in flagBadges) TransitionDetailList.Add(b);
             }
 
-            if (string.IsNullOrEmpty(tr.TransitionEffect) || tr.TransitionEffect == "null")
-                return;
-
-            if (!manager.TryResolve(tr.TransitionEffect, out var effectObj)) return;
+            // ── Routing (lives on the transition, not on its effect) ──────
+            // toNestedStateId is how two transitions with the same destination state
+            // still land on different sub-branches — the mechanism behind, say, a
+            // dragon's breath vs fireball shout. Showing the raw number alone is
+            // near-useless, so resolve it to the nested state's name.
+            AddNestedStateRows(tr);
 
             // ── Transition effect details ─────────────────────────────────
-            string Get(string n) => effectObj.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+            // hkbBlendingTransitionEffect carries only these four; everything else the
+            // panel shows comes off the transition itself. A transition with no effect
+            // still has routing, a condition and intervals, so this section is optional
+            // while the ones after it are not.
+            if (!string.IsNullOrEmpty(tr.TransitionEffect) && tr.TransitionEffect != "null"
+                && manager.TryResolve(tr.TransitionEffect, out var effectObj) && effectObj != null)
+            {
+                string Get(string n) => effectObj.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
 
-            TransitionDetailList.Add(new TransitionDetail { Label = "──", Value = "Blend & effect" });
+                var rows = new (string Label, string Value)[]
+                {
+                    ("Blend Duration",        Get("duration")),
+                    ("Blend Curve",           Get("blendCurve")),
+                    ("Target Start Fraction", Get("toGeneratorStartTimeFraction")),
+                    ("End Mode",              Get("endMode")),
+                }.Where(r => !string.IsNullOrEmpty(r.Value)).ToList();
 
-            var duration = Get("duration");
-            var blendCurve = Get("blendCurve");
-            var syncPoint = Get("syncPoint");
+                if (rows.Count > 0)
+                {
+                    TransitionDetailList.Add(new TransitionDetail { Label = "──", Value = "Blend & effect" });
+                    foreach (var r in rows)
+                        TransitionDetailList.Add(new TransitionDetail { Label = r.Label, Value = r.Value });
+                }
+            }
+
+            AddConditionRows(tr);
+            AddIntervalRows(tr);
+        }
+
+        /// <summary>
+        /// Priority plus the nested-state routing, resolved to names where possible.
+        /// </summary>
+        private void AddNestedStateRows(TransitionInfo tr)
+        {
+            var src = tr.Source;
+            if (src == null) return;
+
+            string Get(string n) => src.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+
             var toNestedSt = Get("toNestedStateId");
             var fromNestedSt = Get("fromNestedStateId");
             var priority = Get("priority");
-            var initSyncPt = Get("initiateInterval");
 
-            if (!string.IsNullOrEmpty(duration))
+            bool HasNested(string v) => !string.IsNullOrEmpty(v) && v != "-1" && v != "0";
+            if (!HasNested(toNestedSt) && !HasNested(fromNestedSt) &&
+                (string.IsNullOrEmpty(priority) || priority == "0"))
+                return;
+
+            TransitionDetailList.Add(new TransitionDetail { Label = "──", Value = "Routing" });
+
+            if (HasNested(toNestedSt))
+            {
+                var (label, objId) = ResolveNestedState(tr, toNestedSt);
                 TransitionDetailList.Add(new TransitionDetail
-                { Label = "Blend Duration", Value = duration });
-            if (!string.IsNullOrEmpty(blendCurve))
-                TransitionDetailList.Add(new TransitionDetail
-                { Label = "Blend Curve", Value = blendCurve });
-            if (!string.IsNullOrEmpty(syncPoint))
-                TransitionDetailList.Add(new TransitionDetail
-                { Label = "Sync Point", Value = syncPoint });
-            if (toNestedSt != "0" && !string.IsNullOrEmpty(toNestedSt))
-                TransitionDetailList.Add(new TransitionDetail
-                { Label = "To Nested State", Value = toNestedSt });
-            if (fromNestedSt != "0" && !string.IsNullOrEmpty(fromNestedSt))
+                { Label = "To Nested State", Value = label, ObjectId = objId });
+            }
+            if (HasNested(fromNestedSt))
                 TransitionDetailList.Add(new TransitionDetail
                 { Label = "From Nested State", Value = fromNestedSt });
-            if (priority != "0" && !string.IsNullOrEmpty(priority))
+            if (!string.IsNullOrEmpty(priority) && priority != "0")
                 TransitionDetailList.Add(new TransitionDetail
                 { Label = "Priority", Value = priority });
+        }
 
-            // ── Condition ─────────────────────────────────────────────────
-            var condRef = tr.TransitionEffect != null
-                ? effectObj.Params.FirstOrDefault(p => p.Name == "condition")?.Value
-                : null;
+        /// <summary>
+        /// Turns a nested stateId into "Name (#id)" by finding the destination state
+        /// in the owning machine, descending through any wrapper generators to the
+        /// state machine underneath it, and looking the id up there. Falls back to the
+        /// bare id when the chain can't be walked.
+        /// </summary>
+        private (string Label, string ObjectId) ResolveNestedState(TransitionInfo tr, string nestedStateId)
+        {
+            var fallback = ($"stateId {nestedStateId}", "");
+            if (tr.Source == null || tr.OwnerStateMachine == null) return fallback;
+
+            var toStateId = tr.Source.Params.FirstOrDefault(p => p.Name == "toStateId")?.Value;
+            if (string.IsNullOrEmpty(toStateId)) return fallback;
+
+            var ownerStates = EventCrossReference.ResolveStates(manager, tr.OwnerStateMachine);
+            if (!ownerStates.TryGetValue(toStateId, out var destState)) return fallback;
+
+            var nestedSm = EventCrossReference.FindNestedStateMachine(manager, destState);
+            if (nestedSm == null) return fallback;
+
+            var nestedStates = EventCrossReference.ResolveStates(manager, nestedSm);
+            if (!nestedStates.TryGetValue(nestedStateId, out var nestedState)) return fallback;
+
+            var name = nestedState.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? nestedState.Id;
+            return ($"{name}  (#{nestedStateId})", nestedState.Id);
+        }
+
+        /// <summary>Condition rows. The condition hangs off the transition, not its effect.</summary>
+        private void AddConditionRows(TransitionInfo tr)
+        {
+            var condRef = tr.Source?.Params.FirstOrDefault(p => p.Name == "condition")?.Value;
 
             if (!string.IsNullOrEmpty(condRef) && condRef != "null"
                 && manager.TryResolve(condRef, out var condObj))
@@ -3279,36 +3366,44 @@ namespace SageHavokEditor
                 TransitionDetailList.Add(new TransitionDetail
                 { Label = "Cond. Class", Value = condClass, ObjectId = condObj.Id });
             }
+        }
 
-            // ── Trigger / initiate interval ───────────────────────────────
-            var trigIntervalRef = effectObj.Params
-                .FirstOrDefault(p => p.Name == "triggerInterval")?.Children?.FirstOrDefault();
-            if (trigIntervalRef != null)
+        /// <summary>
+        /// Trigger and initiate interval rows. Both are inline structs on the
+        /// transition — the effect has no intervals at all, so the old lookup against
+        /// it never produced a row.
+        /// </summary>
+        private void AddIntervalRows(TransitionInfo tr)
+        {
+            if (tr.Source == null) return;
+
+            foreach (var (paramName, heading) in new[]
+                     {
+                         ("triggerInterval", "Trigger Interval"),
+                         ("initiateInterval", "Initiate Interval"),
+                     })
             {
-                string TGet(string n) =>
-                    trigIntervalRef.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
+                var interval = tr.Source.Params
+                    .FirstOrDefault(p => p.Name == paramName)?.Children?.FirstOrDefault();
+                if (interval == null) continue;
+
+                string TGet(string n) => interval.Params.FirstOrDefault(p => p.Name == n)?.Value ?? "";
                 var enter = TGet("enterEventId");
                 var exit = TGet("exitEventId");
                 var tEnter = TGet("enterTime");
                 var tExit = TGet("exitTime");
 
-                if (enter != "-1" || exit != "-1")
-                {
+                var hasEnter = !string.IsNullOrEmpty(enter) && enter != "-1";
+                var hasExit = !string.IsNullOrEmpty(exit) && exit != "-1";
+                if (!hasEnter && !hasExit) continue;
+
+                TransitionDetailList.Add(new TransitionDetail { Label = "──", Value = heading });
+                if (hasEnter)
                     TransitionDetailList.Add(new TransitionDetail
-                    { Label = "──", Value = "Trigger Interval" });
-                    if (enter != "-1")
-                    {
-                        var evName = EventList.FirstOrDefault(e => e.Id == enter)?.Name ?? $"event[{enter}]";
-                        TransitionDetailList.Add(new TransitionDetail
-                        { Label = "Enter Event", Value = $"{evName}  at t={tEnter}" });
-                    }
-                    if (exit != "-1")
-                    {
-                        var evName = EventList.FirstOrDefault(e => e.Id == exit)?.Name ?? $"event[{exit}]";
-                        TransitionDetailList.Add(new TransitionDetail
-                        { Label = "Exit Event", Value = $"{evName}  at t={tExit}" });
-                    }
-                }
+                    { Label = "Enter Event", Value = $"{_eventResolver.Name(enter)}  at t={tEnter}" });
+                if (hasExit)
+                    TransitionDetailList.Add(new TransitionDetail
+                    { Label = "Exit Event", Value = $"{_eventResolver.Name(exit)}  at t={tExit}" });
             }
         }
 
@@ -3318,10 +3413,11 @@ namespace SageHavokEditor
         /// combines the event, the condition and the wildcard/disabled flags.</summary>
         private void AddFiresWhenSummary(TransitionInfo tr)
         {
-            HkObject? effectObj = null, condObj = null;
-            if (!string.IsNullOrEmpty(tr.TransitionEffect) && tr.TransitionEffect != "null"
-                && manager.TryResolve(tr.TransitionEffect, out var eo)) effectObj = eo;
-            var condRef = effectObj?.Params.FirstOrDefault(p => p.Name == "condition")?.Value;
+            // The condition is a field of the transition itself; hkbBlendingTransitionEffect
+            // has no condition, so resolving it through the effect always came back null
+            // and the rule sentence silently dropped the "AND its condition is true" half.
+            HkObject? condObj = null;
+            var condRef = tr.Source?.Params.FirstOrDefault(p => p.Name == "condition")?.Value;
             if (!string.IsNullOrEmpty(condRef) && condRef != "null"
                 && manager.TryResolve(condRef, out var co)) condObj = co;
 
@@ -3536,6 +3632,32 @@ namespace SageHavokEditor
                 DebuggerTab.Header = "🎮 Debugger ⧉";
                 BtnDetachDebugger.Content = "↩ Dock";
             }
+        }
+
+        private void BtnEventXref_Click(object sender, RoutedEventArgs e)
+        {
+            if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
+            {
+                MessageBox.Show("No file loaded.");
+                return;
+            }
+
+            var dialog = new EventCrossReferenceDialog(manager, EventList.ToList());
+            dialog.Owner = this;
+            dialog.ObjectSelected += (id) =>
+            {
+                if (string.IsNullOrEmpty(id)) return;
+                if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
+                LoadObjectIntoEditor(obj);
+                MainTabControl.SelectedIndex = 0;
+                var root = ObjectTree.ItemsSource?.Cast<BehaviorNodeData>().FirstOrDefault();
+                if (root != null)
+                {
+                    var target = FindNodeById(root, id);
+                    if (target != null) SelectTreeNode(ObjectTree, target);
+                }
+            };
+            dialog.Show();
         }
 
         private void BtnGlobalSearch_Click(object sender, RoutedEventArgs e)
@@ -4082,8 +4204,7 @@ namespace SageHavokEditor
             if (statesParam == null) return;
 
             // Build stateId → name map and dropdown options
-            foreach (var stateRef in statesParam.Value
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var stateRef in HkRefList.Tokens(statesParam.Value))
             {
                 if (!manager.TryResolve(stateRef, out var stateObj)) continue;
                 var sid = stateObj.Params.FirstOrDefault(p => p.Name == "stateId")?.Value ?? "";
@@ -4093,8 +4214,7 @@ namespace SageHavokEditor
             }
 
             // ── Walk every state's own transition array ───────────────────────────
-            foreach (var stateRef in statesParam.Value
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var stateRef in HkRefList.Tokens(statesParam.Value))
             {
                 if (!manager.TryResolve(stateRef, out var stateObj)) continue;
                 var fromName = stateObj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? stateObj.Id;

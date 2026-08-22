@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -13,9 +13,14 @@ namespace SageHavokEditor.Models.ViewModels
         private string _fileName = "No file loaded";
         private int _objectCount, _variableCount, _eventCount, _clipCount, _transitionCount, _bindingCount, _stateMachineCount;
         private bool _hasFile;
+        private string _platformLabel = "";
 
         public string FileName { get => _fileName; set { _fileName = value; OnPropertyChanged(); } }
         public bool HasFile { get => _hasFile; set { _hasFile = value; OnPropertyChanged(); } }
+
+        /// <summary>Edition the loaded .hkx used ("Skyrim LE (32-bit)" /
+        /// "Skyrim SE (64-bit)"), or empty when the source was Havok XML.</summary>
+        public string PlatformLabel { get => _platformLabel; set { _platformLabel = value; OnPropertyChanged(); } }
         public int ObjectCount { get => _objectCount; set { _objectCount = value; OnPropertyChanged(); OnPropertyChanged(nameof(Summary)); } }
         public int VariableCount { get => _variableCount; set { _variableCount = value; OnPropertyChanged(); OnPropertyChanged(nameof(Summary)); } }
         public int EventCount { get => _eventCount; set { _eventCount = value; OnPropertyChanged(); OnPropertyChanged(nameof(Summary)); } }
