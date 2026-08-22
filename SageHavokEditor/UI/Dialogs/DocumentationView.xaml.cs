@@ -690,9 +690,14 @@ namespace SageHavokEditor.UI.Dialogs
                 "which is searched recursively.\n" +
                 "• The prompt reports how many LE and SE files were found and asks which edition to " +
                 "convert to, defaulting to the opposite of what the selection mostly contains.\n" +
-                "• Originals are never modified. Results are written to a converted_LE / converted_SE " +
-                "folder alongside the source, keeping the sub-folder structure. Files already in the " +
-                "target edition are skipped and counted in the summary.\n\n" +
+                "• Originals are never modified. Results are written to a folder beside the source, " +
+                "named after it — Behaviors becomes Behaviors_LE — keeping the sub-folder structure. " +
+                "Beside rather than inside, so converting the same folder again doesn't walk the " +
+                "previous output.\n" +
+                "• Files already in the target edition are copied across untouched rather than " +
+                "skipped, so the output folder is a complete, drop-in copy of the source even when " +
+                "the source is a mix of both editions. Only .hkx files are picked up — loose .txt, " +
+                ".xml or mesh files sitting in the folder are not copied.\n\n" +
                 "Limits\n" +
                 "Nineteen Havok classes still have no 32-bit layout — hkp* physics and ragdoll classes, " +
                 "plus a few type-metadata ones that never appear in a serialised file. None of them " +

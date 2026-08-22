@@ -189,7 +189,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Skyrim LE (32-bit) support, and LE ⇄ SE conversion.** The editor opens
   Skyrim Legendary Edition `.hkx` files directly and can save to either
   edition, plus a new 🔄 LE ⇄ SE toolbar command converts single files or whole
-  folders in either direction. Both editions use the same Havok schema
+  folders in either direction. Originals are never modified: output goes to a
+  folder beside the source, named after it (`Behaviors` → `Behaviors_LE`), and
+  files already in the target edition are copied across rather than skipped, so
+  the result is a complete drop-in copy even from a mixed folder. Beside rather
+  than inside, so a second run over the same folder doesn't walk the previous
+  output. Both editions use the same Havok schema
   (`hk_2010.2.0-r1`, class version 8) and differ only in packfile pointer size,
   so conversion is a pure repack that preserves the behaviour graph exactly —
   no external converter, no XML round-trip on disk.
