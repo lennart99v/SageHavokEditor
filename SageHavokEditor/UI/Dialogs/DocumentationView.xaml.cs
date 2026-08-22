@@ -114,7 +114,9 @@ namespace SageHavokEditor.UI.Dialogs
 
             AddNavHeader("Getting Started");
             AddSection("getting_started", "Getting Started",
-                "1. Open a file — use Load or drag a .hkx/.xml onto the window.\n" +
+                "1. Open a file — use Load or drag a .hkx/.xml onto the window. (Starting a mod " +
+                "from scratch? Load → ✨ New behavior file… scaffolds a valid empty behavior; " +
+                "see Creating a New Behavior File.)\n" +
                 "2. The editor loads all Havok objects and populates every tab.\n" +
                 "3. Navigate to the Graph tab first for a visual overview of the state machines.\n" +
                 "4. Edit any value directly in the Variables, Events, or Transitions tabs.\n" +
@@ -192,6 +194,26 @@ namespace SageHavokEditor.UI.Dialogs
                 "for additional actions including Add State, Add State Machine, Add modifier, and " +
                 "Re-layout.");
 
+            AddSection("object_data", "The Object Data Panel",
+                "The right-hand panel shows every parameter of the selected object, and it knows " +
+                "each parameter's declared Havok type (from the bundled HKX2 class definitions).\n\n" +
+                "• Booleans edit as a checkbox, enums as a fixed-choice dropdown.\n" +
+                "• Numeric fields validate live: a value that doesn't parse as the declared type — or " +
+                "falls outside its range, like 200 in an int8 — gets a red border and an \"expected …\" " +
+                "tooltip. Nested params inside array elements are validated too. Saving as HKX is " +
+                "blocked while such values exist (the conversion would reject them anyway); saving " +
+                "as XML warns first.\n" +
+                "• References (#0123, shown blue) jump with ↗ or Ctrl+Click. Editing a reference by " +
+                "typing re-resolves it properly — including setting it to null.\n" +
+                "• Ref arrays (like a machine's states) edit as space-separated #ids; the numelements " +
+                "count is maintained automatically. The states param also has the ✏ Edit States dialog.\n" +
+                "• Arrays of nested elements (event property arrays, transition arrays, notify events, " +
+                "binding sets…) have a ＋ Add element button and a per-element ✕. New elements are " +
+                "created with vanilla defaults. Both are undoable. An array that is empty when the " +
+                "file loads can't offer ＋ yet — add the first element by hand in XML, or start from " +
+                "a file that has one.\n" +
+                "• Every edit lands on the normal undo stack (Ctrl+Z).");
+
             AddSection("tab_variables", "Variables Tab",
                 "Lists every behaviour variable (hkbBehaviorGraphData / hkbBehaviorGraphStringData).\n\n" +
                 "• Type badge — coloured chip showing BOOL, INT, FLOAT, PTR, etc.\n" +
@@ -203,18 +225,34 @@ namespace SageHavokEditor.UI.Dialogs
             AddSection("tab_events", "Events Tab",
                 "Lists every behaviour event (hkbBehaviorGraphStringData.eventNames).\n\n" +
                 "• Each row shows the event index and an editable name.\n" +
-                "• The usages panel at the bottom shows every transition, wildcard, clip trigger, and " +
-                "property referencing the selected event. Click a usage to jump straight to it.\n" +
+                "• The usages panel at the bottom shows every place in the file that references the " +
+                "selected event, tagged ◀ listens (something reacts to it) or ▶ sends (something " +
+                "emits it): state and wildcard transitions, the enter/exit ids of a transition's " +
+                "trigger and initiate intervals, a machine's returnToPrevious / random / " +
+                "next-higher / next-lower state ids, event-driven modifiers, state enter/exit " +
+                "notify events, clip annotation triggers, and eventToSend fields. Click a usage " +
+                "to jump straight to it.\n" +
+                "• 🔗 Event Xref in the toolbar runs the same cross-reference for every event at " +
+                "once — see Event Cross-Reference.\n" +
                 "• Everywhere else in the editor, an event is shown by its resolved name rather than a " +
                 "raw numeric id. If a referenced id has no name it appears as ‹unnamed #N› so you can " +
                 "still trace it. Right-click an event in the graph, the Transitions list, or the SM " +
                 "Inspector and choose Go to event to land here on the matching row with its usages.\n" +
-                "• + Add Event / Delete work the same as the Variables equivalents.");
+                "• + Add Event / Delete work the same as the Variables equivalents. Both keep the " +
+                "per-event info records (hkbBehaviorGraphData.eventInfos) paired with the names — " +
+                "the game matches the two arrays by position, so a mismatch breaks events in-game. " +
+                "Saving also reconciles the counts, which repairs files desynced by older editor " +
+                "versions, and 🔎 Validate flags any remaining mismatch.");
 
             AddSection("tab_transitions", "Transitions Tab",
                 "A flat list of every hkbStateMachineTransitionInfoArray entry in the file.\n\n" +
                 "• Columns: From state, To state, Event, Blend duration.\n" +
-                "• Click a row to see full transition details including conditions and trigger intervals.\n" +
+                "• Click a row for the full detail panel: a plain-language \"when it fires\" sentence, " +
+                "the triggering event, decoded flag badges, routing (priority, and the nested state " +
+                "the transition lands on resolved to its name), the blend effect's duration / curve / " +
+                "start fraction / end mode, the condition, and the trigger and initiate intervals " +
+                "with their enter/exit events. Everything except the blend fields lives on the " +
+                "transition itself, so it shows even when the transition has no effect object.\n" +
                 "• Right-click a row → Go to event to jump to the triggering event's definition and usages.\n" +
                 "• Filter box narrows the list by state or event name.");
 
@@ -373,6 +411,24 @@ namespace SageHavokEditor.UI.Dialogs
 
             AddNavHeader("Advanced");
 
+            AddSection("new_behavior", "Creating a New Behavior File",
+                "Load → ✨ New behavior file… creates a fresh, minimal behavior from scratch: " +
+                "the root container, an hkbBehaviorGraph, its graph data / string data / variable " +
+                "value set, and an empty root state machine wired in as the root generator. Pick a " +
+                "location and name; the file is written there (XML or SE HKX) and opened " +
+                "immediately, ready for Add State and New clip generator.\n\n" +
+                "Why start here\n" +
+                "A behavior file is not an empty canvas — the root scaffolding above is mandatory, " +
+                "and every object must stay reachable from it to survive a save to .hkx (see the " +
+                "orphan-pruning note under Adding a New Animation). Opening a vanilla file and " +
+                "deleting everything destroys that scaffolding and leaves nothing valid to build " +
+                "on. The template gives you the correct skeleton with vanilla defaults (event ids " +
+                "-1, discard-when-inactive variable mode) for free.\n\n" +
+                "Typical use\n" +
+                "This is step one of a custom-behavior mod: build your states and clips inside the " +
+                "new file, then patch a vanilla graph with a behavior reference pointing at it — " +
+                "see Referencing Another Behavior File.");
+
             AddSection("new_animation", "Adding a New Animation",
                 "Playing a new animation means adding a new hkbClipGenerator — the leaf node that " +
                 "points at an .hkx animation file — and attaching it to a state.\n\n" +
@@ -428,8 +484,8 @@ namespace SageHavokEditor.UI.Dialogs
                 "• The orphan-pruning rule from Adding a New Animation applies: the reference is wired " +
                 "to the state immediately precisely so it survives the .hkx save.\n" +
                 "• The referenced file must be a valid SSE 64-bit behavior with its own root " +
-                "(hkbBehaviorGraph, string data, variable value set) — building one from a gutted " +
-                "vanilla file that kept its root plumbing is the reliable route.");
+                "(hkbBehaviorGraph, string data, variable value set) — Load → ✨ New behavior " +
+                "file… scaffolds exactly that; see Creating a New Behavior File.");
 
             AddSection("large_machines", "Working With Very Large State Machines",
                 "Some machines are huge — a few hundred states with thousands of transitions. " +
@@ -565,6 +621,29 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Case and Regex toggles refine matching; the ± Replace panel can edit matched values.\n" +
                 "• The search is case-insensitive by default and matches partial names.");
 
+            AddSection("event_xref", "Event Cross-Reference",
+                "Click 🔗 Event Xref in the toolbar for a whole-file view of the event table: every " +
+                "event, how many places listen to it, how many send it, and what those places are. " +
+                "The Events tab answers the same question one event at a time; this answers it for " +
+                "all of them at once.\n\n" +
+                "• The left list is every event in hkbBehaviorGraphStringData.eventNames, with its id " +
+                "and a listen/send count. The filter box narrows by name or id.\n" +
+                "• Selecting an event lists its references on the right, each tagged ◀ listens or " +
+                "▶ sends: state and wildcard transitions, the enter/exit ids inside a transition's " +
+                "trigger and initiate intervals, a state machine's returnToPrevious / random / " +
+                "next-higher / next-lower state ids, event-driven modifiers, state enter/exit notify " +
+                "events, clip annotation triggers, and eventToSend fields.\n" +
+                "• Double-click a reference to select that object in Object Data and the behaviour tree.\n" +
+                "• 📋 Copy report puts the selected event's full cross-reference on the clipboard as " +
+                "plain text — handy for a bug report or a patch write-up.\n\n" +
+                "Unreferenced only\n" +
+                "The checkbox filters to events that nothing in this file references — the dead entries " +
+                "a hand-edited or tool-extended event table accumulates. Treat those as leads, not as a " +
+                "verdict: annotation events (HitFrame, SoundPlay.*, the spell-fire events dragons use) " +
+                "are emitted from annotation tracks inside the animation .hkx files, and cross-behaviour " +
+                "events are matched by name in another file's table. Neither is visible from here, so " +
+                "an unreferenced event is never safe to delete on that basis alone.");
+
             AddSection("compare", "Compare Files",
                 "Click ⇄ Compare to open two behavior files side-by-side.\n\n" +
                 "• File A is the currently loaded file.\n" +
@@ -573,10 +652,46 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Click any diffed object to inspect it in the Object Data panel.");
 
             AddSection("validate", "Validation",
-                "Click 🔎 Validate to run the built-in validator.\n\n" +
-                "• Checks for broken object references, missing required parameters, and common modding mistakes.\n" +
-                "• Each issue shows the severity (Error / Warning / Info), the affected object, and a description.\n" +
-                "• Click an issue row to jump to the offending object.");
+                "Click 🔎 Validate to run the built-in validator. What it checks:\n\n" +
+                "• Broken references — every #id in every param, including refs nested inside " +
+                "array elements (a transition's blend effect, the root container's variants).\n" +
+                "• Orphaned objects — nothing references them, so the .hkx save will drop them.\n" +
+                "• Values that don't match their declared Havok type (the red-bordered fields in " +
+                "Object Data). These also block saving as HKX.\n" +
+                "• startStateId that doesn't match any state's stateId — the machine has no valid " +
+                "start state and silently T-poses when activated.\n" +
+                "• eventNames/eventInfos and variableNames/variableInfos count mismatches — the " +
+                "game pairs these arrays by position.\n" +
+                "• Duplicate stateIds in a machine, transitions whose toStateId doesn't exist, " +
+                "machines with no states, clips with no animation path, variable name/value " +
+                "count mismatches.\n\n" +
+                "Each issue shows the severity, the affected object, and a description. " +
+                "Click an issue row to jump to the offending object.");
+
+            AddSection("le_se", "Skyrim LE ⇄ SE Conversion",
+                "The editor reads and writes both Skyrim editions' .hkx binaries. LE (Legendary " +
+                "Edition / Oldrim) and SE use the same Havok schema and differ only in pointer size — " +
+                "32-bit against 64-bit — so converting between them is a pure repack: the behaviour " +
+                "graph is preserved exactly, with no XML round-trip on disk and no external converter.\n\n" +
+                "Which edition am I looking at?\n" +
+                "The status bar shows the edition the loaded file came from, next to the file name " +
+                "(blank for Havok XML, which has no pointer size). Save offers both editions in its " +
+                "file-type dropdown with the source's edition listed first, so accepting the default " +
+                "writes back the edition you opened.\n\n" +
+                "Converting files\n" +
+                "• Click 🔄 LE ⇄ SE and choose a single .hkx (multi-select works) or a whole folder, " +
+                "which is searched recursively.\n" +
+                "• The prompt reports how many LE and SE files were found and asks which edition to " +
+                "convert to, defaulting to the opposite of what the selection mostly contains.\n" +
+                "• Originals are never modified. Results are written to a converted_LE / converted_SE " +
+                "folder alongside the source, keeping the sub-folder structure. Files already in the " +
+                "target edition are skipped and counted in the summary.\n\n" +
+                "Limits\n" +
+                "Nineteen Havok classes still have no 32-bit layout — hkp* physics and ragdoll classes, " +
+                "plus a few type-metadata ones that never appear in a serialised file. None of them " +
+                "occur in behaviour, character, project, skeleton or animation files. If a file does " +
+                "contain one, writing it as LE is refused with the class names listed, rather than " +
+                "producing a silently corrupt file.");
         }
 
         private void AddNavHeader(string text)

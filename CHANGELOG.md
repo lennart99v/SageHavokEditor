@@ -7,7 +7,231 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The transition detail panel showed almost none of the transition.**
+  Everything below the flag badges was read off the `hkbBlendingTransitionEffect`
+  the transition points at — but the effect carries only `duration`,
+  `blendCurve`, `endMode` and `toGeneratorStartTimeFraction`. Priority, the
+  nested-state routing, the condition and both intervals live on the
+  `hkbStateMachineTransitionInfo` itself, so those rows silently never
+  appeared, and the plain-language "when it fires" sentence dropped its "and
+  its condition is true" half. The panel also returned early whenever a
+  transition had no effect at all (`null`, normal for a snap transition),
+  leaving nothing but the event row. Every row now comes off the transition
+  struct: `toNestedStateId` resolved through the destination state's nested
+  machine into a clickable state name instead of a bare number — that field is
+  how two transitions with the same destination land on different sub-branches
+  — plus priority, the condition with variable indices resolved to names, and
+  the trigger and initiate intervals with their enter/exit events and times.
+
+- **Validator: no more false "orphaned object" on `hkbBehaviorGraph`, and two
+  new checks.** The broken-reference and orphan scans only read top-level param
+  values, so refs inside inline structs were invisible — `hkRootLevelContainer`'s
+  `variant` ref lives in the inline `namedVariants` struct, which falsely
+  flagged the behavior graph as orphaned in every file (and hid genuinely
+  broken refs inside transition arrays, now reported with indexed paths like
+  `transitions[2].transition`). New check: a `startStateId` that doesn't match
+  any state's `stateId` is an error naming the valid ids — the silent
+  T-pose-on-activate case; machines using a start-state chooser or a
+  non-default `startStateMode` are skipped. The validator's ref parsing also
+  moved to the whitespace-safe tokenizer, so line-wrapped ref arrays validate
+  correctly. Verified: vanilla magic/horse behaviors and an official-dialect
+  file report zero issues; the capitto91 test file reports exactly its two
+  real problems and nothing else.
+
+- **The Events tab keeps `eventInfos` paired with `eventNames`.** Adding an
+  event only appended the name — the matching `hkbEventInfo` record in
+  `hkbBehaviorGraphData.eventInfos` was never created, and the Havok runtime
+  pairs the two arrays by index, so every event added through the tab was
+  broken in-game (found in a user's real file: 30 names, 26 infos). Add and
+  delete now insert/remove the info record at the same index (undo/redo
+  included), save reconciles the counts — which also repairs files desynced
+  by older versions — and ✓ Validate flags an `eventNames`/`eventInfos` or
+  `variableNames`/`variableInfos` count mismatch as an error. Found
+  2026-08-02 during the capitto91 weapon-throw walkthrough.
+
+- **Editing a `#ref` in the property editor actually sticks now.** Params whose
+  resolved ref is cached in `Children` (single-ref params like `generator`, and
+  one-element ref arrays) ignored text edits entirely: the value getter kept
+  returning the stale cached id, so the field visually snapped back and save
+  wrote the old ref — silently. After an interactive edit the cache is now
+  re-resolved from the typed tokens (mutating a reference updates `Children`,
+  not just `Value`): if every token resolves the cache is rebuilt, otherwise
+  (typo, `null`, ref not created yet) it's cleared and the typed text becomes
+  authoritative, with the save-time broken-reference check as the backstop.
+  Setting a cached ref to `null` — previously impossible from the text box —
+  works too. Seventh fix from the 2026-08-02 external feedback round.
+
+- **Editing a ref-list in the property editor keeps `numelements` in sync.**
+  Hand-editing an array param's text (e.g. adding a state ref to `states`)
+  updated the value but never the `numelements` attribute — and HKX2 treats
+  that attribute as authoritative on XML→HKX conversion, so the array was
+  silently truncated to the stale count. The count now recomputes on every
+  interactive value change (undo/redo restores included). Deliberately scoped
+  to pure text-token arrays: string arrays are counted by their `hkcstring`
+  entries and inline arrays by their child objects, so those are left alone —
+  as is the load path, where a recount could fire before the elements are
+  parsed. Sixth fix from the 2026-08-02 external feedback round.
+
+- **Save now type-checks values first instead of writing garbage or dying with
+  a cryptic error.** Previously, save-as-XML wrote values like
+  `ararfafasaafaafsafass` into a numeric field verbatim, and save-as-HKX died
+  deep in HKX2's parser with a bare "Save failed: …" plus a misleading hint —
+  and left the corrupt `.tmp.xml` on disk. Saving now runs the declared-type
+  check across every param (nested inline params included): HKX saves are
+  blocked with a list naming each bad value (`#0925 events[0].id =
+  "POOPOOOPOO" … Expected: a whole number`), XML saves warn and offer
+  save-anyway, the temp file is cleaned up on a failed conversion, and the
+  ✓ Validate report includes the same check. Validation matches HKX2's real
+  parsing rules — pipe-joined flag combos with numeric/hex remainders
+  (`FLAG_RAGDOLL|0x4c0`) are legal, verified zero false positives across
+  vanilla dragon/magic/horse behaviors. Fifth fix from the 2026-08-02
+  external feedback round.
+
+- **Non-behavior Havok files graph from the file's declared root instead of a
+  blank canvas.** The graph view only knew two entry points — the
+  `hkbStateMachine` dropdown and the ⌂ Root button's `hkbBehaviorGraph`
+  lookup — so a ragdoll, skeleton, or arbitrary Havok XML rendered nothing,
+  silently. Both now fall back to the file's `toplevelobject`
+  (`hkRootLevelContainer`): opening a file with no state machines shows the
+  object graph seeded from the root, and ⌂ Root works in any file. The
+  generic walk also descends into inline (anonymous) hkobjects — array-of-
+  struct params like `namedVariants` and transition arrays carry their refs
+  in nested params, not the param value — which the container root needs and
+  which also links transition arrays to their transition effects. Truly empty
+  views now say so ("No state machines in this file…", "Nothing to display…")
+  instead of showing a bare canvas. Fourth fix from the 2026-08-02 external
+  feedback round.
+
+- **Shared children keep every inbound edge in the generator drill-down.**
+  Havok generator graphs are DAGs — one modifier, clip, or binding set is
+  routinely referenced by several parents — but the walk dropped the parent→
+  child edge for every parent after the first, so shared nodes looked owned by
+  one parent and disconnected from the rest. Revisiting an already-walked
+  object now links the new parent to the existing node (without re-recursing),
+  so sharing is visible as fan-in. Third fix from the 2026-08-02 external
+  feedback round.
+
+- **The generator drill-down and behavior tree now follow every `#ref` instead
+  of a param-name whitelist.** The old walk knew six stock hkb param names, so
+  every Bethesda class was a dead end — `BSBoneSwitchGenerator`
+  (`pDefaultGenerator`/`ChildrenA`), `BSSynchronizedClipGenerator`
+  (`pClipGenerator`), `BSiStateTaggingGenerator`, and friends showed as
+  childless leaves (in vanilla `magicbehavior` alone, 16 bone-switch subtrees
+  were invisible). The walk is now generic — any param token that resolves to
+  an object becomes a child, which also surfaces trigger arrays, notify-event
+  arrays, and variable binding sets as real graph nodes. Nested state machines
+  stay drillable leaves rather than inlining their whole state graph. The
+  behavior tree gets the same generic walk plus a proper "referenced as child"
+  check, so nested state machines no longer duplicate at top level, and
+  jump-to-graph ownership search (`GeneratorChainContains`) finds objects owned
+  through Bethesda generator chains. Second fix from the 2026-08-02 external
+  feedback round.
+
+- **Graph and tree views no longer drop states/children whose `#ref` sits after
+  a line wrap.** Havok's XML writer wraps long ref arrays (`states`, `children`,
+  `generators`, `modifiers`) across lines; the graph layer split them on spaces
+  only, so line-wrapped refs failed to resolve — states silently missing from
+  the graph, transitions to them dropped, generator subtrees dead-ending, and
+  wrong "States/Children" counts in node cards. All ref-list parsing in the
+  graph view and behavior tree now goes through a shared whitespace-safe
+  tokenizer (`HkRefList`). First fix from the 2026-08-02 external feedback
+  round (see Roadmap, *Graph view*).
+
 ### Added
+
+- **Event cross-reference — one event, or the whole table at once.** A new
+  🔗 Event Xref dialog lists every event in the file with its listen/send
+  counts, the references behind them, and an "unreferenced only" filter;
+  double-click a reference to jump to that object, or 📋 Copy report to put the
+  event's full cross-reference on the clipboard. The Events tab's own usage
+  panel now runs the same scan (`EventCrossReference`), which closes the holes
+  it had: it knew transitions, wildcards, clip triggers and a short whitelist
+  of `*EventId` params, and missed the enter/exit ids inside a transition's
+  `triggerInterval`/`initiateInterval` (nested a level below the transition, so
+  a top-level param scan never saw them), state `enterNotifyEvents`/
+  `exitNotifyEvents`, and every send site (`eventToSend`,
+  `eventToSendWhenStateOrTransitionChanges`, annotation triggers). An
+  incomplete cross-reference is worse than none — it reads as proof an event is
+  unused — so hits are now tagged ◀ listens or ▶ sends and named with their
+  owning machine and state. Unreferenced is reported as a lead, never a
+  verdict: annotation events (HitFrame, SoundPlay.*, the dragon spell-fire
+  events) are emitted from tracks inside the animation `.hkx` files, and
+  cross-behaviour events are matched by name in another file's table — neither
+  is visible from one behaviour graph.
+
+- **Skyrim LE (32-bit) support, and LE ⇄ SE conversion.** The editor opens
+  Skyrim Legendary Edition `.hkx` files directly and can save to either
+  edition, plus a new 🔄 LE ⇄ SE toolbar command converts single files or whole
+  folders in either direction. Both editions use the same Havok schema
+  (`hk_2010.2.0-r1`, class version 8) and differ only in packfile pointer size,
+  so conversion is a pure repack that preserves the behaviour graph exactly —
+  no external converter, no XML round-trip on disk.
+
+  The bundled HKX2Library had been de-generalised to Skyrim SE: its 588
+  generated classes were dumped from the SE runtime, so 908 `Position += N`
+  padding constants were baked to an 8-byte pointer. `tools/hkx-layout-gen`
+  now derives Havok's layout rules from the metadata each class already
+  carries and re-emits that padding as `des.Padding(pad64, pad32)`. It refuses
+  to emit anything it can't first reproduce byte-for-byte at 64-bit, so SE
+  output is unchanged by construction — verified: every SE sample produces
+  identical Havok XML and identical repacked bytes before and after. Two real
+  bugs surfaced on the way: `hkUlong` members (`hkbNode.m_userData`, on every
+  behaviour node) were read as a fixed 64-bit integer instead of a
+  pointer-sized one, and `ALIGN_16` members were not honoured where the 64-bit
+  layout happened to be 16-aligned already.
+
+  Validated against all 180 loose vanilla Skyrim LE files (behaviours,
+  skeletons and animations): all parse, and all convert to SE and back with
+  byte-identical Havok XML. `tools/hkx-roundtrip` is the regression harness.
+
+  Not covered: 19 classes still have 64-bit-only layouts — `hkp*` physics and
+  ragdoll classes (multiple inheritance and vtable-only interfaces), Havok
+  type-metadata classes that never appear in a serialised file, and
+  `hkbGeneratorSyncInfo`, whose SE body has a pre-existing 8-byte over-read.
+  None occur in behaviour, character, project, skeleton or animation files;
+  writing LE is refused with a message naming them rather than producing a
+  silently corrupt file.
+
+- **Add/remove elements of inline-struct arrays in the Object Data panel.**
+  Arrays whose elements are nested structs — `hkbStateMachineEventPropertyArray`
+  events, transition arrays, enter/exit notify events, variable binding set
+  `bindings`, clip triggers, and any other array of inline hkobjects — now get
+  a ＋ Add element button and a per-element ✕. New elements are built from the
+  HKX2 class defaults (correct param names, vanilla values, type-annotated for
+  the red-border validation), falling back to cloning the last element for
+  classes outside the type set. `numelements` is maintained, both operations
+  are undoable, and the affordance survives deleting the last element. Ref
+  arrays (`states`-style) edit as text — now viable end-to-end thanks to the
+  whitespace tokenizer, `numelements` sync, and cache re-resolve — and string
+  arrays keep their dedicated tabs. Known limitation: an array that is empty
+  at load can't offer ＋ (an empty inline array is indistinguishable from an
+  empty ref array). Closes the last item from the 2026-08-02 external
+  feedback round ("there's no way to add or remove elements from this or any
+  other kind of array").
+
+- **Type-aware property editing.** The Object Data panel now knows each param's
+  declared Havok type, reflected from the bundled HKX2 class definitions and
+  annotated onto every object at load (`HavokTypeCatalog`). Booleans get a real
+  checkbox (by declared type, not by sniffing the current value), enums get a
+  fixed-choice dropdown (declared-as-int enums are detected via the class's
+  serialized defaults), and numeric fields get live validation — a value that
+  doesn't parse as the declared type (or falls outside its range, e.g. >127 in
+  an int8) shows a red border with an "expected …" tooltip, in nested inline
+  params too. Flags fields keep accepting their pipe-joined member names, and
+  classes outside the HKX2 type set behave exactly as before. Groundwork for
+  pre-save type validation. From the 2026-08-02 external feedback round ("the
+  property editor isn't type safe or even type aware").
+
+- **New behavior file** (Load → ✨ New behavior file…) — creates a minimal valid
+  behavior from scratch: root container, `hkbBehaviorGraph`, graph data / string
+  data / variable value set, and an empty root state machine, with vanilla
+  defaults (event ids −1, discard-when-inactive). Written to a chosen path as
+  XML or SE HKX and opened through the normal pipeline, ready for Add State.
+  Removes the workflow trap of gutting a vanilla file and losing the root
+  scaffolding. Documented in a new Guide section, *Creating a New Behavior
+  File*.
 
 - **New behavior reference…** on a state's right-click menu in the Graph tab —
   creates an `hkbBehaviorReferenceGenerator` pointing at another behavior file
