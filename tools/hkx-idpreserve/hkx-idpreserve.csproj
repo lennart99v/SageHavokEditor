@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-idpreserve</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The editor's real model classes, so this exercises the same
+         XML load/save path the Save-as-XML command uses. -->
+    <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
+  </ItemGroup>
+</Project>
