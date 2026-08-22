@@ -212,6 +212,91 @@ namespace SageHavokEditor.Core
         }
 
         /// <summary>
+        /// Where a batch conversion of <paramref name="sourceRoot"/> writes: a folder
+        /// beside it, named after it, suffixed with the target edition.
+        ///
+        /// Beside rather than inside, deliberately — an output folder nested in the
+        /// source is walked again by the next recursive run over the same folder.
+        /// Falls back to a subfolder only when the source has no parent (a drive root).
+        /// </summary>
+        public static string BatchOutputRoot(string sourceRoot, HkxPlatform target)
+        {
+            var suffix = target == HkxPlatform.SkyrimLE ? "_LE" : "_SE";
+            if (string.IsNullOrWhiteSpace(sourceRoot)) return "converted" + suffix;
+
+            var trimmed = sourceRoot.TrimEnd(Path.DirectorySeparatorChar,
+                                             Path.AltDirectorySeparatorChar);
+            var parent = Path.GetDirectoryName(trimmed);
+            var name = Path.GetFileName(trimmed);
+
+            return string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(name)
+                ? Path.Combine(sourceRoot, "converted" + suffix)
+                : Path.Combine(parent, name + suffix);
+        }
+
+        /// <summary>Outcome of a batch conversion — see <see cref="ConvertBatchAsync"/>.</summary>
+        public class HkxBatchResult
+        {
+            /// <summary>Files repacked to the target edition.</summary>
+            public int Converted { get; set; }
+            /// <summary>Files already in the target edition, copied through byte-for-byte.</summary>
+            public int Copied { get; set; }
+            public List<string> Errors { get; } = new();
+        }
+
+        /// <summary>
+        /// Converts every file in <paramref name="files"/> into <paramref name="outRoot"/>,
+        /// mirroring each one's path relative to <paramref name="sourceRoot"/>.
+        ///
+        /// A file already in the target edition is copied rather than skipped, so the
+        /// output folder is a complete, drop-in replacement for the source — a mixed
+        /// folder would otherwise produce an output missing whichever files happened
+        /// to be the right edition already. Originals are never written to.
+        /// </summary>
+        public async Task<HkxBatchResult> ConvertBatchAsync(
+            IReadOnlyList<string> files, string sourceRoot, string outRoot, HkxPlatform target)
+        {
+            var result = new HkxBatchResult();
+
+            foreach (var src in files)
+            {
+                var platform = DetectPlatform(src);
+                if (platform == HkxPlatform.Unknown)
+                {
+                    result.Errors.Add($"{Path.GetFileName(src)}: not a Havok packfile");
+                    continue;
+                }
+
+                var rel = !string.IsNullOrEmpty(sourceRoot) &&
+                          src.StartsWith(sourceRoot, StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetRelativePath(sourceRoot, src)
+                    : Path.GetFileName(src);
+                var dst = Path.Combine(outRoot, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+
+                if (platform == target)
+                {
+                    try
+                    {
+                        File.Copy(src, dst, overwrite: true);
+                        result.Copied++;
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Errors.Add($"{Path.GetFileName(src)}: {ex.Message}");
+                    }
+                    continue;
+                }
+
+                var converted = await ConvertAsync(src, dst, target);
+                if (converted.Success) result.Converted++;
+                else result.Errors.Add($"{Path.GetFileName(src)}: {converted.Error}");
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Refuses to write a 32-bit packfile containing classes whose layout is
         /// still 64-bit only, rather than emitting a silently corrupt file.
         /// </summary>

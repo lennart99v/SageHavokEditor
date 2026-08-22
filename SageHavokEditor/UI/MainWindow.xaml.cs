@@ -2873,52 +2873,31 @@ namespace SageHavokEditor
             var target = AskConversionTarget(files.Count, le, se);
             if (target == HkxPlatform.Unknown) return;
 
-            // Never write over the originals — convert into a sibling folder.
-            var outRoot = Path.Combine(rootDir ?? "",
-                target == HkxPlatform.SkyrimLE ? "converted_LE" : "converted_SE");
+            // Never write over the originals — everything lands in a folder beside
+            // the source, named after it (Behaviors → Behaviors_LE).
+            var outRoot = HkxConversionService.BatchOutputRoot(rootDir ?? "", target);
 
             StatusText.Text = $"⏳ Converting {files.Count} file(s) to {target.DisplayName()}…";
 
-            var ok = 0;
-            var skipped = 0;
-            var errors = new List<string>();
+            var result = await _hkxConv.ConvertBatchAsync(files, rootDir ?? "", outRoot, target);
 
-            foreach (var src in files)
-            {
-                var platform = HkxConversionService.DetectPlatform(src);
-                if (platform == HkxPlatform.Unknown)
-                {
-                    errors.Add($"{Path.GetFileName(src)}: not a Havok packfile");
-                    continue;
-                }
-                if (platform == target) { skipped++; continue; }
+            StatusText.Text = $"✓ Converted {result.Converted} file(s) to {target.DisplayName()}";
 
-                var rel = rootDir != null && src.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase)
-                    ? Path.GetRelativePath(rootDir, src)
-                    : Path.GetFileName(src);
-                var dst = Path.Combine(outRoot, rel);
-                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
-
-                var result = await _hkxConv.ConvertAsync(src, dst, target);
-                if (result.Success) ok++;
-                else errors.Add($"{Path.GetFileName(src)}: {result.Error}");
-            }
-
-            StatusText.Text = $"✓ Converted {ok} file(s) to {target.DisplayName()}";
-
-            var summary = $"Converted {ok} file(s) to {target.DisplayName()}.\n\n" +
+            var summary = $"Converted {result.Converted} file(s) to {target.DisplayName()}.\n\n" +
                           $"Written to:\n{outRoot}";
-            if (skipped > 0)
-                summary += $"\n\nSkipped {skipped} file(s) already in that format.";
-            if (errors.Count > 0)
+            if (result.Copied > 0)
+                summary += $"\n\nCopied {result.Copied} file(s) that were already in that " +
+                           "format, so the output folder is a complete copy.";
+            if (result.Errors.Count > 0)
             {
-                summary += $"\n\n{errors.Count} failed:\n  " +
-                           string.Join("\n  ", errors.Take(10));
-                if (errors.Count > 10) summary += $"\n  … and {errors.Count - 10} more";
+                summary += $"\n\n{result.Errors.Count} failed:\n  " +
+                           string.Join("\n  ", result.Errors.Take(10));
+                if (result.Errors.Count > 10)
+                    summary += $"\n  … and {result.Errors.Count - 10} more";
             }
 
             MessageBox.Show(summary, "LE ⇄ SE Conversion", MessageBoxButton.OK,
-                errors.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+                result.Errors.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }
 
         /// <summary>Asks which edition to convert to, defaulting to the opposite
@@ -2931,8 +2910,9 @@ namespace SageHavokEditor
                 "Yes  →  convert to Skyrim SE (64-bit)\n" +
                 "No   →  convert to Skyrim LE (32-bit)\n" +
                 "Cancel  →  do nothing\n\n" +
-                "Originals are never modified; results go to a converted_SE / converted_LE " +
-                "folder alongside them.",
+                "Originals are never modified. Results go to a folder beside the source, " +
+                "named after it (Behaviors → Behaviors_SE); files already in the target " +
+                "edition are copied across, so it is a complete copy.",
                 "Convert between editions",
                 MessageBoxButton.YesNoCancel, MessageBoxImage.Question,
                 le >= se ? MessageBoxResult.Yes : MessageBoxResult.No);
