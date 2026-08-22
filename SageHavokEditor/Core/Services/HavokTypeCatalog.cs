@@ -69,7 +69,11 @@ namespace SageHavokEditor.Core.Services
                 // Annotate re-enters GetClassMap for this same class, and must
                 // find the (pre-upgrade) map instead of recursing forever.
                 _byClass[className] = map;
-                if (map != null) UpgradeEnums(className, map);
+                if (map != null)
+                {
+                    UpgradeEnums(className, map);
+                    ApplySemantics(className, map);
+                }
                 return map;
             }
         }
@@ -151,6 +155,60 @@ namespace SageHavokEditor.Core.Services
                         EnumChoices = Enum.GetNames(enumType)
                     };
             }
+        }
+
+        /// <summary>
+        /// Mark the integer params that are really indices into the file's event or
+        /// variable table, so the editor can offer a name picker instead of a number.
+        ///
+        /// Havok gives no metadata for this — the members are plain ints — so it goes
+        /// by name, which is safe because the naming is consistent across the class
+        /// set: every event index ends in EventId (eventId, enterEventId,
+        /// transitionToNextHigherStateEventId, …) and every variable index in
+        /// VariableIndex (variableIndex, syncVariableIndex, assignmentVariableIndex).
+        /// The two exceptions are hkbExpressionData's assignment pair and
+        /// hkbEventBase.id — the "id" of an hkbEvent / hkbEventProperty, which is
+        /// where notify events, clip triggers and event ranges keep theirs.
+        /// </summary>
+        private static void ApplySemantics(string className, Dictionary<string, HkParamTypeInfo> map)
+        {
+            var isEventClass = _havokTypesByName!.TryGetValue(className, out var type)
+                               && typeof(hkbEventBase).IsAssignableFrom(type);
+
+            foreach (var name in map.Keys.ToList())
+            {
+                var info = map[name];
+                if (info.Kind != HkParamKind.Int) continue;   // enums/flags keep their dropdown
+
+                var semantic = Semantic(name, isEventClass);
+                if (semantic == HkParamSemantic.None) continue;
+
+                map[name] = new HkParamTypeInfo
+                {
+                    Kind = info.Kind,
+                    EnumChoices = info.EnumChoices,
+                    ElementClassName = info.ElementClassName,
+                    Min = info.Min,
+                    Max = info.Max,
+                    Semantic = semantic,
+                };
+            }
+        }
+
+        private static HkParamSemantic Semantic(string paramName, bool isEventClass)
+        {
+            if (paramName == "eventId"
+                || paramName.EndsWith("EventId", StringComparison.Ordinal)
+                || paramName == "assignmentEventIndex"
+                || (isEventClass && paramName == "id"))
+                return HkParamSemantic.EventId;
+
+            if (paramName == "variableIndex"
+                || paramName.EndsWith("VariableIndex", StringComparison.Ordinal)
+                || paramName == "variableId")
+                return HkParamSemantic.VariableIndex;
+
+            return HkParamSemantic.None;
         }
 
         private static void EnsureIndexes()

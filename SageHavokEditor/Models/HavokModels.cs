@@ -27,6 +27,20 @@ namespace SageHavokEditor.Models
     public enum HkParamKind { Text, Bool, Int, Real, Enum }
 
     /// <summary>
+    /// What an integer param's number actually *means*, where the declared type
+    /// alone doesn't say. Both of these are positional indices into a table the
+    /// file already carries, so the editor can show names instead of numbers.
+    /// </summary>
+    public enum HkParamSemantic
+    {
+        None = 0,
+        /// <summary>Index into hkbBehaviorGraphStringData.eventNames; -1 = none.</summary>
+        EventId,
+        /// <summary>Index into hkbBehaviorGraphStringData.variableNames; -1 = none.</summary>
+        VariableIndex,
+    }
+
+    /// <summary>
     /// Declared Havok type of a param, sourced from the HKX2 class definitions
     /// (see HavokTypeCatalog). One shared instance per (class, param) — never
     /// mutate after construction.
@@ -35,6 +49,8 @@ namespace SageHavokEditor.Models
     {
         public HkParamKind Kind { get; init; }
         public IReadOnlyList<string>? EnumChoices { get; init; }
+        /// <summary>Table this int indexes into, when it is an index — see HkParamSemantic.</summary>
+        public HkParamSemantic Semantic { get; init; }
         /// <summary>Class of inline child hkobjects (struct members / struct arrays).</summary>
         public string? ElementClassName { get; init; }
         public long Min { get; init; } = long.MinValue;
