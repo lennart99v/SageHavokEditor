@@ -25,6 +25,8 @@
         <converters:BoolParamValueConverter      x:Key="BoolParamValueConverter"/>
         <converters:InlineElementRemoveVisibilityConverter x:Key="InlineElementRemoveVisibilityConverter"/>
         <converters:InlineArrayAddVisibilityConverter      x:Key="InlineArrayAddVisibilityConverter"/>
+        <converters:IdPickerItemsConverter       x:Key="IdPickerItemsConverter"/>
+        <converters:PickerSelectionConverter     x:Key="PickerSelectionConverter"/>
 
         <HierarchicalDataTemplate DataType="{x:Type models:BehaviorNodeData}"
                                   ItemsSource="{Binding Children}">
@@ -1529,6 +1531,48 @@
                                                     </Style>
                                                 </ComboBox.Style>
                                             </ComboBox>
+                                            <!-- Event-id / variable-index params: an index into a table the
+                                                 file already carries, so pick by name instead of typing a
+                                                 number. The list always contains the current value (see
+                                                 IdPickerItemsConverter), so selection can't lose it. -->
+                                            <ComboBox Margin="0,2,0,0" FontSize="11"
+                                                      SelectedValuePath="Id" DisplayMemberPath="Display"
+                                                      SelectedValue="{Binding Value, Mode=TwoWay, Converter={StaticResource PickerSelectionConverter}}"
+                                                      ToolTip="Pick from this file's table — (none) writes -1">
+                                                <ComboBox.ItemsSource>
+                                                    <MultiBinding Converter="{StaticResource IdPickerItemsConverter}">
+                                                        <Binding Path="Value"/>
+                                                        <Binding Path="TypeInfo"/>
+                                                        <Binding Path="EventList" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                        <Binding Path="VariableList" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                    </MultiBinding>
+                                                </ComboBox.ItemsSource>
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Value="event">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                        <Binding Path="Value"/>
+                                                                        <Binding Path="TypeInfo"/>
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Value="variable">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                        <Binding Path="Value"/>
+                                                                        <Binding Path="TypeInfo"/>
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+                                            </ComboBox>
                                             <Grid>
                                                 <Grid.Style>
                                                     <Style TargetType="Grid">
@@ -1543,6 +1587,24 @@
                                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                             </DataTrigger>
                                                             <DataTrigger Value="enum">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                        <Binding Path="Value"/>
+                                                                        <Binding Path="TypeInfo"/>
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Value="event">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                        <Binding Path="Value"/>
+                                                                        <Binding Path="TypeInfo"/>
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Value="variable">
                                                                 <DataTrigger.Binding>
                                                                     <MultiBinding Converter="{StaticResource ParamKindConverter}">
                                                                         <Binding Path="Value"/>
@@ -1656,6 +1718,47 @@
                                                                                        FontSize="10" VerticalAlignment="Top"
                                                                                        TextWrapping="Wrap" Margin="0,0,6,0"
                                                                                        ToolTip="{Binding Name}"/>
+                                                                            <!-- Same event/variable picker as top-level params. This is
+                                                                                 where hkbEventProperty.id lives — notify events, clip
+                                                                                 triggers, event ranges — so it matters more here. -->
+                                                                            <ComboBox Grid.Column="1" FontSize="10" Padding="2,1"
+                                                                                      SelectedValuePath="Id" DisplayMemberPath="Display"
+                                                                                      SelectedValue="{Binding Value, Mode=TwoWay, Converter={StaticResource PickerSelectionConverter}}"
+                                                                                      ToolTip="Pick from this file's table — (none) writes -1">
+                                                                                <ComboBox.ItemsSource>
+                                                                                    <MultiBinding Converter="{StaticResource IdPickerItemsConverter}">
+                                                                                        <Binding Path="Value"/>
+                                                                                        <Binding Path="TypeInfo"/>
+                                                                                        <Binding Path="EventList" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                                                        <Binding Path="VariableList" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                                                    </MultiBinding>
+                                                                                </ComboBox.ItemsSource>
+                                                                                <ComboBox.Style>
+                                                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Value="event">
+                                                                                                <DataTrigger.Binding>
+                                                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                                                        <Binding Path="Value"/>
+                                                                                                        <Binding Path="TypeInfo"/>
+                                                                                                    </MultiBinding>
+                                                                                                </DataTrigger.Binding>
+                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                            </DataTrigger>
+                                                                                            <DataTrigger Value="variable">
+                                                                                                <DataTrigger.Binding>
+                                                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                                                        <Binding Path="Value"/>
+                                                                                                        <Binding Path="TypeInfo"/>
+                                                                                                    </MultiBinding>
+                                                                                                </DataTrigger.Binding>
+                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </ComboBox.Style>
+                                                                            </ComboBox>
                                                                             <TextBox Grid.Column="1"
                                                                                      Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                                      FontSize="10" Padding="2,1">
@@ -1669,6 +1772,25 @@
                                                                                                 <Setter Property="BorderBrush" Value="#E0534F"/>
                                                                                                 <Setter Property="BorderThickness" Value="1.4"/>
                                                                                                 <Setter Property="ToolTip" Value="{Binding TypeInfo.Hint}"/>
+                                                                                            </DataTrigger>
+                                                                                            <!-- Hidden where the picker above takes over -->
+                                                                                            <DataTrigger Value="event">
+                                                                                                <DataTrigger.Binding>
+                                                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                                                        <Binding Path="Value"/>
+                                                                                                        <Binding Path="TypeInfo"/>
+                                                                                                    </MultiBinding>
+                                                                                                </DataTrigger.Binding>
+                                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                            </DataTrigger>
+                                                                                            <DataTrigger Value="variable">
+                                                                                                <DataTrigger.Binding>
+                                                                                                    <MultiBinding Converter="{StaticResource ParamKindConverter}">
+                                                                                                        <Binding Path="Value"/>
+                                                                                                        <Binding Path="TypeInfo"/>
+                                                                                                    </MultiBinding>
+                                                                                                </DataTrigger.Binding>
+                                                                                                <Setter Property="Visibility" Value="Collapsed"/>
                                                                                             </DataTrigger>
                                                                                         </Style.Triggers>
                                                                                     </Style>

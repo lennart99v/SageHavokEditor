@@ -141,6 +141,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Event ids and variable indices edit as name pickers.** Every event-id
+  param in the property editor was a bare integer — a transition's `eventId`,
+  the `enterEventId`/`exitEventId` of a trigger or initiate interval, a state
+  machine's `returnToPreviousStateEventId` / `randomTransitionEventId` /
+  next-higher / next-lower ids, `hkbEventDrivenModifier`'s activate and
+  deactivate ids, and the `id` of an event property (which is where notify
+  events, clip triggers and event ranges keep theirs: 436 of them in vanilla
+  `dragonbehavior` alone). Setting one meant counting rows in the Events tab.
+  They now edit as a dropdown of this file's own event table, shown as
+  `name (#index)`, with `(none)` for -1; variable-index params
+  (`variableIndex`, `syncVariableIndex`, `assignmentVariableIndex`) get the
+  same against the variable table. Params nested inside inline array elements
+  are covered too, so interval ids and notify events pick by name as well.
+
+  Havok publishes no metadata saying "this int is an event index", so
+  `HavokTypeCatalog` marks them by name — `*EventId`, `assignmentEventIndex`,
+  and `id` on any class deriving from `hkbEventBase` — verified against
+  vanilla `dragonbehavior`: every int param with an event- or variable-ish
+  name is annotated, and nothing else is (`stateId`, `userData` and the enums
+  are untouched). An id the table doesn't cover renders as `‹unknown #N›` and
+  is left alone: the picker's list is rebuilt to always contain the current
+  value, so a selection can never write away a value the editor merely didn't
+  recognise. Edits go through the same param setter as typing, so undo/redo
+  and save-time validation are unchanged.
+
 - **Event cross-reference — one event, or the whole table at once.** A new
   🔗 Event Xref dialog lists every event in the file with its listen/send
   counts, the references behind them, and an "unreferenced only" filter;

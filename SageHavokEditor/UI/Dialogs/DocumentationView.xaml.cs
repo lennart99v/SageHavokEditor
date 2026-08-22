@@ -198,6 +198,13 @@ namespace SageHavokEditor.UI.Dialogs
                 "The right-hand panel shows every parameter of the selected object, and it knows " +
                 "each parameter's declared Havok type (from the bundled HKX2 class definitions).\n\n" +
                 "• Booleans edit as a checkbox, enums as a fixed-choice dropdown.\n" +
+                "• Event ids and variable indices edit as name pickers rather than numbers — " +
+                "a transition's eventId, a trigger or initiate interval's enterEventId/exitEventId, " +
+                "a machine's returnToPreviousStateEventId and friends, the id of an event property " +
+                "(notify events, clip triggers), variableIndex and syncVariableIndex. The list is " +
+                "this file's own event or variable table, shown as name (#index), with (none) for " +
+                "-1. An id the table doesn't cover shows as ‹unknown #N› and is left exactly as it " +
+                "was — nothing is silently renumbered.\n" +
                 "• Numeric fields validate live: a value that doesn't parse as the declared type — or " +
                 "falls outside its range, like 200 in an int8 — gets a red border and an \"expected …\" " +
                 "tooltip. Nested params inside array elements are validated too. Saving as HKX is " +

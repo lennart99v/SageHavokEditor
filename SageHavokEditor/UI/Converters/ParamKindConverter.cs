@@ -20,6 +20,16 @@ namespace SageHavokEditor.UI.Converters
             var s = (values.ElementAtOrDefault(0) as string)?.Trim();
 
             if (values.ElementAtOrDefault(1) is HkParamTypeInfo info)
+            {
+                // An int that indexes the event or variable table edits as a name
+                // picker rather than a number (see IdPickerItemsConverter).
+                if (info.Kind == HkParamKind.Int)
+                    switch (info.Semantic)
+                    {
+                        case HkParamSemantic.EventId: return "event";
+                        case HkParamSemantic.VariableIndex: return "variable";
+                    }
+
                 return info.Kind switch
                 {
                     HkParamKind.Bool => "bool",
@@ -28,6 +38,7 @@ namespace SageHavokEditor.UI.Converters
                     HkParamKind.Enum => s != null && s.Contains('|') ? "text" : "enum",
                     _ => "text"
                 };
+            }
 
             return string.Equals(s, "true", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(s, "false", StringComparison.OrdinalIgnoreCase)
