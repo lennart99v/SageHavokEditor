@@ -43,7 +43,8 @@ anything separately.
 
 ## Opening a pull request
 
-- Push your branch to your fork.
+- Push your branch to your fork. (Maintainers: push the branch to this
+  repository instead — `master` is protected, so it takes a PR either way.)
 - Open a PR against `lennart99v/SageHavokEditor:master`.
 - In the description, explain **why** (not just what) and any manual
   testing you did.
