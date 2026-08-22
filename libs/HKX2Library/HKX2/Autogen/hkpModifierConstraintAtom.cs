@@ -25,10 +25,10 @@ namespace HKX2
             br.Position += 14;
             m_modifierAtomSize = br.ReadUInt16();
             m_childSize = br.ReadUInt16();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_child = des.ReadClassPointer<hkpConstraintAtom>(br);
             m_pad = des.ReadUInt32CStyleArray(br, 2);
-            br.Position += 8;
+            br.Position += des.Padding(8, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -37,10 +37,10 @@ namespace HKX2
             bw.Position += 14;
             bw.WriteUInt16(m_modifierAtomSize);
             bw.WriteUInt16(m_childSize);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassPointer(bw, m_child);
             s.WriteUInt32CStyleArray(bw, m_pad);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -34,7 +34,7 @@ namespace HKX2
             m_solverResultLimit = br.ReadSingle();
             m_removeWhenBroken = br.ReadBoolean();
             m_revertBackVelocityOnBreak = br.ReadBoolean();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -47,7 +47,7 @@ namespace HKX2
             bw.WriteSingle(m_solverResultLimit);
             bw.WriteBoolean(m_removeWhenBroken);
             bw.WriteBoolean(m_revertBackVelocityOnBreak);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -49,7 +49,7 @@ namespace HKX2
             m_blendInDuration = br.ReadSingle();
             m_blendOutDuration = br.ReadSingle();
             m_syncToGeneratorStartTime = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
             m_timeInTransition = br.ReadSingle();
@@ -72,7 +72,7 @@ namespace HKX2
             bw.WriteSingle(m_blendInDuration);
             bw.WriteSingle(m_blendOutDuration);
             bw.WriteBoolean(m_syncToGeneratorStartTime);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
             bw.WriteSingle(m_timeInTransition);

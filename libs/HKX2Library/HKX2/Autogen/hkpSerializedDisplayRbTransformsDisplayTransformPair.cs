@@ -18,14 +18,14 @@ namespace HKX2
         public virtual void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             m_rb = des.ReadClassPointer<hkpRigidBody>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
             m_localToDisplay = des.ReadTransform(br);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             s.WriteClassPointer(bw, m_rb);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
             s.WriteTransform(bw, m_localToDisplay);
         }
 

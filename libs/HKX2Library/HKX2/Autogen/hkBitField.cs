@@ -20,14 +20,14 @@ namespace HKX2
         {
             m_words = des.ReadUInt32Array(br);
             m_numBits = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             s.WriteUInt32Array(bw, m_words);
             bw.WriteInt32(m_numBits);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

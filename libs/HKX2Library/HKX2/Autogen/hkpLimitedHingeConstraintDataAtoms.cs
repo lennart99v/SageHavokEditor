@@ -33,7 +33,7 @@ namespace HKX2
             m_angLimit.Read(des, br);
             m_2dAng.Read(des, br);
             m_ballSocket.Read(des, br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -45,7 +45,7 @@ namespace HKX2
             m_angLimit.Write(s, bw);
             m_2dAng.Write(s, bw);
             m_ballSocket.Write(s, bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

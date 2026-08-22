@@ -30,10 +30,10 @@ namespace HKX2
         {
             base.Read(des, br);
             des.ReadEmptyPointer(br);
-            m_userData = br.ReadUInt64();
+            m_userData = br.ReadUSize();
             m_collidable.Read(des, br);
             m_multiThreadCheck.Read(des, br);
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_name = des.ReadStringPointer(br);
             m_properties = des.ReadClassArray<hkpProperty>(br);
             des.ReadEmptyPointer(br);
@@ -43,10 +43,10 @@ namespace HKX2
         {
             base.Write(s, bw);
             s.WriteVoidPointer(bw);
-            bw.WriteUInt64(m_userData);
+            bw.WriteUSize(m_userData);
             m_collidable.Write(s, bw);
             m_multiThreadCheck.Write(s, bw);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteStringPointer(bw, m_name);
             s.WriteClassArray(bw, m_properties);
             s.WriteVoidPointer(bw);

@@ -33,7 +33,7 @@ namespace HKX2
             m_faceOffsets = des.ReadUInt16Array(br);
             m_reference = br.ReadUInt16();
             m_transformIndex = br.ReadUInt16();
-            br.Position += 12;
+            br.Position += des.Padding(12, 8);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -44,7 +44,7 @@ namespace HKX2
             s.WriteUInt16Array(bw, m_faceOffsets);
             bw.WriteUInt16(m_reference);
             bw.WriteUInt16(m_transformIndex);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 8);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

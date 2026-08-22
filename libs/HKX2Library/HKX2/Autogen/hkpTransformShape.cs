@@ -24,7 +24,7 @@ namespace HKX2
             base.Read(des, br);
             m_childShape.Read(des, br);
             m_childShapeSize = br.ReadInt32();
-            br.Position += 12;
+            br.Position += des.Padding(12, 4);
             m_rotation = des.ReadQuaternion(br);
             m_transform = des.ReadTransform(br);
         }
@@ -34,7 +34,7 @@ namespace HKX2
             base.Write(s, bw);
             m_childShape.Write(s, bw);
             bw.WriteInt32(m_childShapeSize);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 4);
             s.WriteQuaternion(bw, m_rotation);
             s.WriteTransform(bw, m_transform);
         }

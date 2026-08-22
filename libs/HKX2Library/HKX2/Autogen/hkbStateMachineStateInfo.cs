@@ -42,7 +42,7 @@ namespace HKX2
             m_stateId = br.ReadInt32();
             m_probability = br.ReadSingle();
             m_enable = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -57,7 +57,7 @@ namespace HKX2
             bw.WriteInt32(m_stateId);
             bw.WriteSingle(m_probability);
             bw.WriteBoolean(m_enable);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

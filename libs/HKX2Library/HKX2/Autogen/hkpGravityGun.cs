@@ -37,7 +37,7 @@ namespace HKX2
             m_maxDistOfObjectPicked = br.ReadSingle();
             m_impulseAppliedWhenObjectNotPicked = br.ReadSingle();
             m_throwVelocity = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_capturedObjectPosition = br.ReadVector4();
             m_capturedObjectsOffset = br.ReadVector4();
         }
@@ -51,7 +51,7 @@ namespace HKX2
             bw.WriteSingle(m_maxDistOfObjectPicked);
             bw.WriteSingle(m_impulseAppliedWhenObjectNotPicked);
             bw.WriteSingle(m_throwVelocity);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             bw.WriteVector4(m_capturedObjectPosition);
             bw.WriteVector4(m_capturedObjectsOffset);
         }

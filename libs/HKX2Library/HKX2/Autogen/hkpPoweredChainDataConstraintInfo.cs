@@ -32,7 +32,7 @@ namespace HKX2
             m_bTc = des.ReadQuaternion(br);
             m_motors = des.ReadClassPointerCStyleArray<hkpConstraintMotor>(br, 3);
             m_switchBodies = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -43,7 +43,7 @@ namespace HKX2
             s.WriteQuaternion(bw, m_bTc);
             s.WriteClassPointerCStyleArray(bw, m_motors);
             bw.WriteBoolean(m_switchBodies);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

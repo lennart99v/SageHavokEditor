@@ -49,7 +49,7 @@ namespace HKX2
             m_handleChangeSpeed = br.ReadSingle();
             m_handleChangeMode = br.ReadSByte();
             m_fixUp = br.ReadBoolean();
-            br.Position += 14;
+            br.Position += des.Padding(14, 2);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -66,7 +66,7 @@ namespace HKX2
             bw.WriteSingle(m_handleChangeSpeed);
             bw.WriteSByte(m_handleChangeMode);
             bw.WriteBoolean(m_fixUp);
-            bw.Position += 14;
+            bw.Position += s.Padding(14, 2);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

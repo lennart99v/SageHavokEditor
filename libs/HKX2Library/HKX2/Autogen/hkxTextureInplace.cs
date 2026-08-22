@@ -24,7 +24,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_fileType = br.ReadASCII(4);
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_data = des.ReadByteArray(br);
             m_name = des.ReadStringPointer(br);
             m_originalFilename = des.ReadStringPointer(br);
@@ -34,7 +34,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteASCII(m_fileType);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteByteArray(bw, m_data);
             s.WriteStringPointer(bw, m_name);
             s.WriteStringPointer(bw, m_originalFilename);

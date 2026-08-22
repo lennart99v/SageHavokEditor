@@ -74,6 +74,7 @@ namespace HKX2
             m_offsetPitchDegrees = br.ReadSingle();
             m_onGain = br.ReadSingle();
             m_offGain = br.ReadSingle();
+            br.Position += des.Padding(0, 4);
             m_targetLocation = br.ReadVector4();
             m_userInfo = br.ReadUInt32();
             m_directAtCamera = br.ReadBoolean();
@@ -86,12 +87,13 @@ namespace HKX2
             m_currentHeadingOffset = br.ReadSingle();
             m_currentPitchOffset = br.ReadSingle();
             m_timeStep = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
             m_hasTarget = br.ReadBoolean();
-            br.Position += 15;
+            br.Position += des.Padding(15, 7);
             m_directAtTargetLocation = br.ReadVector4();
             des.ReadEmptyArray(br);
+            br.Position += des.Padding(0, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -108,6 +110,7 @@ namespace HKX2
             bw.WriteSingle(m_offsetPitchDegrees);
             bw.WriteSingle(m_onGain);
             bw.WriteSingle(m_offGain);
+            bw.Position += s.Padding(0, 4);
             bw.WriteVector4(m_targetLocation);
             bw.WriteUInt32(m_userInfo);
             bw.WriteBoolean(m_directAtCamera);
@@ -120,12 +123,13 @@ namespace HKX2
             bw.WriteSingle(m_currentHeadingOffset);
             bw.WriteSingle(m_currentPitchOffset);
             bw.WriteSingle(m_timeStep);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
             bw.WriteBoolean(m_hasTarget);
-            bw.Position += 15;
+            bw.Position += s.Padding(15, 7);
             bw.WriteVector4(m_directAtTargetLocation);
             s.WriteVoidArray(bw);
+            bw.Position += s.Padding(0, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

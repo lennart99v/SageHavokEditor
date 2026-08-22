@@ -30,7 +30,7 @@ namespace HKX2
             m_eventMode = br.ReadSByte();
             m_raisedEvent = br.ReadBoolean();
             m_wasTrueInPreviousFrame = br.ReadBoolean();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -41,7 +41,7 @@ namespace HKX2
             bw.WriteSByte(m_eventMode);
             bw.WriteBoolean(m_raisedEvent);
             bw.WriteBoolean(m_wasTrueInPreviousFrame);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

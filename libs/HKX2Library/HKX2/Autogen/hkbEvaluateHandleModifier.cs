@@ -39,7 +39,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_handle = des.ReadClassPointer<hkbHandle>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 0);
             m_handlePositionOut = br.ReadVector4();
             m_handleRotationOut = des.ReadQuaternion(br);
             m_isValidOut = br.ReadBoolean();
@@ -49,6 +49,7 @@ namespace HKX2
             m_handleChangeMode = br.ReadSByte();
             br.Position += 3;
             m_oldHandle.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_oldHandlePosition = br.ReadVector4();
             m_oldHandleRotation = des.ReadQuaternion(br);
             m_timeSinceLastModify = br.ReadSingle();
@@ -60,7 +61,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             s.WriteClassPointer(bw, m_handle);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 0);
             bw.WriteVector4(m_handlePositionOut);
             s.WriteQuaternion(bw, m_handleRotationOut);
             bw.WriteBoolean(m_isValidOut);
@@ -70,6 +71,7 @@ namespace HKX2
             bw.WriteSByte(m_handleChangeMode);
             bw.Position += 3;
             m_oldHandle.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_oldHandlePosition);
             s.WriteQuaternion(bw, m_oldHandleRotation);
             bw.WriteSingle(m_timeSinceLastModify);

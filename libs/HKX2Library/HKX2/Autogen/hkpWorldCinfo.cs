@@ -128,6 +128,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_gravity = br.ReadVector4();
             m_broadPhaseQuerySize = br.ReadInt32();
             m_contactRestingVelocity = br.ReadSingle();
@@ -145,7 +146,7 @@ namespace HKX2
             m_expectedMaxLinearVelocity = br.ReadSingle();
             m_sizeOfToiEventQueue = br.ReadInt32();
             m_expectedMinPsiDeltaTime = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_memoryWatchDog = des.ReadClassPointer<hkWorldMemoryAvailableWatchDog>(br);
             m_broadPhaseNumMarkers = br.ReadInt32();
             m_contactPointGeneration = br.ReadSByte();
@@ -199,6 +200,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_gravity);
             bw.WriteInt32(m_broadPhaseQuerySize);
             bw.WriteSingle(m_contactRestingVelocity);
@@ -216,7 +218,7 @@ namespace HKX2
             bw.WriteSingle(m_expectedMaxLinearVelocity);
             bw.WriteInt32(m_sizeOfToiEventQueue);
             bw.WriteSingle(m_expectedMinPsiDeltaTime);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassPointer(bw, m_memoryWatchDog);
             bw.WriteInt32(m_broadPhaseNumMarkers);
             bw.WriteSByte(m_contactPointGeneration);

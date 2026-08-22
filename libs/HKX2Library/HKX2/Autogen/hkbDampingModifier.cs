@@ -48,7 +48,7 @@ namespace HKX2
             br.Position += 2;
             m_rawValue = br.ReadSingle();
             m_dampedValue = br.ReadSingle();
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
             m_rawVector = br.ReadVector4();
             m_dampedVector = br.ReadVector4();
             m_vecErrorSum = br.ReadVector4();
@@ -69,7 +69,7 @@ namespace HKX2
             bw.Position += 2;
             bw.WriteSingle(m_rawValue);
             bw.WriteSingle(m_dampedValue);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
             bw.WriteVector4(m_rawVector);
             bw.WriteVector4(m_dampedVector);
             bw.WriteVector4(m_vecErrorSum);

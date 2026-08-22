@@ -16,14 +16,14 @@ namespace HKX2
         {
             base.Read(des, br);
             m_isCloseToGround = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
             bw.WriteBoolean(m_isCloseToGround);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

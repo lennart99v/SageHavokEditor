@@ -45,11 +45,11 @@ namespace HKX2
             base.Read(des, br);
             m_bodyA = des.ReadClassPointer<hkpEntity>(br);
             m_bodyB = des.ReadClassPointer<hkpEntity>(br);
-            m_bodyAId = br.ReadUInt64();
-            m_bodyBId = br.ReadUInt64();
+            m_bodyAId = br.ReadUSize();
+            m_bodyBId = br.ReadUSize();
             m_useEntityIds = br.ReadBoolean();
             m_agentType = br.ReadSByte();
-            br.Position += 14;
+            br.Position += des.Padding(14, 6);
             m_atom.Read(des, br);
             m_propertiesStream = des.ReadByteArray(br);
             m_contactPoints = des.ReadClassArray<hkContactPoint>(br);
@@ -58,7 +58,7 @@ namespace HKX2
             m_trackInfo.Read(des, br);
             m_endianCheckBuffer = des.ReadByteCStyleArray(br, 4);
             m_version = br.ReadUInt32();
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -66,11 +66,11 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteClassPointer(bw, m_bodyA);
             s.WriteClassPointer(bw, m_bodyB);
-            bw.WriteUInt64(m_bodyAId);
-            bw.WriteUInt64(m_bodyBId);
+            bw.WriteUSize(m_bodyAId);
+            bw.WriteUSize(m_bodyBId);
             bw.WriteBoolean(m_useEntityIds);
             bw.WriteSByte(m_agentType);
-            bw.Position += 14;
+            bw.Position += s.Padding(14, 6);
             m_atom.Write(s, bw);
             s.WriteByteArray(bw, m_propertiesStream);
             s.WriteClassArray(bw, m_contactPoints);
@@ -79,7 +79,7 @@ namespace HKX2
             m_trackInfo.Write(s, bw);
             s.WriteByteCStyleArray(bw, m_endianCheckBuffer);
             bw.WriteUInt32(m_version);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

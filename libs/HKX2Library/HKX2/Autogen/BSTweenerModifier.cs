@@ -37,7 +37,7 @@ namespace HKX2
             m_useTweenDuration = br.ReadBoolean();
             br.Position += 1;
             m_tweenDuration = br.ReadSingle();
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
             m_targetPosition = br.ReadVector4();
             m_targetRotation = des.ReadQuaternion(br);
             m_duration = br.ReadSingle();
@@ -55,7 +55,7 @@ namespace HKX2
             bw.WriteBoolean(m_useTweenDuration);
             bw.Position += 1;
             bw.WriteSingle(m_tweenDuration);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
             bw.WriteVector4(m_targetPosition);
             s.WriteQuaternion(bw, m_targetRotation);
             bw.WriteSingle(m_duration);

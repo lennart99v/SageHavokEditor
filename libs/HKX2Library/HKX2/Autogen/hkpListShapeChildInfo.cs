@@ -24,7 +24,7 @@ namespace HKX2
             m_collisionFilterInfo = br.ReadUInt32();
             m_shapeSize = br.ReadInt32();
             m_numChildShapes = br.ReadInt32();
-            br.Position += 12;
+            br.Position += des.Padding(12, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -33,7 +33,7 @@ namespace HKX2
             bw.WriteUInt32(m_collisionFilterInfo);
             bw.WriteInt32(m_shapeSize);
             bw.WriteInt32(m_numChildShapes);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

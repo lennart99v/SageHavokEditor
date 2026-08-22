@@ -24,7 +24,7 @@ namespace HKX2
             m_characterId = br.ReadUInt64();
             m_externalEventIds = des.ReadInt16Array(br);
             m_padding = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -33,7 +33,7 @@ namespace HKX2
             bw.WriteUInt64(m_characterId);
             s.WriteInt16Array(bw, m_externalEventIds);
             bw.WriteInt32(m_padding);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

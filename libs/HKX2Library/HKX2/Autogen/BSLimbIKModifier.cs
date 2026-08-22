@@ -39,7 +39,7 @@ namespace HKX2
             m_boneRadius = br.ReadSingle();
             m_castOffset = br.ReadSingle();
             m_timeStep = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
         }
 
@@ -54,7 +54,7 @@ namespace HKX2
             bw.WriteSingle(m_boneRadius);
             bw.WriteSingle(m_castOffset);
             bw.WriteSingle(m_timeStep);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
         }
 

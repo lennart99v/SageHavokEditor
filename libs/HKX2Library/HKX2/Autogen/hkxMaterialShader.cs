@@ -29,7 +29,7 @@ namespace HKX2
             base.Read(des, br);
             m_name = des.ReadStringPointer(br);
             m_type = br.ReadByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             m_vertexEntryName = des.ReadStringPointer(br);
             m_geomEntryName = des.ReadStringPointer(br);
             m_pixelEntryName = des.ReadStringPointer(br);
@@ -41,7 +41,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteStringPointer(bw, m_name);
             bw.WriteByte(m_type);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteStringPointer(bw, m_vertexEntryName);
             s.WriteStringPointer(bw, m_geomEntryName);
             s.WriteStringPointer(bw, m_pixelEntryName);

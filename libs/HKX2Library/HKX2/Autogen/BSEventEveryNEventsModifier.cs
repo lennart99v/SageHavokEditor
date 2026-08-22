@@ -35,7 +35,7 @@ namespace HKX2
             br.Position += 1;
             m_numberOfEventsSeen = br.ReadInt32();
             m_calculatedNumberOfEventsBeforeSend = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -49,7 +49,7 @@ namespace HKX2
             bw.Position += 1;
             bw.WriteInt32(m_numberOfEventsSeen);
             bw.WriteSByte(m_calculatedNumberOfEventsBeforeSend);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

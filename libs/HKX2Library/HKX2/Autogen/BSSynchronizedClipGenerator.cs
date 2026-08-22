@@ -64,19 +64,19 @@ namespace HKX2
             m_bApplyMotionFromRoot = br.ReadBoolean();
             br.Position += 1;
             des.ReadEmptyPointer(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 4);
             m_StartMarkWS = des.ReadQSTransform(br);
             m_EndMarkWS = des.ReadQSTransform(br);
             m_StartMarkMS = des.ReadQSTransform(br);
             m_fCurrentLerp = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
             m_sAnimationBindingIndex = br.ReadInt16();
             m_bAtMark = br.ReadBoolean();
             m_bAllCharactersInScene = br.ReadBoolean();
             m_bAllCharactersAtMarks = br.ReadBoolean();
-            br.Position += 3;
+            br.Position += des.Padding(3, 15);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -94,19 +94,19 @@ namespace HKX2
             bw.WriteBoolean(m_bApplyMotionFromRoot);
             bw.Position += 1;
             s.WriteVoidPointer(bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 4);
             s.WriteQSTransform(bw, m_StartMarkWS);
             s.WriteQSTransform(bw, m_EndMarkWS);
             s.WriteQSTransform(bw, m_StartMarkMS);
             bw.WriteSingle(m_fCurrentLerp);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
             bw.WriteInt16(m_sAnimationBindingIndex);
             bw.WriteBoolean(m_bAtMark);
             bw.WriteBoolean(m_bAllCharactersInScene);
             bw.WriteBoolean(m_bAllCharactersAtMarks);
-            bw.Position += 3;
+            bw.Position += s.Padding(3, 15);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

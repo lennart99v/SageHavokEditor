@@ -28,7 +28,7 @@ namespace HKX2
             br.Position += 3;
             m_offset = br.ReadSingle();
             m_scale = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 8);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -39,7 +39,7 @@ namespace HKX2
             bw.Position += 3;
             bw.WriteSingle(m_offset);
             bw.WriteSingle(m_scale);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 8);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

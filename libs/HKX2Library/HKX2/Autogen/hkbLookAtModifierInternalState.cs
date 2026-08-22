@@ -20,6 +20,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_lookAtLastTargetWS = br.ReadVector4();
             m_lookAtWeight = br.ReadSingle();
             m_isTargetInsideLimitCone = br.ReadBoolean();
@@ -29,6 +30,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_lookAtLastTargetWS);
             bw.WriteSingle(m_lookAtWeight);
             bw.WriteBoolean(m_isTargetInsideLimitCone);

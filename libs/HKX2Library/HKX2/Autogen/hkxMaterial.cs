@@ -36,7 +36,7 @@ namespace HKX2
             base.Read(des, br);
             m_name = des.ReadStringPointer(br);
             m_stages = des.ReadClassArray<hkxMaterialTextureStage>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
             m_diffuseColor = br.ReadVector4();
             m_ambientColor = br.ReadVector4();
             m_specularColor = br.ReadVector4();
@@ -44,7 +44,7 @@ namespace HKX2
             m_subMaterials = des.ReadClassPointerArray<hkxMaterial>(br);
             m_extraData = des.ReadClassPointer<hkReferencedObject>(br);
             m_properties = des.ReadClassArray<hkxMaterialProperty>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -52,7 +52,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteStringPointer(bw, m_name);
             s.WriteClassArray(bw, m_stages);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
             bw.WriteVector4(m_diffuseColor);
             bw.WriteVector4(m_ambientColor);
             bw.WriteVector4(m_specularColor);
@@ -60,7 +60,7 @@ namespace HKX2
             s.WriteClassPointerArray(bw, m_subMaterials);
             s.WriteClassPointer(bw, m_extraData);
             s.WriteClassArray(bw, m_properties);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

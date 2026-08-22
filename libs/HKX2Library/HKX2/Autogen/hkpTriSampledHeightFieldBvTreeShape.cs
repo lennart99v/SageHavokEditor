@@ -26,7 +26,7 @@ namespace HKX2
             m_childSize = br.ReadInt32();
             m_wantAabbRejectionTest = br.ReadBoolean();
             m_padding = des.ReadByteCStyleArray(br, 12);
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -36,7 +36,7 @@ namespace HKX2
             bw.WriteInt32(m_childSize);
             bw.WriteBoolean(m_wantAabbRejectionTest);
             s.WriteByteCStyleArray(bw, m_padding);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -22,7 +22,7 @@ namespace HKX2
             m_tau = br.ReadSingle();
             m_velocityTarget = br.ReadSingle();
             m_useVelocityTargetFromConstraintTargets = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -31,7 +31,7 @@ namespace HKX2
             bw.WriteSingle(m_tau);
             bw.WriteSingle(m_velocityTarget);
             bw.WriteBoolean(m_useVelocityTargetFromConstraintTargets);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -22,7 +22,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_iStateVar = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_stateData = des.ReadClassArray<BSIStateManagerModifierBSiStateData>(br);
             m_myStateListener.Read(des, br);
         }
@@ -31,7 +31,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteInt32(m_iStateVar);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassArray(bw, m_stateData);
             m_myStateListener.Write(s, bw);
         }

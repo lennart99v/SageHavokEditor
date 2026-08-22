@@ -25,7 +25,7 @@ namespace HKX2
             m_code = des.ReadClassPointer<hkpMoppCode>(br);
             des.ReadEmptyPointer(br);
             m_moppDataSize = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_codeInfoCopy = br.ReadVector4();
         }
 
@@ -35,7 +35,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_code);
             s.WriteVoidPointer(bw);
             bw.WriteUInt32(m_moppDataSize);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             bw.WriteVector4(m_codeInfoCopy);
         }
 

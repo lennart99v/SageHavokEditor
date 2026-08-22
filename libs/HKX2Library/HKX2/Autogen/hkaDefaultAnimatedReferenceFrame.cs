@@ -24,23 +24,25 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_up = br.ReadVector4();
             m_forward = br.ReadVector4();
             m_duration = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_referenceFrameSamples = des.ReadVector4Array(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_up);
             bw.WriteVector4(m_forward);
             bw.WriteSingle(m_duration);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVector4Array(bw, m_referenceFrameSamples);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

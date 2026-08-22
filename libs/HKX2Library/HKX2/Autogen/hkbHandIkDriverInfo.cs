@@ -21,7 +21,7 @@ namespace HKX2
             base.Read(des, br);
             m_hands = des.ReadClassArray<hkbHandIkDriverInfoHand>(br);
             m_fadeInOutCurve = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -29,7 +29,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteClassArray(bw, m_hands);
             bw.WriteSByte(m_fadeInOutCurve);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

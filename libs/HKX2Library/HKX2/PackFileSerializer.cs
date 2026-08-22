@@ -235,6 +235,14 @@ namespace HKX2
 
         #region Write methods
 
+        /// <summary>
+        /// Returns the alignment padding for the file's pointer size. The
+        /// generated Read/Write bodies were dumped from the 64-bit Skyrim SE
+        /// runtime; <paramref name="pad32"/> carries the equivalent for a
+        /// 4-byte pointer (Skyrim LE), computed by tools/hkx-layout-gen.
+        /// </summary>
+        public int Padding(int pad64, int pad32) => _header.PointerSize == 8 ? pad64 : pad32;
+
         private void PadToPointerSizeIfPaddingOption(BinaryWriterEx bw)
         {
             if (_header.PaddingOption == 1) bw.Pad(_header.PointerSize);

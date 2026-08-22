@@ -25,10 +25,10 @@ namespace HKX2
             base.Read(des, br);
             des.ReadEmptyPointer(br);
             m_callbackType = br.ReadUInt32();
-            br.Position += 4;
-            m_userData0 = br.ReadUInt64();
-            m_userData1 = br.ReadUInt64();
-            m_userData2 = br.ReadUInt64();
+            br.Position += des.Padding(4, 0);
+            m_userData0 = br.ReadUSize();
+            m_userData1 = br.ReadUSize();
+            m_userData2 = br.ReadUSize();
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -36,10 +36,10 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteVoidPointer(bw);
             bw.WriteUInt32(m_callbackType);
-            bw.Position += 4;
-            bw.WriteUInt64(m_userData0);
-            bw.WriteUInt64(m_userData1);
-            bw.WriteUInt64(m_userData2);
+            bw.Position += s.Padding(4, 0);
+            bw.WriteUSize(m_userData0);
+            bw.WriteUSize(m_userData1);
+            bw.WriteUSize(m_userData2);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

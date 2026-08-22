@@ -42,7 +42,7 @@ namespace HKX2
             m_toNestedStateId = br.ReadInt32();
             m_priority = br.ReadInt16();
             m_flags = br.ReadInt16();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -57,7 +57,7 @@ namespace HKX2
             bw.WriteInt32(m_toNestedStateId);
             bw.WriteInt16(m_priority);
             bw.WriteInt16(m_flags);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

@@ -23,7 +23,7 @@ namespace HKX2
             m_capsuleHeight = br.ReadSingle();
             m_capsuleRadius = br.ReadSingle();
             m_collisionFilterInfo = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_characterControllerCinfo = des.ReadClassPointer<hkpCharacterControllerCinfo>(br);
         }
 
@@ -32,7 +32,7 @@ namespace HKX2
             bw.WriteSingle(m_capsuleHeight);
             bw.WriteSingle(m_capsuleRadius);
             bw.WriteUInt32(m_collisionFilterInfo);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassPointer(bw, m_characterControllerCinfo);
         }
 

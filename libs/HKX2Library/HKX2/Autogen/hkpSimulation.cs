@@ -32,7 +32,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_determinismCheckFrameCounter = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_world = des.ReadClassPointer<hkpWorld>(br);
             m_lastProcessingStep = br.ReadByte();
             br.Position += 3;
@@ -42,14 +42,14 @@ namespace HKX2
             m_simulateUntilTime = br.ReadSingle();
             m_frameMarkerPsiSnap = br.ReadSingle();
             m_previousStepResult = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
             bw.WriteUInt32(m_determinismCheckFrameCounter);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassPointer(bw, m_world);
             bw.WriteByte(m_lastProcessingStep);
             bw.Position += 3;
@@ -59,7 +59,7 @@ namespace HKX2
             bw.WriteSingle(m_simulateUntilTime);
             bw.WriteSingle(m_frameMarkerPsiSnap);
             bw.WriteUInt32(m_previousStepResult);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

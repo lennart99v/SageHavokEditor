@@ -28,10 +28,11 @@ namespace HKX2
             base.Read(des, br);
             m_smoothingFactor = br.ReadSingle();
             m_closedLoop = br.ReadBoolean();
-            br.Position += 11;
+            br.Position += des.Padding(11, 3);
             m_dirNotParallelToTangentAlongWholePath = br.ReadVector4();
             m_points = des.ReadVector4Array(br);
             m_distance = des.ReadSingleArray(br);
+            br.Position += des.Padding(0, 8);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -39,10 +40,11 @@ namespace HKX2
             base.Write(s, bw);
             bw.WriteSingle(m_smoothingFactor);
             bw.WriteBoolean(m_closedLoop);
-            bw.Position += 11;
+            bw.Position += s.Padding(11, 3);
             bw.WriteVector4(m_dirNotParallelToTangentAlongWholePath);
             s.WriteVector4Array(bw, m_points);
             s.WriteSingleArray(bw, m_distance);
+            bw.Position += s.Padding(0, 8);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

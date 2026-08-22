@@ -38,12 +38,12 @@ namespace HKX2
             m_fBlendParameter = br.ReadSingle();
             m_fTransitionDuration = br.ReadSingle();
             m_eBlendCurve = br.ReadSByte();
-            br.Position += 15;
+            br.Position += des.Padding(15, 3);
             des.ReadEmptyPointer(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
             des.ReadEmptyPointer(br);
             m_currentMode = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 11);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -56,12 +56,12 @@ namespace HKX2
             bw.WriteSingle(m_fBlendParameter);
             bw.WriteSingle(m_fTransitionDuration);
             bw.WriteSByte(m_eBlendCurve);
-            bw.Position += 15;
+            bw.Position += s.Padding(15, 3);
             s.WriteVoidPointer(bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
             s.WriteVoidPointer(bw);
             bw.WriteSByte(m_currentMode);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 11);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

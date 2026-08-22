@@ -35,9 +35,10 @@ namespace HKX2
             m_templateName = des.ReadStringPointer(br);
             m_fullPathToProject = des.ReadStringPointer(br);
             m_skeleton = des.ReadClassPointer<hkaSkeleton>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 0);
             m_worldFromModel = des.ReadQSTransform(br);
             m_poseModelSpace = des.ReadQSTransformArray(br);
+            br.Position += des.Padding(0, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -48,9 +49,10 @@ namespace HKX2
             s.WriteStringPointer(bw, m_templateName);
             s.WriteStringPointer(bw, m_fullPathToProject);
             s.WriteClassPointer(bw, m_skeleton);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 0);
             s.WriteQSTransform(bw, m_worldFromModel);
             s.WriteQSTransformArray(bw, m_poseModelSpace);
+            bw.Position += s.Padding(0, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

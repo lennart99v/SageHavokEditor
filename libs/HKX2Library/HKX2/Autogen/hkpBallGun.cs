@@ -33,10 +33,10 @@ namespace HKX2
             m_bulletMass = br.ReadSingle();
             m_damageMultiplier = br.ReadSingle();
             m_maxBulletsInWorld = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 12);
             m_bulletOffsetFromCenter = br.ReadVector4();
             des.ReadEmptyPointer(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -47,10 +47,10 @@ namespace HKX2
             bw.WriteSingle(m_bulletMass);
             bw.WriteSingle(m_damageMultiplier);
             bw.WriteInt32(m_maxBulletsInWorld);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 12);
             bw.WriteVector4(m_bulletOffsetFromCenter);
             s.WriteVoidPointer(bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

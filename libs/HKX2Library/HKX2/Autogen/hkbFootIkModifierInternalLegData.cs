@@ -19,14 +19,14 @@ namespace HKX2
         {
             m_groundPosition = br.ReadVector4();
             des.ReadEmptyPointer(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             bw.WriteVector4(m_groundPosition);
             s.WriteVoidPointer(bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

@@ -30,7 +30,7 @@ namespace HKX2
             m_transformTrackToBoneIndices = des.ReadInt16Array(br);
             m_floatTrackToFloatSlotIndices = des.ReadInt16Array(br);
             m_blendHint = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -41,7 +41,7 @@ namespace HKX2
             s.WriteInt16Array(bw, m_transformTrackToBoneIndices);
             s.WriteInt16Array(bw, m_floatTrackToFloatSlotIndices);
             bw.WriteSByte(m_blendHint);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

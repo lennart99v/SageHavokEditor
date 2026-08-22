@@ -21,7 +21,7 @@ namespace HKX2
             base.Read(des, br);
             m_rays = des.ReadClassArray<hkpMultiRayShapeRay>(br);
             m_rayPenetrationDistance = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -29,7 +29,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteClassArray(bw, m_rays);
             bw.WriteSingle(m_rayPenetrationDistance);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

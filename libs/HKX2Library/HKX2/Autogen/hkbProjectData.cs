@@ -20,19 +20,21 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_worldUpWS = br.ReadVector4();
             m_stringData = des.ReadClassPointer<hkbProjectStringData>(br);
             m_defaultEventMode = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 11);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_worldUpWS);
             s.WriteClassPointer(bw, m_stringData);
             bw.WriteSByte(m_defaultEventMode);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 11);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

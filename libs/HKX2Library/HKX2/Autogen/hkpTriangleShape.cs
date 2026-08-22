@@ -31,7 +31,7 @@ namespace HKX2
             m_weldingInfo = br.ReadUInt16();
             m_weldingType = br.ReadByte();
             m_isExtruded = br.ReadByte();
-            br.Position += 4;
+            br.Position += des.Padding(4, 8);
             m_vertexA = br.ReadVector4();
             m_vertexB = br.ReadVector4();
             m_vertexC = br.ReadVector4();
@@ -44,7 +44,7 @@ namespace HKX2
             bw.WriteUInt16(m_weldingInfo);
             bw.WriteByte(m_weldingType);
             bw.WriteByte(m_isExtruded);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 8);
             bw.WriteVector4(m_vertexA);
             bw.WriteVector4(m_vertexB);
             bw.WriteVector4(m_vertexC);

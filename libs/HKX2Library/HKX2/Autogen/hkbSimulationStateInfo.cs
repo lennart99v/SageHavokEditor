@@ -16,14 +16,14 @@ namespace HKX2
         {
             base.Read(des, br);
             m_simulationState = br.ReadByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
             bw.WriteByte(m_simulationState);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

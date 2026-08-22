@@ -36,6 +36,7 @@ namespace HKX2
             m_simpleMappings = des.ReadClassArray<hkaSkeletonMapperDataSimpleMapping>(br);
             m_chainMappings = des.ReadClassArray<hkaSkeletonMapperDataChainMapping>(br);
             m_unmappedBones = des.ReadInt16Array(br);
+            br.Position += des.Padding(0, 4);
             m_extractedMotionMapping = des.ReadQSTransform(br);
             m_keepUnmappedLocal = br.ReadBoolean();
             br.Position += 3;
@@ -50,6 +51,7 @@ namespace HKX2
             s.WriteClassArray(bw, m_simpleMappings);
             s.WriteClassArray(bw, m_chainMappings);
             s.WriteInt16Array(bw, m_unmappedBones);
+            bw.Position += s.Padding(0, 4);
             s.WriteQSTransform(bw, m_extractedMotionMapping);
             bw.WriteBoolean(m_keepUnmappedLocal);
             bw.Position += 3;

@@ -24,7 +24,7 @@ namespace HKX2
             m_capacity = br.ReadUInt16();
             m_eventFilter = br.ReadByte();
             m_userFilter = br.ReadByte();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -33,7 +33,7 @@ namespace HKX2
             bw.WriteUInt16(m_capacity);
             bw.WriteByte(m_eventFilter);
             bw.WriteByte(m_userFilter);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

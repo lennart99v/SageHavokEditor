@@ -23,23 +23,23 @@ namespace HKX2
         public virtual void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             m_localTime = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_event.Read(des, br);
             m_relativeToEndOfClip = br.ReadBoolean();
             m_acyclic = br.ReadBoolean();
             m_isAnnotation = br.ReadBoolean();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             bw.WriteSingle(m_localTime);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             m_event.Write(s, bw);
             bw.WriteBoolean(m_relativeToEndOfClip);
             bw.WriteBoolean(m_acyclic);
             bw.WriteBoolean(m_isAnnotation);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

@@ -31,7 +31,7 @@ namespace HKX2
             m_broadPhaseHandle.Read(des, br);
             m_boundingVolumeData.Read(des, br);
             m_allowedPenetrationDepth = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -43,7 +43,7 @@ namespace HKX2
             m_broadPhaseHandle.Write(s, bw);
             m_boundingVolumeData.Write(s, bw);
             bw.WriteSingle(m_allowedPenetrationDepth);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

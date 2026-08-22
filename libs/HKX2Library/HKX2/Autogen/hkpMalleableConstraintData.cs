@@ -22,7 +22,7 @@ namespace HKX2
             m_constraintData = des.ReadClassPointer<hkpConstraintData>(br);
             m_atoms.Read(des, br);
             m_strength = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -31,7 +31,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_constraintData);
             m_atoms.Write(s, bw);
             bw.WriteSingle(m_strength);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

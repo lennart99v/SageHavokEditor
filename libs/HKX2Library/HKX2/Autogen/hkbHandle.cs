@@ -25,7 +25,7 @@ namespace HKX2
             m_rigidBody = des.ReadClassPointer<hkpRigidBody>(br);
             m_character = des.ReadClassPointer<hkbCharacter>(br);
             m_animationBoneIndex = br.ReadInt16();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -35,7 +35,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_rigidBody);
             s.WriteClassPointer(bw, m_character);
             bw.WriteInt16(m_animationBoneIndex);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

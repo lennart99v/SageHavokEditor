@@ -85,7 +85,7 @@ namespace HKX2
             m_startStateMode = br.ReadSByte();
             m_selfTransitionMode = br.ReadSByte();
             m_isActive = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             m_states = des.ReadClassPointerArray<hkbStateMachineStateInfo>(br);
             m_wildcardTransitions = des.ReadClassPointer<hkbStateMachineTransitionInfoArray>(br);
             des.ReadEmptyPointer(br);
@@ -100,7 +100,7 @@ namespace HKX2
             m_stateOrTransitionChanged = br.ReadBoolean();
             m_echoNextUpdate = br.ReadBoolean();
             m_sCurrentStateIndexAndEntered = br.ReadUInt16();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -120,7 +120,7 @@ namespace HKX2
             bw.WriteSByte(m_startStateMode);
             bw.WriteSByte(m_selfTransitionMode);
             bw.WriteBoolean(m_isActive);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteClassPointerArray(bw, m_states);
             s.WriteClassPointer(bw, m_wildcardTransitions);
             s.WriteVoidPointer(bw);
@@ -135,7 +135,7 @@ namespace HKX2
             bw.WriteBoolean(m_stateOrTransitionChanged);
             bw.WriteBoolean(m_echoNextUpdate);
             bw.WriteUInt16(m_sCurrentStateIndexAndEntered);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

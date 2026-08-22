@@ -52,6 +52,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_position = br.ReadVector4();
             m_velocity = br.ReadVector4();
             m_dynamicFriction = br.ReadSingle();
@@ -72,12 +73,13 @@ namespace HKX2
             m_penetrationRecoverySpeed = br.ReadSingle();
             m_maxCastIterations = br.ReadInt32();
             m_refreshManifoldInCheckSupport = br.ReadBoolean();
-            br.Position += 11;
+            br.Position += des.Padding(11, 15);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_position);
             bw.WriteVector4(m_velocity);
             bw.WriteSingle(m_dynamicFriction);
@@ -98,7 +100,7 @@ namespace HKX2
             bw.WriteSingle(m_penetrationRecoverySpeed);
             bw.WriteInt32(m_maxCastIterations);
             bw.WriteBoolean(m_refreshManifoldInCheckSupport);
-            bw.Position += 11;
+            bw.Position += s.Padding(11, 15);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

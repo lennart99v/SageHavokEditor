@@ -21,7 +21,7 @@ namespace HKX2
             base.Read(des, br);
             m_storage = des.ReadSingleArray(br);
             m_triangleFlip = br.ReadBoolean();
-            br.Position += 15;
+            br.Position += des.Padding(15, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -29,7 +29,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteSingleArray(bw, m_storage);
             bw.WriteBoolean(m_triangleFlip);
-            bw.Position += 15;
+            bw.Position += s.Padding(15, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

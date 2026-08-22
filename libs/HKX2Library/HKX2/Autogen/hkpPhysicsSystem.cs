@@ -34,9 +34,9 @@ namespace HKX2
             m_actions = des.ReadClassPointerArray<hkpAction>(br);
             m_phantoms = des.ReadClassPointerArray<hkpPhantom>(br);
             m_name = des.ReadStringPointer(br);
-            m_userData = br.ReadUInt64();
+            m_userData = br.ReadUSize();
             m_active = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -47,9 +47,9 @@ namespace HKX2
             s.WriteClassPointerArray(bw, m_actions);
             s.WriteClassPointerArray(bw, m_phantoms);
             s.WriteStringPointer(bw, m_name);
-            bw.WriteUInt64(m_userData);
+            bw.WriteUSize(m_userData);
             bw.WriteBoolean(m_active);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

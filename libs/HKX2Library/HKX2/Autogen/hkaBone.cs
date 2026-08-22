@@ -18,14 +18,14 @@ namespace HKX2
         {
             m_name = des.ReadStringPointer(br);
             m_lockTranslation = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             s.WriteStringPointer(bw, m_name);
             bw.WriteBoolean(m_lockTranslation);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

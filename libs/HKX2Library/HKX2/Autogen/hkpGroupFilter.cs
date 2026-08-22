@@ -23,7 +23,7 @@ namespace HKX2
             base.Read(des, br);
             m_nextFreeSystemGroup = br.ReadInt32();
             m_collisionLookupTable = des.ReadUInt32CStyleArray(br, 32);
-            br.Position += 4;
+            br.Position += des.Padding(4, 12);
             m_pad256 = des.ReadVector4CStyleArray(br, 4);
         }
 
@@ -32,7 +32,7 @@ namespace HKX2
             base.Write(s, bw);
             bw.WriteInt32(m_nextFreeSystemGroup);
             s.WriteUInt32CStyleArray(bw, m_collisionLookupTable);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 12);
             s.WriteVector4CStyleArray(bw, m_pad256);
         }
 

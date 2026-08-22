@@ -22,7 +22,7 @@ namespace HKX2
             m_selfTransitionMode = br.ReadSByte();
             m_eventMode = br.ReadSByte();
             m_defaultEventMode = br.ReadSByte();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -31,7 +31,7 @@ namespace HKX2
             bw.WriteSByte(m_selfTransitionMode);
             bw.WriteSByte(m_eventMode);
             bw.WriteSByte(m_defaultEventMode);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

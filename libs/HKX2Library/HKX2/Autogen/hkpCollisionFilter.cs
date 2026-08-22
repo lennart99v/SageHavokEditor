@@ -20,7 +20,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            br.Position += 32;
+            br.Position += des.Padding(32, 16);
             m_prepad = des.ReadUInt32CStyleArray(br, 2);
             m_type = br.ReadUInt32();
             m_postpad = des.ReadUInt32CStyleArray(br, 3);
@@ -29,7 +29,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.Position += 32;
+            bw.Position += s.Padding(32, 16);
             s.WriteUInt32CStyleArray(bw, m_prepad);
             bw.WriteUInt32(m_type);
             s.WriteUInt32CStyleArray(bw, m_postpad);

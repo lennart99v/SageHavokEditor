@@ -45,7 +45,7 @@ namespace HKX2
             m_attacherHandle = des.ReadClassPointer<hkbHandle>(br);
             m_attacheeHandle = des.ReadClassPointer<hkbHandle>(br);
             m_attacheeLayer = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
             m_oldMotionType = br.ReadByte();
             br.Position += 3;
@@ -64,7 +64,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_attacherHandle);
             s.WriteClassPointer(bw, m_attacheeHandle);
             bw.WriteInt32(m_attacheeLayer);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
             bw.WriteByte(m_oldMotionType);
             bw.Position += 3;

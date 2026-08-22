@@ -51,7 +51,7 @@ namespace HKX2
             m_lockFeetWhenPlanted = br.ReadBoolean();
             m_useCharacterUpVector = br.ReadBoolean();
             m_isQuadrupedNarrow = br.ReadBoolean();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -69,7 +69,7 @@ namespace HKX2
             bw.WriteBoolean(m_lockFeetWhenPlanted);
             bw.WriteBoolean(m_useCharacterUpVector);
             bw.WriteBoolean(m_isQuadrupedNarrow);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

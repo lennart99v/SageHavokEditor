@@ -22,22 +22,22 @@ namespace HKX2
 
         public virtual void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
-            m_userData = br.ReadUInt64();
+            m_userData = br.ReadUSize();
             m_friction = br.ReadByte();
             m_restitution = br.ReadByte();
             m_maxImpulse = br.ReadByte();
             m_flags = br.ReadByte();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
-            bw.WriteUInt64(m_userData);
+            bw.WriteUSize(m_userData);
             bw.WriteByte(m_friction);
             bw.WriteByte(m_restitution);
             bw.WriteByte(m_maxImpulse);
             bw.WriteByte(m_flags);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

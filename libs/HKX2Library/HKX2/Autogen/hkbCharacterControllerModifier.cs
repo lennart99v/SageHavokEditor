@@ -36,6 +36,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 4);
             m_controlData.Read(des, br);
             m_initialVelocity = br.ReadVector4();
             m_initialVelocityCoordinates = br.ReadSByte();
@@ -54,6 +55,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 4);
             m_controlData.Write(s, bw);
             bw.WriteVector4(m_initialVelocity);
             bw.WriteSByte(m_initialVelocityCoordinates);

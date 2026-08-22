@@ -37,7 +37,7 @@ namespace HKX2
             m_randomizeSimulation = br.ReadBoolean();
             br.Position += 3;
             m_padding = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -51,7 +51,7 @@ namespace HKX2
             bw.WriteBoolean(m_randomizeSimulation);
             bw.Position += 3;
             bw.WriteInt32(m_padding);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

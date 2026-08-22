@@ -23,23 +23,23 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            m_userData = br.ReadUInt64();
+            m_userData = br.ReadUSize();
             m_name = des.ReadStringPointer(br);
             m_id = br.ReadInt16();
             m_cloneState = br.ReadSByte();
             m_padNode = des.ReadBooleanCStyleArray(br, 1);
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.WriteUInt64(m_userData);
+            bw.WriteUSize(m_userData);
             s.WriteStringPointer(bw, m_name);
             bw.WriteInt16(m_id);
             bw.WriteSByte(m_cloneState);
             s.WriteBooleanCStyleArray(bw, m_padNode);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -24,7 +24,7 @@ namespace HKX2
             base.Read(des, br);
             m_degreesPerSecond = br.ReadSingle();
             m_speedMultiplier = br.ReadSingle();
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
             m_axisOfRotation = br.ReadVector4();
             m_angle = br.ReadSingle();
             br.Position += 12;
@@ -35,7 +35,7 @@ namespace HKX2
             base.Write(s, bw);
             bw.WriteSingle(m_degreesPerSecond);
             bw.WriteSingle(m_speedMultiplier);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
             bw.WriteVector4(m_axisOfRotation);
             bw.WriteSingle(m_angle);
             bw.Position += 12;

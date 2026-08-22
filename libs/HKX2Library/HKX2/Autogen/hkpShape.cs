@@ -17,17 +17,17 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            m_userData = br.ReadUInt64();
+            m_userData = br.ReadUSize();
             m_type = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.WriteUInt64(m_userData);
+            bw.WriteUSize(m_userData);
             bw.WriteUInt32(m_type);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -22,6 +22,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_gravity = br.ReadVector4();
             m_timestep = br.ReadSingle();
             m_isInitialVelocityAdded = br.ReadBoolean();
@@ -32,6 +33,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_gravity);
             bw.WriteSingle(m_timestep);
             bw.WriteBoolean(m_isInitialVelocityAdded);

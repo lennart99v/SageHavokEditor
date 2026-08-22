@@ -20,19 +20,21 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 12);
             m_aabb.Read(des, br);
             des.ReadEmptyArray(br);
             m_orderDirty = br.ReadBoolean();
-            br.Position += 15;
+            br.Position += des.Padding(15, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 12);
             m_aabb.Write(s, bw);
             s.WriteVoidArray(bw);
             bw.WriteBoolean(m_orderDirty);
-            bw.Position += 15;
+            bw.Position += s.Padding(15, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

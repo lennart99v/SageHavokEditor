@@ -21,7 +21,7 @@ namespace HKX2
             des.ReadEmptyPointer(br);
             m_size = br.ReadUInt16();
             m_capacityAndFlags = br.ReadUInt16();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -29,7 +29,7 @@ namespace HKX2
             s.WriteVoidPointer(bw);
             bw.WriteUInt16(m_size);
             bw.WriteUInt16(m_capacityAndFlags);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

@@ -28,10 +28,11 @@ namespace HKX2
             base.Read(des, br);
             m_characterId = br.ReadUInt64();
             m_deltaTime = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 12);
             m_worldFromModel = des.ReadQSTransform(br);
             m_poseModelSpace = des.ReadQSTransformArray(br);
             m_rigidAttachmentTransforms = des.ReadQSTransformArray(br);
+            br.Position += des.Padding(0, 8);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -39,10 +40,11 @@ namespace HKX2
             base.Write(s, bw);
             bw.WriteUInt64(m_characterId);
             bw.WriteSingle(m_deltaTime);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 12);
             s.WriteQSTransform(bw, m_worldFromModel);
             s.WriteQSTransformArray(bw, m_poseModelSpace);
             s.WriteQSTransformArray(bw, m_rigidAttachmentTransforms);
+            bw.Position += s.Padding(0, 8);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -18,6 +18,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 4);
             m_translationOut = br.ReadVector4();
             m_rotationOut = des.ReadQuaternion(br);
         }
@@ -25,6 +26,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 4);
             bw.WriteVector4(m_translationOut);
             s.WriteQuaternion(bw, m_rotationOut);
         }

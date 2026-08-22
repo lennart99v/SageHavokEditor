@@ -24,6 +24,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 4);
             m_vector = br.ReadVector4();
             m_x = br.ReadSingle();
             m_y = br.ReadSingle();
@@ -34,6 +35,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 4);
             bw.WriteVector4(m_vector);
             bw.WriteSingle(m_x);
             bw.WriteSingle(m_y);

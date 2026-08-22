@@ -22,7 +22,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 4);
             m_rotationAxis = br.ReadVector4();
             m_upAxis = br.ReadVector4();
             m_strength = br.ReadSingle();
@@ -33,7 +33,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 4);
             bw.WriteVector4(m_rotationAxis);
             bw.WriteVector4(m_upAxis);
             bw.WriteSingle(m_strength);

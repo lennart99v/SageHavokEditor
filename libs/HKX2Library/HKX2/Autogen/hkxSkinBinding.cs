@@ -27,7 +27,7 @@ namespace HKX2
             m_mesh = des.ReadClassPointer<hkxMesh>(br);
             m_nodeNames = des.ReadStringPointerArray(br);
             m_bindPose = des.ReadMatrix4Array(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
             m_initSkinTransform = des.ReadMatrix4(br);
         }
 
@@ -37,7 +37,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_mesh);
             s.WriteStringPointerArray(bw, m_nodeNames);
             s.WriteMatrix4Array(bw, m_bindPose);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
             s.WriteMatrix4(bw, m_initSkinTransform);
         }
 

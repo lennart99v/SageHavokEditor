@@ -29,7 +29,7 @@ namespace HKX2
             m_type = br.ReadByte();
             br.Position += 1;
             m_emitBoneIndex = br.ReadInt16();
-            br.Position += 12;
+            br.Position += des.Padding(12, 4);
             m_offset = br.ReadVector4();
             m_direction = br.ReadVector4();
             m_numParticles = br.ReadInt32();
@@ -43,7 +43,7 @@ namespace HKX2
             bw.WriteByte(m_type);
             bw.Position += 1;
             bw.WriteInt16(m_emitBoneIndex);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 4);
             bw.WriteVector4(m_offset);
             bw.WriteVector4(m_direction);
             bw.WriteInt32(m_numParticles);

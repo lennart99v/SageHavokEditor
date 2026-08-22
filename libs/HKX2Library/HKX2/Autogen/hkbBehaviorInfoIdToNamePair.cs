@@ -25,7 +25,7 @@ namespace HKX2
             m_toolType = br.ReadByte();
             br.Position += 1;
             m_id = br.ReadInt16();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -35,7 +35,7 @@ namespace HKX2
             bw.WriteByte(m_toolType);
             bw.Position += 1;
             bw.WriteInt16(m_id);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

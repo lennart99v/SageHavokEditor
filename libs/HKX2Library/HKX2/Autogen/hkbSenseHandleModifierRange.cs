@@ -24,7 +24,7 @@ namespace HKX2
             m_minDistance = br.ReadSingle();
             m_maxDistance = br.ReadSingle();
             m_ignoreHandle = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -33,7 +33,7 @@ namespace HKX2
             bw.WriteSingle(m_minDistance);
             bw.WriteSingle(m_maxDistance);
             bw.WriteBoolean(m_ignoreHandle);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

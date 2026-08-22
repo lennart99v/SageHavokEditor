@@ -28,7 +28,7 @@ namespace HKX2
             m_verticalError = br.ReadSingle();
             m_hitSomething = br.ReadBoolean();
             m_isPlantedMS = br.ReadBoolean();
-            br.Position += 10;
+            br.Position += des.Padding(10, 2);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -38,7 +38,7 @@ namespace HKX2
             bw.WriteSingle(m_verticalError);
             bw.WriteBoolean(m_hitSomething);
             bw.WriteBoolean(m_isPlantedMS);
-            bw.Position += 10;
+            bw.Position += s.Padding(10, 2);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

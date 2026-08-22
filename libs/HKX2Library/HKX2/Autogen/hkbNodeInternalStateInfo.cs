@@ -28,7 +28,7 @@ namespace HKX2
             m_internalState = des.ReadClassPointer<hkReferencedObject>(br);
             m_nodeId = br.ReadInt16();
             m_hasActivateBeenCalled = br.ReadBoolean();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -39,7 +39,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_internalState);
             bw.WriteInt16(m_nodeId);
             bw.WriteBoolean(m_hasActivateBeenCalled);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

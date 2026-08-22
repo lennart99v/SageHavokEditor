@@ -25,7 +25,7 @@ namespace HKX2
             m_localFrameName = des.ReadStringPointer(br);
             m_ragdollBoneIndex = br.ReadInt16();
             m_animationBoneIndex = br.ReadInt16();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -35,7 +35,7 @@ namespace HKX2
             s.WriteStringPointer(bw, m_localFrameName);
             bw.WriteInt16(m_ragdollBoneIndex);
             bw.WriteInt16(m_animationBoneIndex);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

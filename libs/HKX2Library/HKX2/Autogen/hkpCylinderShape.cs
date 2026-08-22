@@ -28,6 +28,7 @@ namespace HKX2
             base.Read(des, br);
             m_cylRadius = br.ReadSingle();
             m_cylBaseRadiusFactorForHeightFieldCollisions = br.ReadSingle();
+            br.Position += des.Padding(0, 4);
             m_vertexA = br.ReadVector4();
             m_vertexB = br.ReadVector4();
             m_perpendicular1 = br.ReadVector4();
@@ -39,6 +40,7 @@ namespace HKX2
             base.Write(s, bw);
             bw.WriteSingle(m_cylRadius);
             bw.WriteSingle(m_cylBaseRadiusFactorForHeightFieldCollisions);
+            bw.Position += s.Padding(0, 4);
             bw.WriteVector4(m_vertexA);
             bw.WriteVector4(m_vertexB);
             bw.WriteVector4(m_perpendicular1);

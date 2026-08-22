@@ -33,6 +33,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 4);
             m_axisOfRotation = br.ReadVector4();
             m_twistAngle = br.ReadSingle();
             m_startBoneIndex = br.ReadInt16();
@@ -40,14 +41,16 @@ namespace HKX2
             m_setAngleMethod = br.ReadSByte();
             m_rotationAxisCoordinates = br.ReadSByte();
             m_isAdditive = br.ReadBoolean();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
             des.ReadEmptyArray(br);
             des.ReadEmptyArray(br);
+            br.Position += des.Padding(0, 12);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 4);
             bw.WriteVector4(m_axisOfRotation);
             bw.WriteSingle(m_twistAngle);
             bw.WriteInt16(m_startBoneIndex);
@@ -55,9 +58,10 @@ namespace HKX2
             bw.WriteSByte(m_setAngleMethod);
             bw.WriteSByte(m_rotationAxisCoordinates);
             bw.WriteBoolean(m_isAdditive);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
             s.WriteVoidArray(bw);
             s.WriteVoidArray(bw);
+            bw.Position += s.Padding(0, 12);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

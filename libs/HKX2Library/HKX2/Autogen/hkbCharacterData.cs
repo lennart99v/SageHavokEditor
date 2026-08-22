@@ -59,6 +59,7 @@ namespace HKX2
             m_scale = br.ReadSingle();
             m_numHands = br.ReadInt16();
             m_numFloatSlots = br.ReadInt16();
+            br.Position += des.Padding(0, 12);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -79,6 +80,7 @@ namespace HKX2
             bw.WriteSingle(m_scale);
             bw.WriteInt16(m_numHands);
             bw.WriteInt16(m_numFloatSlots);
+            bw.Position += s.Padding(0, 12);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

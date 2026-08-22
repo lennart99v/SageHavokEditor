@@ -20,15 +20,19 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_mirrorAxis = br.ReadVector4();
             m_bonePairMap = des.ReadInt16Array(br);
+            br.Position += des.Padding(0, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_mirrorAxis);
             s.WriteInt16Array(bw, m_bonePairMap);
+            bw.Position += s.Padding(0, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

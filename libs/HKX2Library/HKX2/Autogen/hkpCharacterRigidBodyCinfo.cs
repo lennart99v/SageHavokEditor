@@ -47,7 +47,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_collisionFilterInfo = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_shape = des.ReadClassPointer<hkpShape>(br);
             m_position = br.ReadVector4();
             m_rotation = des.ReadQuaternion(br);
@@ -70,7 +70,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteUInt32(m_collisionFilterInfo);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassPointer(bw, m_shape);
             bw.WriteVector4(m_position);
             s.WriteQuaternion(bw, m_rotation);

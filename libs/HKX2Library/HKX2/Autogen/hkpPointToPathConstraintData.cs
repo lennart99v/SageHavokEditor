@@ -29,7 +29,7 @@ namespace HKX2
             m_path = des.ReadClassPointer<hkpParametricCurve>(br);
             m_maxFrictionForce = br.ReadSingle();
             m_angularConstrainedDOF = br.ReadSByte();
-            br.Position += 3;
+            br.Position += des.Padding(3, 15);
             m_transform_OS_KS = des.ReadTransformCStyleArray(br, 2);
         }
 
@@ -40,7 +40,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_path);
             bw.WriteSingle(m_maxFrictionForce);
             bw.WriteSByte(m_angularConstrainedDOF);
-            bw.Position += 3;
+            bw.Position += s.Padding(3, 15);
             s.WriteTransformCStyleArray(bw, m_transform_OS_KS);
         }
 

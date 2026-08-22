@@ -22,7 +22,7 @@ namespace HKX2
             m_timeSinceBegin = br.ReadSingle();
             m_timeStep = br.ReadSingle();
             m_initNextModify = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -31,7 +31,7 @@ namespace HKX2
             bw.WriteSingle(m_timeSinceBegin);
             bw.WriteSingle(m_timeStep);
             bw.WriteBoolean(m_initNextModify);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

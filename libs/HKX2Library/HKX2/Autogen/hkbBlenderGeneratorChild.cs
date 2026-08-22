@@ -21,21 +21,23 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 4);
             m_generator = des.ReadClassPointer<hkbGenerator>(br);
             m_boneWeights = des.ReadClassPointer<hkbBoneWeightArray>(br);
             m_weight = br.ReadSingle();
             m_worldFromModelWeight = br.ReadSingle();
-            br.Position += 8;
+            br.Position += des.Padding(8, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 4);
             s.WriteClassPointer(bw, m_generator);
             s.WriteClassPointer(bw, m_boneWeights);
             bw.WriteSingle(m_weight);
             bw.WriteSingle(m_worldFromModelWeight);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

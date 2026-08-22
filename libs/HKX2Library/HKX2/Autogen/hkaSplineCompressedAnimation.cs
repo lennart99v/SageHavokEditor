@@ -48,14 +48,14 @@ namespace HKX2
             m_blockDuration = br.ReadSingle();
             m_blockInverseDuration = br.ReadSingle();
             m_frameDuration = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_blockOffsets = des.ReadUInt32Array(br);
             m_floatBlockOffsets = des.ReadUInt32Array(br);
             m_transformOffsets = des.ReadUInt32Array(br);
             m_floatOffsets = des.ReadUInt32Array(br);
             m_data = des.ReadByteArray(br);
             m_endian = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -68,14 +68,14 @@ namespace HKX2
             bw.WriteSingle(m_blockDuration);
             bw.WriteSingle(m_blockInverseDuration);
             bw.WriteSingle(m_frameDuration);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteUInt32Array(bw, m_blockOffsets);
             s.WriteUInt32Array(bw, m_floatBlockOffsets);
             s.WriteUInt32Array(bw, m_transformOffsets);
             s.WriteUInt32Array(bw, m_floatOffsets);
             s.WriteByteArray(bw, m_data);
             bw.WriteInt32(m_endian);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

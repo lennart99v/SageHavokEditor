@@ -25,25 +25,25 @@ namespace HKX2
         public virtual void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             m_typeIndex = br.ReadInt32();
-            br.Position += 4;
-            m_start = br.ReadUInt64();
-            m_size = br.ReadUInt64();
+            br.Position += des.Padding(4, 0);
+            m_start = br.ReadUSize();
+            m_size = br.ReadUSize();
             m_arraySize = br.ReadInt32();
             m_startReferenceIndex = br.ReadInt32();
             m_numReferences = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             bw.WriteInt32(m_typeIndex);
-            bw.Position += 4;
-            bw.WriteUInt64(m_start);
-            bw.WriteUInt64(m_size);
+            bw.Position += s.Padding(4, 0);
+            bw.WriteUSize(m_start);
+            bw.WriteUSize(m_size);
             bw.WriteInt32(m_arraySize);
             bw.WriteInt32(m_startReferenceIndex);
             bw.WriteInt32(m_numReferences);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

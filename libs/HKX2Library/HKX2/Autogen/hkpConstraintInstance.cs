@@ -45,13 +45,13 @@ namespace HKX2
             m_priority = br.ReadByte();
             m_wantRuntime = br.ReadBoolean();
             m_destructionRemapInfo = br.ReadByte();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
             m_listeners.Read(des, br);
             m_name = des.ReadStringPointer(br);
-            m_userData = br.ReadUInt64();
+            m_userData = br.ReadUSize();
             des.ReadEmptyPointer(br);
             m_uid = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -64,13 +64,13 @@ namespace HKX2
             bw.WriteByte(m_priority);
             bw.WriteBoolean(m_wantRuntime);
             bw.WriteByte(m_destructionRemapInfo);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
             m_listeners.Write(s, bw);
             s.WriteStringPointer(bw, m_name);
-            bw.WriteUInt64(m_userData);
+            bw.WriteUSize(m_userData);
             s.WriteVoidPointer(bw);
             bw.WriteUInt32(m_uid);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

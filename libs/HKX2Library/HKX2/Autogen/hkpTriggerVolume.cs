@@ -23,23 +23,23 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            br.Position += 24;
+            br.Position += des.Padding(24, 12);
             m_overlappingBodies = des.ReadClassPointerArray<hkpRigidBody>(br);
             m_eventQueue = des.ReadClassArray<hkpTriggerVolumeEventInfo>(br);
             m_triggerBody = des.ReadClassPointer<hkpRigidBody>(br);
             m_sequenceNumber = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.Position += 24;
+            bw.Position += s.Padding(24, 12);
             s.WriteClassPointerArray(bw, m_overlappingBodies);
             s.WriteClassArray(bw, m_eventQueue);
             s.WriteClassPointer(bw, m_triggerBody);
             bw.WriteUInt32(m_sequenceNumber);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

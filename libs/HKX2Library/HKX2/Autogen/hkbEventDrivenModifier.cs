@@ -25,7 +25,7 @@ namespace HKX2
             m_deactivateEventId = br.ReadInt32();
             m_activeByDefault = br.ReadBoolean();
             m_isActive = br.ReadBoolean();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -35,7 +35,7 @@ namespace HKX2
             bw.WriteInt32(m_deactivateEventId);
             bw.WriteBoolean(m_activeByDefault);
             bw.WriteBoolean(m_isActive);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

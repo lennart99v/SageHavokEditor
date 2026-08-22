@@ -37,7 +37,7 @@ namespace HKX2
             m_annotations = des.ReadClassArray<hkxNodeAnnotationData>(br);
             m_userProperties = des.ReadStringPointer(br);
             m_selected = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -50,7 +50,7 @@ namespace HKX2
             s.WriteClassArray(bw, m_annotations);
             s.WriteStringPointer(bw, m_userProperties);
             bw.WriteBoolean(m_selected);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

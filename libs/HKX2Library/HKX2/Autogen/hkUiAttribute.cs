@@ -30,28 +30,28 @@ namespace HKX2
         {
             m_visible = br.ReadBoolean();
             m_hideInModeler = br.ReadSByte();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
             m_label = des.ReadCString(br);
             m_group = des.ReadCString(br);
             m_hideBaseClassMembers = des.ReadCString(br);
             m_endGroup = br.ReadBoolean();
             m_endGroup2 = br.ReadBoolean();
             m_advanced = br.ReadBoolean();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             bw.WriteBoolean(m_visible);
             bw.WriteSByte(m_hideInModeler);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
             s.WriteCString(bw, m_label);
             s.WriteCString(bw, m_group);
             s.WriteCString(bw, m_hideBaseClassMembers);
             bw.WriteBoolean(m_endGroup);
             bw.WriteBoolean(m_endGroup2);
             bw.WriteBoolean(m_advanced);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

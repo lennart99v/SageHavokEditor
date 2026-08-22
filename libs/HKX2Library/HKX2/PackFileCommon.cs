@@ -149,6 +149,19 @@ namespace HKX2
             };
         }
 
+        /// <summary>
+        /// Skyrim Legendary Edition / Oldrim: 32-bit, little-endian.  Same Havok
+        /// class schema as Skyrim SE (hk_2010.2.0-r1, file version 8) -- only the
+        /// packfile pointer size differs, which is what makes LE&lt;-&gt;SE
+        /// conversion a pure repack.
+        /// </summary>
+        public static HKXHeader SkyrimLE()
+        {
+            var h = SkyrimSE();
+            h.PointerSize = 4;
+            return h;
+        }
+
         public static HKXHeader SkyrimSE()
         {
             return new HKXHeader

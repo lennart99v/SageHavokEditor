@@ -30,31 +30,33 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_scaling = br.ReadVector4();
             m_numBitsForSubpartIndex = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_subparts = des.ReadClassArray<hkpMeshShapeSubpart>(br);
             m_weldingInfo = des.ReadUInt16Array(br);
             m_weldingType = br.ReadByte();
             br.Position += 3;
             m_radius = br.ReadSingle();
             m_pad = des.ReadInt32CStyleArray(br, 3);
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_scaling);
             bw.WriteInt32(m_numBitsForSubpartIndex);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassArray(bw, m_subparts);
             s.WriteUInt16Array(bw, m_weldingInfo);
             bw.WriteByte(m_weldingType);
             bw.Position += 3;
             bw.WriteSingle(m_radius);
             s.WriteInt32CStyleArray(bw, m_pad);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

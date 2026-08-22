@@ -54,12 +54,12 @@ namespace HKX2
             m_numTriangles = br.ReadInt32();
             des.ReadEmptyPointer(br);
             m_materialIndexStriding = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
             m_materialStriding = br.ReadInt32();
             m_numMaterials = br.ReadInt32();
             m_triangleOffset = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -76,12 +76,12 @@ namespace HKX2
             bw.WriteInt32(m_numTriangles);
             s.WriteVoidPointer(bw);
             bw.WriteInt32(m_materialIndexStriding);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
             bw.WriteInt32(m_materialStriding);
             bw.WriteInt32(m_numMaterials);
             bw.WriteInt32(m_triangleOffset);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

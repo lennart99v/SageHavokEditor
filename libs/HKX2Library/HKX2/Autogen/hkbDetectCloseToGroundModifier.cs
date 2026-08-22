@@ -34,7 +34,7 @@ namespace HKX2
             m_boneIndex = br.ReadInt16();
             m_animBoneIndex = br.ReadInt16();
             m_isCloseToGround = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -47,7 +47,7 @@ namespace HKX2
             bw.WriteInt16(m_boneIndex);
             bw.WriteInt16(m_animBoneIndex);
             bw.WriteBoolean(m_isCloseToGround);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

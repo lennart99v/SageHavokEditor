@@ -29,7 +29,7 @@ namespace HKX2
             m_maxProjectiles = br.ReadInt32();
             m_reloadTime = br.ReadSingle();
             m_reload = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyArray(br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
@@ -41,7 +41,7 @@ namespace HKX2
             bw.WriteInt32(m_maxProjectiles);
             bw.WriteSingle(m_reloadTime);
             bw.WriteSingle(m_reload);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidArray(bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);

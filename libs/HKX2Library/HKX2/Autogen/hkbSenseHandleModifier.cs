@@ -55,6 +55,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_handle.Read(des, br);
+            br.Position += des.Padding(0, 12);
             m_sensorLocalOffset = br.ReadVector4();
             m_ranges = des.ReadClassArray<hkbSenseHandleModifierRange>(br);
             m_handleOut = des.ReadClassPointer<hkbHandle>(br);
@@ -73,12 +74,14 @@ namespace HKX2
             m_foundHandleOut = br.ReadBoolean();
             m_timeSinceLastModify = br.ReadSingle();
             m_rangeIndexForEventToSendNextUpdate = br.ReadInt32();
+            br.Position += des.Padding(0, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
             m_handle.Write(s, bw);
+            bw.Position += s.Padding(0, 12);
             bw.WriteVector4(m_sensorLocalOffset);
             s.WriteClassArray(bw, m_ranges);
             s.WriteClassPointer(bw, m_handleOut);
@@ -97,6 +100,7 @@ namespace HKX2
             bw.WriteBoolean(m_foundHandleOut);
             bw.WriteSingle(m_timeSinceLastModify);
             bw.WriteInt32(m_rangeIndexForEventToSendNextUpdate);
+            bw.Position += s.Padding(0, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -22,7 +22,7 @@ namespace HKX2
             br.Position += 8;
             m_pDefaultGenerator = des.ReadClassPointer<hkbGenerator>(br);
             m_ChildrenA = des.ReadClassPointerArray<BSBoneSwitchGeneratorBoneData>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -31,7 +31,7 @@ namespace HKX2
             bw.Position += 8;
             s.WriteClassPointer(bw, m_pDefaultGenerator);
             s.WriteClassPointerArray(bw, m_ChildrenA);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

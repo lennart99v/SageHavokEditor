@@ -23,6 +23,7 @@ namespace HKX2
             m_pDefaultGenerator = des.ReadClassPointer<hkbGenerator>(br);
             m_iStateToSetAs = br.ReadInt32();
             m_iPriority = br.ReadInt32();
+            br.Position += des.Padding(0, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -32,6 +33,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_pDefaultGenerator);
             bw.WriteInt32(m_iStateToSetAs);
             bw.WriteInt32(m_iPriority);
+            bw.Position += s.Padding(0, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

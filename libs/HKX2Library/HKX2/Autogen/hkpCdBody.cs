@@ -22,7 +22,7 @@ namespace HKX2
         {
             m_shape = des.ReadClassPointer<hkpShape>(br);
             m_shapeKey = br.ReadUInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
             m_parent = des.ReadClassPointer<hkpCdBody>(br);
         }
@@ -31,7 +31,7 @@ namespace HKX2
         {
             s.WriteClassPointer(bw, m_shape);
             bw.WriteUInt32(m_shapeKey);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
             s.WriteClassPointer(bw, m_parent);
         }

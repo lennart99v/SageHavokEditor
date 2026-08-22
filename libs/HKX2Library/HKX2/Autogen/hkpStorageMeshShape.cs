@@ -18,12 +18,14 @@ namespace HKX2
         {
             base.Read(des, br);
             m_storage = des.ReadClassPointerArray<hkpStorageMeshShapeSubpartStorage>(br);
+            br.Position += des.Padding(0, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
             s.WriteClassPointerArray(bw, m_storage);
+            bw.Position += s.Padding(0, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

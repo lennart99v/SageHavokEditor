@@ -42,7 +42,7 @@ namespace HKX2
             m_type = br.ReadByte();
             m_deactivationIntegrateCounter = br.ReadByte();
             m_deactivationNumInactiveFrames = des.ReadUInt16CStyleArray(br, 2);
-            br.Position += 10;
+            br.Position += des.Padding(10, 2);
             m_motionState.Read(des, br);
             m_inertiaAndMassInv = br.ReadVector4();
             m_linearVelocity = br.ReadVector4();
@@ -52,7 +52,7 @@ namespace HKX2
             m_savedMotion = des.ReadClassPointer<hkpMaxSizeMotion>(br);
             m_savedQualityTypeIndex = br.ReadUInt16();
             m_gravityFactor = br.ReadHalf();
-            br.Position += 12;
+            br.Position += des.Padding(12, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -61,7 +61,7 @@ namespace HKX2
             bw.WriteByte(m_type);
             bw.WriteByte(m_deactivationIntegrateCounter);
             s.WriteUInt16CStyleArray(bw, m_deactivationNumInactiveFrames);
-            bw.Position += 10;
+            bw.Position += s.Padding(10, 2);
             m_motionState.Write(s, bw);
             bw.WriteVector4(m_inertiaAndMassInv);
             bw.WriteVector4(m_linearVelocity);
@@ -71,7 +71,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_savedMotion);
             bw.WriteUInt16(m_savedQualityTypeIndex);
             bw.WriteHalf(m_gravityFactor);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

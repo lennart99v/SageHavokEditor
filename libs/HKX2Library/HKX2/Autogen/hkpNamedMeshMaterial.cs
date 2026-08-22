@@ -15,14 +15,14 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_name = des.ReadStringPointer(br);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteStringPointer(bw, m_name);
         }
 

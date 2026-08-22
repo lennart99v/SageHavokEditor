@@ -39,20 +39,20 @@ namespace HKX2
             base.Read(des, br);
             m_bEnableEvent1 = br.ReadBoolean();
             m_bVariableToTest1 = br.ReadBoolean();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
             m_EventToSend1.Read(des, br);
             m_bEnableEvent2 = br.ReadBoolean();
             m_bVariableToTest2 = br.ReadBoolean();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
             m_EventToSend2.Read(des, br);
             m_bEnableEvent3 = br.ReadBoolean();
             m_bVariableToTest3 = br.ReadBoolean();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
             m_EventToSend3.Read(des, br);
             m_bSlot1ActivatedLastFrame = br.ReadBoolean();
             m_bSlot2ActivatedLastFrame = br.ReadBoolean();
             m_bSlot3ActivatedLastFrame = br.ReadBoolean();
-            br.Position += 5;
+            br.Position += des.Padding(5, 1);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -60,20 +60,20 @@ namespace HKX2
             base.Write(s, bw);
             bw.WriteBoolean(m_bEnableEvent1);
             bw.WriteBoolean(m_bVariableToTest1);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
             m_EventToSend1.Write(s, bw);
             bw.WriteBoolean(m_bEnableEvent2);
             bw.WriteBoolean(m_bVariableToTest2);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
             m_EventToSend2.Write(s, bw);
             bw.WriteBoolean(m_bEnableEvent3);
             bw.WriteBoolean(m_bVariableToTest3);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
             m_EventToSend3.Write(s, bw);
             bw.WriteBoolean(m_bSlot1ActivatedLastFrame);
             bw.WriteBoolean(m_bSlot2ActivatedLastFrame);
             bw.WriteBoolean(m_bSlot3ActivatedLastFrame);
-            bw.Position += 5;
+            bw.Position += s.Padding(5, 1);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

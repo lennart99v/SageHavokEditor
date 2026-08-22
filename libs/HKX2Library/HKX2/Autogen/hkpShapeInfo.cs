@@ -31,9 +31,10 @@ namespace HKX2
             m_shape = des.ReadClassPointer<hkpShape>(br);
             m_isHierarchicalCompound = br.ReadBoolean();
             m_hkdShapesCollected = br.ReadBoolean();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
             m_childShapeNames = des.ReadStringPointerArray(br);
             m_childTransforms = des.ReadTransformArray(br);
+            br.Position += des.Padding(0, 8);
             m_transform = des.ReadTransform(br);
         }
 
@@ -43,9 +44,10 @@ namespace HKX2
             s.WriteClassPointer(bw, m_shape);
             bw.WriteBoolean(m_isHierarchicalCompound);
             bw.WriteBoolean(m_hkdShapesCollected);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
             s.WriteStringPointerArray(bw, m_childShapeNames);
             s.WriteTransformArray(bw, m_childTransforms);
+            bw.Position += s.Padding(0, 8);
             s.WriteTransform(bw, m_transform);
         }
 

@@ -23,10 +23,10 @@ namespace HKX2
         {
             base.Read(des, br);
             m_type = br.ReadByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             m_name = des.ReadStringPointer(br);
             m_keyboardKey = br.ReadByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             des.ReadEmptyArray(br);
         }
 
@@ -34,10 +34,10 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteByte(m_type);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteStringPointer(bw, m_name);
             bw.WriteByte(m_keyboardKey);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteVoidArray(bw);
         }
 

@@ -41,7 +41,7 @@ namespace HKX2
             m_padding = br.ReadByte();
             m_numChildShapeAabbs = br.ReadUInt16();
             m_capacityChildShapeAabbs = br.ReadUInt16();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
         }
@@ -56,7 +56,7 @@ namespace HKX2
             bw.WriteByte(m_padding);
             bw.WriteUInt16(m_numChildShapeAabbs);
             bw.WriteUInt16(m_capacityChildShapeAabbs);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
         }

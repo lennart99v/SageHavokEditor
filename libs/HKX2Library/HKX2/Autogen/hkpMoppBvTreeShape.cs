@@ -19,7 +19,7 @@ namespace HKX2
             base.Read(des, br);
             m_child.Read(des, br);
             m_childSize = br.ReadInt32();
-            br.Position += 12;
+            br.Position += des.Padding(12, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -27,7 +27,7 @@ namespace HKX2
             base.Write(s, bw);
             m_child.Write(s, bw);
             bw.WriteInt32(m_childSize);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

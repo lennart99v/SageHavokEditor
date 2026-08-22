@@ -40,7 +40,7 @@ namespace HKX2
             m_transformSkew = br.ReadBoolean();
             br.Position += 1;
             m_keyframe = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_nodeName = des.ReadStringPointer(br);
         }
 
@@ -56,7 +56,7 @@ namespace HKX2
             bw.WriteBoolean(m_transformSkew);
             bw.Position += 1;
             bw.WriteInt32(m_keyframe);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteStringPointer(bw, m_nodeName);
         }
 

@@ -22,22 +22,22 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 4);
             m_contactEvent.Read(des, br);
             m_bones = des.ReadClassPointer<hkbBoneIndexArray>(br);
             m_throwEvent = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             des.ReadEmptyArray(br);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 4);
             m_contactEvent.Write(s, bw);
             s.WriteClassPointer(bw, m_bones);
             bw.WriteBoolean(m_throwEvent);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteVoidArray(bw);
         }
 

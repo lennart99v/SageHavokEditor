@@ -45,7 +45,7 @@ namespace HKX2
             m_modeller = des.ReadStringPointer(br);
             m_asset = des.ReadStringPointer(br);
             m_sceneLength = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_rootNode = des.ReadClassPointer<hkxNode>(br);
             m_selectionSets = des.ReadClassPointerArray<hkxNodeSelectionSet>(br);
             m_cameras = des.ReadClassPointerArray<hkxCamera>(br);
@@ -55,6 +55,7 @@ namespace HKX2
             m_inplaceTextures = des.ReadClassPointerArray<hkxTextureInplace>(br);
             m_externalTextures = des.ReadClassPointerArray<hkxTextureFile>(br);
             m_skinBindings = des.ReadClassPointerArray<hkxSkinBinding>(br);
+            br.Position += des.Padding(0, 8);
             m_appliedTransform = des.ReadMatrix3(br);
         }
 
@@ -64,7 +65,7 @@ namespace HKX2
             s.WriteStringPointer(bw, m_modeller);
             s.WriteStringPointer(bw, m_asset);
             bw.WriteSingle(m_sceneLength);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassPointer(bw, m_rootNode);
             s.WriteClassPointerArray(bw, m_selectionSets);
             s.WriteClassPointerArray(bw, m_cameras);
@@ -74,6 +75,7 @@ namespace HKX2
             s.WriteClassPointerArray(bw, m_inplaceTextures);
             s.WriteClassPointerArray(bw, m_externalTextures);
             s.WriteClassPointerArray(bw, m_skinBindings);
+            bw.Position += s.Padding(0, 8);
             s.WriteMatrix3(bw, m_appliedTransform);
         }
 

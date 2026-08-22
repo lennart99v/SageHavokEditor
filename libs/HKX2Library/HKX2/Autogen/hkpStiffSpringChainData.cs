@@ -30,7 +30,7 @@ namespace HKX2
             m_tau = br.ReadSingle();
             m_damping = br.ReadSingle();
             m_cfm = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -41,7 +41,7 @@ namespace HKX2
             bw.WriteSingle(m_tau);
             bw.WriteSingle(m_damping);
             bw.WriteSingle(m_cfm);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

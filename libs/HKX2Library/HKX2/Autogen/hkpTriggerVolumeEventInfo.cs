@@ -21,7 +21,7 @@ namespace HKX2
             m_sortValue = br.ReadUInt64();
             m_body = des.ReadClassPointer<hkpRigidBody>(br);
             m_operation = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -29,7 +29,7 @@ namespace HKX2
             bw.WriteUInt64(m_sortValue);
             s.WriteClassPointer(bw, m_body);
             bw.WriteInt32(m_operation);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

@@ -80,13 +80,14 @@ namespace HKX2
             m_animationBindingIndex = br.ReadInt16();
             m_mode = br.ReadSByte();
             m_flags = br.ReadSByte();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyArray(br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
+            br.Position += des.Padding(0, 4);
             m_extractedMotion = des.ReadQSTransform(br);
             des.ReadEmptyArray(br);
             m_localTime = br.ReadSingle();
@@ -97,7 +98,7 @@ namespace HKX2
             m_atEnd = br.ReadBoolean();
             m_ignoreStartTime = br.ReadBoolean();
             m_pingPongBackward = br.ReadBoolean();
-            br.Position += 9;
+            br.Position += des.Padding(9, 13);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -114,13 +115,14 @@ namespace HKX2
             bw.WriteInt16(m_animationBindingIndex);
             bw.WriteSByte(m_mode);
             bw.WriteSByte(m_flags);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidArray(bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
+            bw.Position += s.Padding(0, 4);
             s.WriteQSTransform(bw, m_extractedMotion);
             s.WriteVoidArray(bw);
             bw.WriteSingle(m_localTime);
@@ -131,7 +133,7 @@ namespace HKX2
             bw.WriteBoolean(m_atEnd);
             bw.WriteBoolean(m_ignoreStartTime);
             bw.WriteBoolean(m_pingPongBackward);
-            bw.Position += 9;
+            bw.Position += s.Padding(9, 13);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

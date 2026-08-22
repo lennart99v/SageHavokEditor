@@ -30,7 +30,7 @@ namespace HKX2
             m_initializedOffset = br.ReadInt16();
             m_previousTargetPositionOffset = br.ReadInt16();
             m_targetPosition = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_motor = des.ReadClassPointer<hkpConstraintMotor>(br);
         }
 
@@ -42,7 +42,7 @@ namespace HKX2
             bw.WriteInt16(m_initializedOffset);
             bw.WriteInt16(m_previousTargetPositionOffset);
             bw.WriteSingle(m_targetPosition);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteClassPointer(bw, m_motor);
         }
 

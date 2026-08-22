@@ -71,10 +71,11 @@ namespace HKX2
             br.Position += 3;
             m_elapsedSimulationTime = br.ReadSingle();
             m_skeleton = des.ReadClassPointer<hkaSkeleton>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 4);
             m_worldFromModel = des.ReadQSTransform(br);
             m_poseModelSpace = des.ReadQSTransformArray(br);
             m_rigidAttachmentTransforms = des.ReadQSTransformArray(br);
+            br.Position += des.Padding(0, 8);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -97,10 +98,11 @@ namespace HKX2
             bw.Position += 3;
             bw.WriteSingle(m_elapsedSimulationTime);
             s.WriteClassPointer(bw, m_skeleton);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 4);
             s.WriteQSTransform(bw, m_worldFromModel);
             s.WriteQSTransformArray(bw, m_poseModelSpace);
             s.WriteQSTransformArray(bw, m_rigidAttachmentTransforms);
+            bw.Position += s.Padding(0, 8);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

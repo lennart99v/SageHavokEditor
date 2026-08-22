@@ -18,14 +18,14 @@ namespace HKX2
         {
             des.ReadEmptyPointer(br);
             m_maxMessages = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             s.WriteVoidPointer(bw);
             bw.WriteInt32(m_maxMessages);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

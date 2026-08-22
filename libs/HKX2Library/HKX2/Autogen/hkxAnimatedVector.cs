@@ -22,7 +22,7 @@ namespace HKX2
             base.Read(des, br);
             m_vectors = des.ReadVector4Array(br);
             m_hint = br.ReadByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -30,7 +30,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteVector4Array(bw, m_vectors);
             bw.WriteByte(m_hint);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

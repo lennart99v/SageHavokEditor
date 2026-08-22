@@ -26,29 +26,29 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 4);
             m_minDistanceToUseConvexHullForGetClosestPoints = br.ReadSingle();
-            br.Position += 12;
+            br.Position += des.Padding(12, 4);
             m_aabbHalfExtents = br.ReadVector4();
             m_aabbCenter = br.ReadVector4();
             m_useCachedAabb = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             m_childShapes = des.ReadClassPointerArray<hkpConvexShape>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 4);
             bw.WriteSingle(m_minDistanceToUseConvexHullForGetClosestPoints);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 4);
             bw.WriteVector4(m_aabbHalfExtents);
             bw.WriteVector4(m_aabbCenter);
             bw.WriteBoolean(m_useCachedAabb);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteClassPointerArray(bw, m_childShapes);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

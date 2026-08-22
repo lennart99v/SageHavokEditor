@@ -42,7 +42,7 @@ namespace HKX2
             m_cfmAngAdd = br.ReadSingle();
             m_cfmAngMul = br.ReadSingle();
             m_maxErrorDistance = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -57,7 +57,7 @@ namespace HKX2
             bw.WriteSingle(m_cfmAngAdd);
             bw.WriteSingle(m_cfmAngMul);
             bw.WriteSingle(m_maxErrorDistance);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

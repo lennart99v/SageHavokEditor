@@ -66,6 +66,7 @@ namespace HKX2
             m_raycastDistanceDown = br.ReadSingle();
             m_originalGroundHeightMS = br.ReadSingle();
             m_errorOut = br.ReadSingle();
+            br.Position += des.Padding(0, 8);
             m_errorOutTranslation = br.ReadVector4();
             m_alignWithGroundRotation = des.ReadQuaternion(br);
             m_verticalOffset = br.ReadSingle();
@@ -83,7 +84,7 @@ namespace HKX2
             m_isGroundPositionValid = br.ReadBoolean();
             br.Position += 2;
             m_timeStep = br.ReadSingle();
-            br.Position += 12;
+            br.Position += des.Padding(12, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -95,6 +96,7 @@ namespace HKX2
             bw.WriteSingle(m_raycastDistanceDown);
             bw.WriteSingle(m_originalGroundHeightMS);
             bw.WriteSingle(m_errorOut);
+            bw.Position += s.Padding(0, 8);
             bw.WriteVector4(m_errorOutTranslation);
             s.WriteQuaternion(bw, m_alignWithGroundRotation);
             bw.WriteSingle(m_verticalOffset);
@@ -112,7 +114,7 @@ namespace HKX2
             bw.WriteBoolean(m_isGroundPositionValid);
             bw.Position += 2;
             bw.WriteSingle(m_timeStep);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

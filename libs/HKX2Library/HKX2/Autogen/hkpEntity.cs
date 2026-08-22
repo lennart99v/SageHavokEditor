@@ -59,10 +59,10 @@ namespace HKX2
         {
             base.Read(des, br);
             m_material.Read(des, br);
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
             m_damageMultiplier = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyPointer(br);
             m_solverData = br.ReadUInt32();
             m_storageIndex = br.ReadUInt16();
@@ -83,17 +83,17 @@ namespace HKX2
             m_localFrame = des.ReadClassPointer<hkLocalFrame>(br);
             m_extendedListeners = des.ReadClassPointer<hkpEntityExtendedListeners>(br);
             m_npData = br.ReadUInt32();
-            br.Position += 12;
+            br.Position += des.Padding(12, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
             m_material.Write(s, bw);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
             bw.WriteSingle(m_damageMultiplier);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidPointer(bw);
             bw.WriteUInt32(m_solverData);
             bw.WriteUInt16(m_storageIndex);
@@ -114,7 +114,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_localFrame);
             s.WriteClassPointer(bw, m_extendedListeners);
             bw.WriteUInt32(m_npData);
-            bw.Position += 12;
+            bw.Position += s.Padding(12, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

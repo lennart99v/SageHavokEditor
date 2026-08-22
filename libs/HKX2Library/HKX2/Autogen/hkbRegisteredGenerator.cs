@@ -21,7 +21,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_generator = des.ReadClassPointer<hkbGenerator>(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 0);
             m_relativePosition = br.ReadVector4();
             m_relativeDirection = br.ReadVector4();
         }
@@ -30,7 +30,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             s.WriteClassPointer(bw, m_generator);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 0);
             bw.WriteVector4(m_relativePosition);
             bw.WriteVector4(m_relativeDirection);
         }

@@ -17,7 +17,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
             des.ReadEmptyPointer(br);
             m_constraintData = des.ReadClassPointer<hkpConstraintData>(br);
         }
@@ -25,7 +25,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
             s.WriteVoidPointer(bw);
             s.WriteClassPointer(bw, m_constraintData);
         }

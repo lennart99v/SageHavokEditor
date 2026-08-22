@@ -32,7 +32,7 @@ namespace HKX2
             br.Position += 8;
             m_target_bRca = des.ReadMatrix3(br);
             m_motors = des.ReadClassPointerCStyleArray<hkpConstraintMotor>(br, 3);
-            br.Position += 8;
+            br.Position += des.Padding(8, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -45,7 +45,7 @@ namespace HKX2
             bw.Position += 8;
             s.WriteMatrix3(bw, m_target_bRca);
             s.WriteClassPointerCStyleArray(bw, m_motors);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -26,7 +26,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_indexType = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             m_indices16 = des.ReadUInt16Array(br);
             m_indices32 = des.ReadUInt32Array(br);
             m_vertexBaseOffset = br.ReadUInt32();
@@ -37,7 +37,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteSByte(m_indexType);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteUInt16Array(bw, m_indices16);
             s.WriteUInt32Array(bw, m_indices32);
             bw.WriteUInt32(m_vertexBaseOffset);

@@ -22,7 +22,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_alarmTimeSeconds = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_alarmEvent.Read(des, br);
             m_resetAlarm = br.ReadBoolean();
             br.Position += 3;
@@ -33,7 +33,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteSingle(m_alarmTimeSeconds);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             m_alarmEvent.Write(s, bw);
             bw.WriteBoolean(m_resetAlarm);
             bw.Position += 3;

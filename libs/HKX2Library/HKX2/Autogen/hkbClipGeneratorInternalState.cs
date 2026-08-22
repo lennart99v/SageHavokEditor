@@ -36,6 +36,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_extractedMotion = des.ReadQSTransform(br);
             m_echos = des.ReadClassArray<hkbClipGeneratorEcho>(br);
             m_localTime = br.ReadSingle();
@@ -46,12 +47,13 @@ namespace HKX2
             m_atEnd = br.ReadBoolean();
             m_ignoreStartTime = br.ReadBoolean();
             m_pingPongBackward = br.ReadBoolean();
-            br.Position += 9;
+            br.Position += des.Padding(9, 13);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             s.WriteQSTransform(bw, m_extractedMotion);
             s.WriteClassArray(bw, m_echos);
             bw.WriteSingle(m_localTime);
@@ -62,7 +64,7 @@ namespace HKX2
             bw.WriteBoolean(m_atEnd);
             bw.WriteBoolean(m_ignoreStartTime);
             bw.WriteBoolean(m_pingPongBackward);
-            bw.Position += 9;
+            bw.Position += s.Padding(9, 13);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -18,14 +18,14 @@ namespace HKX2
         {
             m_chain = des.ReadClassPointer<hkpPoweredChainData>(br);
             m_infoIndex = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             s.WriteClassPointer(bw, m_chain);
             bw.WriteInt32(m_infoIndex);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

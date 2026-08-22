@@ -72,6 +72,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 4);
             m_proxyInfo.Read(des, br);
             m_linearVelocity = br.ReadVector4();
             m_horizontalGain = br.ReadSingle();
@@ -97,6 +98,7 @@ namespace HKX2
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
+            br.Position += des.Padding(0, 12);
             m_horizontalDisplacement = br.ReadVector4();
             m_verticalDisplacement = br.ReadSingle();
             m_timestep = br.ReadSingle();
@@ -107,6 +109,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 4);
             m_proxyInfo.Write(s, bw);
             bw.WriteVector4(m_linearVelocity);
             bw.WriteSingle(m_horizontalGain);
@@ -132,6 +135,7 @@ namespace HKX2
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
+            bw.Position += s.Padding(0, 12);
             bw.WriteVector4(m_horizontalDisplacement);
             bw.WriteSingle(m_verticalDisplacement);
             bw.WriteSingle(m_timestep);

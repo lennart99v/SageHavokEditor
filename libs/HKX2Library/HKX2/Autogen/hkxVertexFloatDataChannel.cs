@@ -21,7 +21,7 @@ namespace HKX2
             base.Read(des, br);
             m_perVertexFloats = des.ReadSingleArray(br);
             m_dimensions = br.ReadByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -29,7 +29,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteSingleArray(bw, m_perVertexFloats);
             bw.WriteByte(m_dimensions);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

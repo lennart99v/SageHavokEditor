@@ -75,7 +75,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_variableMode = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             des.ReadEmptyArray(br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyArray(br);
@@ -97,7 +97,7 @@ namespace HKX2
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
             m_numIntermediateOutputs = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             des.ReadEmptyArray(br);
             des.ReadEmptyArray(br);
             m_numStaticNodes = br.ReadInt16();
@@ -112,7 +112,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteSByte(m_variableMode);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteVoidArray(bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidArray(bw);
@@ -134,7 +134,7 @@ namespace HKX2
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
             bw.WriteInt32(m_numIntermediateOutputs);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteVoidArray(bw);
             s.WriteVoidArray(bw);
             bw.WriteInt16(m_numStaticNodes);

@@ -23,7 +23,7 @@ namespace HKX2
             base.Read(des, br);
             m_name = des.ReadStringPointer(br);
             m_type = br.ReadByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             m_data = des.ReadByteArray(br);
         }
 
@@ -32,7 +32,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteStringPointer(bw, m_name);
             bw.WriteByte(m_type);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteByteArray(bw, m_data);
         }
 

@@ -25,7 +25,7 @@ namespace HKX2
             base.Read(des, br);
             m_type = br.ReadByte();
             m_depth = br.ReadByte();
-            br.Position += 6;
+            br.Position += des.Padding(6, 2);
             m_referenceBehaviorName = des.ReadStringPointer(br);
             m_selfTransitionNames = des.ReadStringPointerArray(br);
         }
@@ -35,7 +35,7 @@ namespace HKX2
             base.Write(s, bw);
             bw.WriteByte(m_type);
             bw.WriteByte(m_depth);
-            bw.Position += 6;
+            bw.Position += s.Padding(6, 2);
             s.WriteStringPointer(bw, m_referenceBehaviorName);
             s.WriteStringPointerArray(bw, m_selfTransitionNames);
         }

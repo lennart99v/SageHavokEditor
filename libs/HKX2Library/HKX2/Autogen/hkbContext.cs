@@ -39,7 +39,7 @@ namespace HKX2
             des.ReadEmptyPointer(br);
             m_generatorOutputListener = des.ReadClassPointer<hkbGeneratorOutputListener>(br);
             m_eventTriggeredTransition = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
@@ -54,7 +54,7 @@ namespace HKX2
             s.WriteVoidPointer(bw);
             s.WriteClassPointer(bw, m_generatorOutputListener);
             bw.WriteBoolean(m_eventTriggeredTransition);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);

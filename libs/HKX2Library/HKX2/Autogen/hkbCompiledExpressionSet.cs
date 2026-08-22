@@ -24,7 +24,7 @@ namespace HKX2
             m_rpn = des.ReadClassArray<hkbCompiledExpressionSetToken>(br);
             m_expressionToRpnIndex = des.ReadInt32Array(br);
             m_numExpressions = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -33,7 +33,7 @@ namespace HKX2
             s.WriteClassArray(bw, m_rpn);
             s.WriteInt32Array(bw, m_expressionToRpnIndex);
             bw.WriteSByte(m_numExpressions);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

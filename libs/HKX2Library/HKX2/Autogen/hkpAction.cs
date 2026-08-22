@@ -23,7 +23,7 @@ namespace HKX2
             base.Read(des, br);
             des.ReadEmptyPointer(br);
             des.ReadEmptyPointer(br);
-            m_userData = br.ReadUInt64();
+            m_userData = br.ReadUSize();
             m_name = des.ReadStringPointer(br);
         }
 
@@ -32,7 +32,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteVoidPointer(bw);
             s.WriteVoidPointer(bw);
-            bw.WriteUInt64(m_userData);
+            bw.WriteUSize(m_userData);
             s.WriteStringPointer(bw, m_name);
         }
 

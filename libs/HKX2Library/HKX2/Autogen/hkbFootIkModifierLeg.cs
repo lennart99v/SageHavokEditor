@@ -70,7 +70,7 @@ namespace HKX2
             m_hitSomething = br.ReadBoolean();
             m_isPlantedMS = br.ReadBoolean();
             m_isOriginalAnkleTransformMSSet = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 15);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -94,7 +94,7 @@ namespace HKX2
             bw.WriteBoolean(m_hitSomething);
             bw.WriteBoolean(m_isPlantedMS);
             bw.WriteBoolean(m_isOriginalAnkleTransformMSSet);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 15);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

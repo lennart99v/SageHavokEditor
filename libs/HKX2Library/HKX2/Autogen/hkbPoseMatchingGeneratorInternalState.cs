@@ -28,7 +28,7 @@ namespace HKX2
             m_timeSinceBetterMatch = br.ReadSingle();
             m_error = br.ReadSingle();
             m_resetCurrentMatchLocalTime = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -39,7 +39,7 @@ namespace HKX2
             bw.WriteSingle(m_timeSinceBetterMatch);
             bw.WriteSingle(m_error);
             bw.WriteBoolean(m_resetCurrentMatchLocalTime);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

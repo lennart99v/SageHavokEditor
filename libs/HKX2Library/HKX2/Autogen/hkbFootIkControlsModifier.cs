@@ -24,8 +24,10 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 4);
             m_controlData.Read(des, br);
             m_legs = des.ReadClassArray<hkbFootIkControlsModifierLeg>(br);
+            br.Position += des.Padding(0, 4);
             m_errorOutTranslation = br.ReadVector4();
             m_alignWithGroundRotation = des.ReadQuaternion(br);
         }
@@ -33,8 +35,10 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 4);
             m_controlData.Write(s, bw);
             s.WriteClassArray(bw, m_legs);
+            bw.Position += s.Padding(0, 4);
             bw.WriteVector4(m_errorOutTranslation);
             s.WriteQuaternion(bw, m_alignWithGroundRotation);
         }

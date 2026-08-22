@@ -18,14 +18,14 @@ namespace HKX2
         {
             m_event.Read(des, br);
             m_time = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             m_event.Write(s, bw);
             bw.WriteSingle(m_time);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

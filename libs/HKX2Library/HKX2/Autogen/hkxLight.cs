@@ -25,7 +25,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_type = br.ReadSByte();
-            br.Position += 15;
+            br.Position += des.Padding(15, 7);
             m_position = br.ReadVector4();
             m_direction = br.ReadVector4();
             m_color = br.ReadUInt32();
@@ -37,7 +37,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteSByte(m_type);
-            bw.Position += 15;
+            bw.Position += s.Padding(15, 7);
             bw.WriteVector4(m_position);
             bw.WriteVector4(m_direction);
             bw.WriteUInt32(m_color);

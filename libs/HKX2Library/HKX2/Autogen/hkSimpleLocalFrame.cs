@@ -26,6 +26,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 8);
             m_transform = des.ReadTransform(br);
             m_children = des.ReadClassPointerArray<hkLocalFrame>(br);
             m_parentFrame = des.ReadClassPointer<hkLocalFrame>(br);
@@ -37,6 +38,7 @@ namespace HKX2
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 8);
             s.WriteTransform(bw, m_transform);
             s.WriteClassPointerArray(bw, m_children);
             s.WriteClassPointer(bw, m_parentFrame);

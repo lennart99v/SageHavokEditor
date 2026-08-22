@@ -18,18 +18,18 @@ namespace HKX2
 
         public virtual void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
-            m_start = br.ReadUInt64();
-            m_size = br.ReadUInt64();
+            m_start = br.ReadUSize();
+            m_size = br.ReadUSize();
             m_traceId = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
-            bw.WriteUInt64(m_start);
-            bw.WriteUInt64(m_size);
+            bw.WriteUSize(m_start);
+            bw.WriteUSize(m_size);
             bw.WriteInt32(m_traceId);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

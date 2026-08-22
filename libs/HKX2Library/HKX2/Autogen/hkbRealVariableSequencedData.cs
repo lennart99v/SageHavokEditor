@@ -21,7 +21,7 @@ namespace HKX2
             base.Read(des, br);
             m_samples = des.ReadClassArray<hkbRealVariableSequencedDataSample>(br);
             m_variableIndex = br.ReadInt32();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -29,7 +29,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteClassArray(bw, m_samples);
             bw.WriteInt32(m_variableIndex);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

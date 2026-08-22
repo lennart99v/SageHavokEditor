@@ -23,7 +23,7 @@ namespace HKX2
             base.Read(des, br);
             m_hands = des.ReadClassArray<hkbHandIkModifierHand>(br);
             m_fadeInOutCurve = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             des.ReadEmptyArray(br);
         }
 
@@ -32,7 +32,7 @@ namespace HKX2
             base.Write(s, bw);
             s.WriteClassArray(bw, m_hands);
             bw.WriteSByte(m_fadeInOutCurve);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteVoidArray(bw);
         }
 

@@ -23,7 +23,7 @@ namespace HKX2
             m_variableBindingSet = des.ReadClassPointer<hkbVariableBindingSet>(br);
             des.ReadEmptyArray(br);
             m_areBindablesCached = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -32,7 +32,7 @@ namespace HKX2
             s.WriteClassPointer(bw, m_variableBindingSet);
             s.WriteVoidArray(bw);
             bw.WriteBoolean(m_areBindablesCached);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

@@ -54,8 +54,9 @@ namespace HKX2
             m_wristIndex = br.ReadInt16();
             m_enforceEndPosition = br.ReadBoolean();
             m_enforceEndRotation = br.ReadBoolean();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_localFrameName = des.ReadStringPointer(br);
+            br.Position += des.Padding(0, 8);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
@@ -73,8 +74,9 @@ namespace HKX2
             bw.WriteInt16(m_wristIndex);
             bw.WriteBoolean(m_enforceEndPosition);
             bw.WriteBoolean(m_enforceEndRotation);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             s.WriteStringPointer(bw, m_localFrameName);
+            bw.Position += s.Padding(0, 8);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

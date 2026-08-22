@@ -55,7 +55,7 @@ namespace HKX2
         {
             base.Read(des, br);
             m_lookAtTarget = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             m_bones = des.ReadClassArray<BSLookAtModifierBoneData>(br);
             m_eyeBones = des.ReadClassArray<BSLookAtModifierBoneData>(br);
             m_limitAngleDegrees = br.ReadSingle();
@@ -68,7 +68,7 @@ namespace HKX2
             br.Position += 3;
             m_targetLocation = br.ReadVector4();
             m_targetOutsideLimits = br.ReadBoolean();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
             m_targetOutOfLimitEvent.Read(des, br);
             m_lookAtCamera = br.ReadBoolean();
             br.Position += 3;
@@ -86,7 +86,7 @@ namespace HKX2
         {
             base.Write(s, bw);
             bw.WriteBoolean(m_lookAtTarget);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             s.WriteClassArray(bw, m_bones);
             s.WriteClassArray(bw, m_eyeBones);
             bw.WriteSingle(m_limitAngleDegrees);
@@ -99,7 +99,7 @@ namespace HKX2
             bw.Position += 3;
             bw.WriteVector4(m_targetLocation);
             bw.WriteBoolean(m_targetOutsideLimits);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
             m_targetOutOfLimitEvent.Write(s, bw);
             bw.WriteBoolean(m_lookAtCamera);
             bw.Position += 3;

@@ -50,6 +50,7 @@ namespace HKX2
         public override void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             base.Read(des, br);
+            br.Position += des.Padding(0, 12);
             m_worldFromModelRotation = des.ReadQuaternion(br);
             m_blendSpeed = br.ReadSingle();
             m_minSpeedToSwitch = br.ReadSingle();
@@ -70,11 +71,13 @@ namespace HKX2
             m_resetCurrentMatchLocalTime = br.ReadBoolean();
             br.Position += 3;
             des.ReadEmptyPointer(br);
+            br.Position += des.Padding(0, 4);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
+            bw.Position += s.Padding(0, 12);
             s.WriteQuaternion(bw, m_worldFromModelRotation);
             bw.WriteSingle(m_blendSpeed);
             bw.WriteSingle(m_minSpeedToSwitch);
@@ -95,6 +98,7 @@ namespace HKX2
             bw.WriteBoolean(m_resetCurrentMatchLocalTime);
             bw.Position += 3;
             s.WriteVoidPointer(bw);
+            bw.Position += s.Padding(0, 4);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)

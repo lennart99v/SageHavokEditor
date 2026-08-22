@@ -19,19 +19,19 @@ namespace HKX2
         public virtual void Read(PackFileDeserializer des, BinaryReaderEx br)
         {
             m_upperBound = br.ReadSingle();
-            br.Position += 4;
+            br.Position += des.Padding(4, 0);
             m_event.Read(des, br);
             m_eventMode = br.ReadSByte();
-            br.Position += 7;
+            br.Position += des.Padding(7, 3);
         }
 
         public virtual void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             bw.WriteSingle(m_upperBound);
-            bw.Position += 4;
+            bw.Position += s.Padding(4, 0);
             m_event.Write(s, bw);
             bw.WriteSByte(m_eventMode);
-            bw.Position += 7;
+            bw.Position += s.Padding(7, 3);
         }
 
         public virtual void ReadXml(XmlDeserializer xd, XElement xe)

@@ -25,24 +25,24 @@ namespace HKX2
         {
             base.Read(des, br);
             m_boneIndex = br.ReadInt16();
-            br.Position += 14;
+            br.Position += des.Padding(14, 2);
             m_translationLSOut = br.ReadVector4();
             m_rotationLSOut = des.ReadQuaternion(br);
             m_scaleLSOut = br.ReadVector4();
             des.ReadEmptyPointer(br);
-            br.Position += 8;
+            br.Position += des.Padding(8, 12);
         }
 
         public override void Write(PackFileSerializer s, BinaryWriterEx bw)
         {
             base.Write(s, bw);
             bw.WriteInt16(m_boneIndex);
-            bw.Position += 14;
+            bw.Position += s.Padding(14, 2);
             bw.WriteVector4(m_translationLSOut);
             s.WriteQuaternion(bw, m_rotationLSOut);
             bw.WriteVector4(m_scaleLSOut);
             s.WriteVoidPointer(bw);
-            bw.Position += 8;
+            bw.Position += s.Padding(8, 12);
         }
 
         public override void ReadXml(XmlDeserializer xd, XElement xe)
