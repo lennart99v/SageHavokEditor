@@ -179,8 +179,12 @@ namespace SageHavokEditor.UI.Dialogs
                 "in-game until re-enabled. Fully undoable.\n" +
                 "• Delete Transition — removes the transition.\n\n" +
                 "Live debugging\n" +
-                "• Active states glow with an animated green outline.\n" +
-                "• When a transition fires, its edge pulses green so you can trace the flow as it happens.\n\n" +
+                "• Active states glow with an animated green outline and carry a ● LIVE badge.\n" +
+                "• When a transition fires, its edge pulses green so you can trace the flow as it happens.\n" +
+                "• The machine dropdown auto-follows the actor — entering a state that belongs "
+                + "to a different machine switches the graph to it — and 🎯 pan-to-active "
+                + "keeps the active node centred.\n" +
+                "• See Reading a Live Session for the whole picture.\n\n" +
                 "Node right-click menu\n" +
                 "• 🎬 New clip generator… — on a state: creates a new hkbClipGenerator and points that " +
                 "state's generator at it in one step. See Adding a New Animation.\n" +
@@ -311,16 +315,47 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Animation Names — the list of animation files registered to this character.");
 
             AddSection("tab_debugger", "Debugger Tab",
-                "The Live Debugger connects to a running Skyrim process via a named pipe " +
-                "(requires the SkyrimBehaviorDebugger SKSE plugin).\n\n" +
-                "• Click Live Debug in the toolbar to start listening.\n" +
-                "• Once connected the panel shows Active States, Transition History, and live variable values.\n" +
-                "• ⏸ Pause — freeze the UI without disconnecting.\n" +
-                "• ⏺ Record — capture all snapshots to memory.\n" +
-                "• 💾 Export — save the recorded session to JSON.\n" +
-                "• 🎯 Pan-to-active — keep the graph viewport centred on the current state.\n" +
-                "• ⧉ Pop Out — detach the debugger panel into a floating window.\n" +
-                "• The graph highlights the active state with an animated green glow.");
+                "The Live Debugger shows what a running Skyrim actor's behaviour graph is actually "
+                + "doing — which states are active, which transition just fired, and what every "
+                + "behaviour variable is worth — lined up against the file you have open in the "
+                + "editor. It needs the SkyrimBehaviorDebugger SKSE plugin installed in the game; "
+                + "see Live Debugging: Setup & Connection for how the two halves find each other.\n\n"
+                + "The same panel lives in two places. Docked it is the 🎮 Debugger tab; "
+                + "⧉ Pop Out detaches it into a small always-on-top window you can park on a second "
+                + "monitor while Skyrim runs full-screen. Both are bound to the same data, so nothing "
+                + "resets when you detach or re-dock — the tab header reads 🎮 Debugger ⧉ "
+                + "while it is floating, the button becomes ↩ Dock, and closing the floating window "
+                + "docks it again.\n\n"
+                + "What the panel shows, top to bottom\n"
+                + "• Header — a status dot (grey before you start, green while connected, dark red "
+                + "when the pipe drops and the client is retrying), the detected actor's icon and name, "
+                + "and the panel buttons.\n"
+                + "• ACTIVE STATES — one card per tracked state machine: the machine name in blue "
+                + "above its current state's name in green. An empty list here is the usual first-run "
+                + "surprise and almost never a broken connection; see Why Active States Are Empty.\n"
+                + "• TRANSITION HISTORY — a timestamped log, newest first, of every state entry as "
+                + "it happens, written as machine → state. It keeps the last 50 entries; a state that "
+                + "is merely still active is not repeated, so every line is a real entry into that "
+                + "state.\n"
+                + "• VARIABLES — the actor's live variable values, with a second collapsible "
+                + "🐉 group underneath for the mount whenever the actor is riding. Both group "
+                + "headers collapse, which is worth doing on 0_master's ~120 variables.\n\n"
+                + "Buttons\n"
+                + "• ⏸ / ▶ Pause — freezes the panel without dropping the connection. "
+                + "Snapshots that arrive while paused are discarded rather than queued, so resuming shows "
+                + "the live present instead of replaying a backlog — and they are not recorded "
+                + "either.\n"
+                + "• ⏺ Record — captures every snapshot to memory. The icon turns into a "
+                + "bright ⏹ while recording, and stopping reports the frame count in the status "
+                + "bar.\n"
+                + "• 💾 Export — writes the captured session to JSON; see Recording & "
+                + "Exporting a Session.\n"
+                + "• 🎯 Pan-to-active — keeps the graph viewport centred on the active "
+                + "state. Same toggle as the 🎯 button on the graph toolbar; the icon sits at full "
+                + "opacity while it is on.\n"
+                + "• ? in the tab header opens this page.\n\n"
+                + "Starting and stopping happen from the toolbar's 🎮 Live Debug button, not from "
+                + "this tab.");
 
             AddSection("tab_bookmarks", "Bookmarks Tab",
                 "Stores named references to Havok objects for quick navigation.\n\n" +
@@ -538,6 +573,122 @@ namespace SageHavokEditor.UI.Dialogs
                 "Editing and removing\n" +
                 "Wildcard rows behave like any other transition: right-click for Go to event, " +
                 "Enable / Disable transition (FLAG_DISABLED), or Delete.");
+
+            AddSection("debug_setup", "Live Debugging: Setup & Connection",
+                "Live debugging pairs the editor with a running game. The game side is the "
+                + "SkyrimBehaviorDebugger SKSE plugin, which reads the behaviour state of the actor you "
+                + "are controlling; the editor side is a client that renders it against the graph you "
+                + "have open. Both have to run on the same PC — the link is a pair of local named "
+                + "pipes, not a network socket.\n\n"
+                + "What flows over which pipe\n"
+                + "• SkyrimBehaviorDebugger — game → editor. One JSON snapshot per line: the "
+                + "actor's name and behaviour file, its active states as machine name plus numeric state "
+                + "id, every watched variable's value, and the same again for the mount when riding.\n"
+                + "• SkyrimBehaviorDebugger_Config — editor → game. Tells the plugin what to "
+                + "watch: the loaded file's variables with each one's type (float for REAL, VECTOR and "
+                + "QUATERNION variables, int for everything else), plus one entry per state machine that "
+                + "can report its state, giving the machine's name and the variable to read it from.\n\n"
+                + "Starting a session\n"
+                + "• Click 🎮 Live Debug in the toolbar. The button becomes ⏹ Stop Debug "
+                + "and the status bar reads ⏳ Live debugger started — launch Skyrim with SKSE.\n"
+                + "• Order does not matter. The client retries about once a second until the game "
+                + "appears and re-connects by itself if the game exits or reloads, so 🔴 Live "
+                + "debugger disconnected — retrying… is a wait, not an error.\n"
+                + "• On connect the status bar reads 🟢 Live debugger connected and the config "
+                + "is re-sent automatically.\n"
+                + "• ⏹ Stop Debug clears the panel, drops the graph highlight and discards the "
+                + "client — including anything you recorded, so export first.\n\n"
+                + "When the config is sent\n"
+                + "• On start, on every re-connect, and whenever you load a file while the debugger is "
+                + "running — so switching files mid-session re-points the plugin at the new graph.\n"
+                + "• Immediately after 🐞 Enable live-debug tracking, so a machine you have just "
+                + "made trackable starts reporting without restarting the session.\n"
+                + "• The status bar confirms what went out, e.g. Config: 17 vars, 2 SMs — with a "
+                + "warning form of the same line when no machine is trackable.\n\n"
+                + "Open the file the game is running\n"
+                + "The config, the variable names and the state-id lookup are all built from the file open "
+                + "in the editor. If the game is running a Nemesis- or Pandora-generated output, open that "
+                + "output rather than your pre-patch source: the generated graph can carry different state "
+                + "ids and a longer variable table, and both are resolved by position. A mismatch shows up "
+                + "as active states named state 12 and variables that never flash.");
+
+            AddSection("debug_reading", "Reading a Live Session",
+                "Once snapshots are arriving, the graph and the panel move together. None of this needs "
+                + "a click — it is all driven by what the game sends.\n\n"
+                + "On the graph\n"
+                + "• An active state's node gets a pulsing green outline, a faint green tint across "
+                + "its body, and a ● LIVE badge in its bottom-right corner. The pulse redraws about 30 "
+                + "times a second, so a state held only briefly still registers.\n"
+                + "• When one state is left and another entered in the same snapshot, the edge between "
+                + "them flashes green and fades over roughly a second — that is the transition that "
+                + "actually fired, which is the quickest way to tell which of several candidate edges the "
+                + "game took.\n"
+                + "• Auto-follow: if a newly entered state belongs to a machine in the machine "
+                + "dropdown other than the one on screen, the graph switches to that machine by itself. "
+                + "With 🎯 pan-to-active also on, the viewport then animates to centre the active "
+                + "node, so the view chases the actor through the graph hands-free.\n\n"
+                + "Active-state names\n"
+                + "• The plugin reports a machine name and a numeric state id; the readable name is "
+                + "resolved from the graph you have loaded.\n"
+                + "• A card reading state 12 with no name means that id is not in the open graph — "
+                + "normally the wrong file, or a copy from before the last patch run.\n\n"
+                + "The variables list\n"
+                + "• Variables appear as the game reports them and stay for the session. A value that "
+                + "moves by more than 0.001 flashes green for about 400 ms, which is how you find out "
+                + "which variable a key press or an animation event really drives.\n"
+                + "• Names the editor considers relevant to the detected actor type are drawn bright "
+                + "and the rest dim grey. The dim ones still update, they just do not flash, so the dozen "
+                + "variables that matter are not lost among a hundred that don't.\n"
+                + "• Values are shown to two decimals, and ints and bools arrive as numbers (1.00 / "
+                + "0.00) because Havok keeps them all in one variable table.\n\n"
+                + "Actor detection\n"
+                + "• The icon and accent colour come from the snapshot's behaviour file name: dragon "
+                + "and horse files map to 🐉 and 🐴, and 0_master, defaultmale, "
+                + "defaultfemale or mt_behavior to 👤 player.\n"
+                + "• Anything else is matched against the file you have open, then split into "
+                + "🧍 humanoid NPC or 🐺 creature by whether the graph carries humanoid "
+                + "variables such as iRightHandType, iCombatStance or IsSneaking.\n"
+                + "• Getting this wrong is cosmetic: it only changes the icon, the accent colour and "
+                + "which variable names count as relevant. Everything is still reported.\n\n"
+                + "Riding a mount\n"
+                + "• While the actor is riding, the snapshot carries a second set of states and "
+                + "variables for the mount, shown in the 🐉 group below the actor's variables with "
+                + "its own accent colour and the mount's behaviour file as the label.\n"
+                + "• The group disappears the moment mount data stops arriving, which is itself a "
+                + "useful signal when debugging mounting and dismounting.");
+
+            AddSection("debug_recording", "Recording & Exporting a Session",
+                "The live panel only ever shows the present. Recording captures the snapshot stream so "
+                + "you can read it back frame by frame — which is how you catch a state that flickers "
+                + "past too fast to see, or compare what the game sets against what your graph "
+                + "expects.\n\n"
+                + "Capturing\n"
+                + "• ⏺ starts a recording and clears whatever was captured before, so every take "
+                + "is clean.\n"
+                + "• Each snapshot is appended to memory as it arrives. Frames that arrive while "
+                + "⏸ Pause is on are dropped rather than buffered, so pausing during a recording is a "
+                + "cut, not a gap you can scrub back into.\n"
+                + "• ⏹ stops the capture and reports the count in the status bar, e.g. ⏹ 412 "
+                + "frames captured. The frames stay in memory until the next ⏺, so you can stop first "
+                + "and export at leisure.\n"
+                + "• Recordings live in memory only, and only for the life of the debugger client: "
+                + "⏹ Stop Debug throws them away. Export before you stop.\n\n"
+                + "Exporting\n"
+                + "• 💾 asks for a path, pre-filled as session_yyyyMMdd_HHmmss.json, and "
+                + "writes indented JSON.\n"
+                + "• The file is an array with one object per snapshot: timestamp (HH:mm:ss.fff), "
+                + "actorName, behaviorFile, activeStates — each with smName, stateId and the resolved "
+                + "stateName — and variables as name/value pairs.\n"
+                + "• Export writes whatever is in the buffer, so it also works mid-recording without "
+                + "interrupting the capture.\n\n"
+                + "What it is good for\n"
+                + "• Diffing the variable table the game actually drives against the one your "
+                + "behaviour file declares — a variable that never changes is usually one nothing "
+                + "writes.\n"
+                + "• Establishing the order of state entries around a bug, with timestamps you can "
+                + "line up against a video capture.\n"
+                + "• Attaching evidence to a bug report: the JSON is plain text and names the "
+                + "behaviour file, so it says which graph was running.");
 
             AddSection("debug_tracking", "Why Active States Are Empty",
                 "Connecting successfully and still seeing an empty Active States list is the most common " +
