@@ -5,7 +5,7 @@ All notable changes to Sage Havok Editor are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] — 2026-08-27
 
 ### Fixed
 
@@ -535,5 +535,6 @@ place, and editing modifiers directly in the graph.
 - The executable now carries proper version metadata (it previously reported itself
   as 1.0.0 regardless of the build).
 
+[0.6.0]: https://github.com/lennart99v/SageHavokEditor/releases/tag/v0.6.0
 [0.5.0]: https://github.com/lennart99v/SageHavokEditor/releases/tag/v0.5.0
 [0.4.0]: https://github.com/lennart99v/SageHavokEditor/releases/tag/v0.4.0
