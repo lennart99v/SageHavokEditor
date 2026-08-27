@@ -44,6 +44,18 @@ A user-visible change isn't done until the docs move with it:
 - `SageHavokEditor/UI/Dialogs/DocumentationView.xaml.cs` — the in-app Guide,
   whenever the change adds or alters something the user clicks.
 
+## Releasing
+
+`RELEASING.md` has the whole process. **"Ready the release"** / "ready the 0.7
+zip" means: bump the version, stamp the changelog, merge that PR, tag, publish
+the build, zip it, verify it, and hand it back — then stop. Publishing the
+result is separate: a GitHub release and the Nexus upload each get asked for on
+their own, and the Nexus one is always done by hand.
+
+Two things that bite: the version lives only in `SageHavokEditor.csproj` (three
+properties) and gets forgotten, and the build must happen *after* the bump
+commit lands or the binary's embedded sha points at the wrong commit.
+
 ## Domain traps worth remembering
 
 - Saving `.hkx` silently prunes objects unreachable from the root — a new object
