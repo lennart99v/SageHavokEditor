@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **XML saves wrote `numelements=""` on every scalar param.** `HkParam.NumElements`
+  defaults to `""` and carried no `ShouldSerialize` guard, so the XmlSerializer
+  emitted the attribute on every param whether or not it was an array — 18,884
+  spurious attributes in a single 1512-object file (vanilla `dragonbehavior.hkx`).
+  Harmless to the game, since XML→HKX conversion ignores an empty count, but it
+  meant app-saved XML differed from converter output on virtually every line, so
+  hand-diffing a save against hkxconv/temp XML — the main way the id and layout
+  work gets checked — was buried in noise. `ShouldSerializeNumElements()` now
+  suppresses the attribute when blank, which is already what blank means
+  everywhere else in the codebase (`HavokTypeCatalog.Annotate` and
+  `ResyncNumElements` both read it as "not an array"); a genuinely empty array
+  keeps its explicit `"0"`. Verified by round-tripping `dragonbehavior.hkx`
+  through the real save path: the attribute set now matches HKX2's own
+  serializer exactly — 958 `numelements` attributes on both sides, all 232
+  `"0"` counts preserved, zero empty ones — and normalised diff noise against
+  converter output dropped from 61,917 differing lines to 20,189 (the remainder
+  is the root element's `xmlns:xsi`/`xsd` and long-array line wrapping, both
+  separate). The count being authoritative on XML→HKX was the risk worth
+  disproving, so the whole loop was run through the real save method: .hkx →
+  XML → save → .hkx → XML comes back byte-identical to the original
+  conversion, same 369,616-byte binary, nothing truncated. Found 2026-07-29
+  while verifying trigger editing end-to-end.
+
 - **The transition detail panel showed almost none of the transition.**
   Everything below the flag badges was read off the `hkbBlendingTransitionEffect`
   the transition points at — but the effect carries only `duration`,
