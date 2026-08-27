@@ -2651,24 +2651,13 @@ namespace SageHavokEditor
                 }
             }
 
-            // Serialize
-            var packfile = new HkPackfile
-            {
-                TopLevelObject = "#0050",
-                Sections = new List<HkSection>
-        {
-            new HkSection
-            {
-                Name    = "__data__",
-                Objects = manager.ObjectMap.Values.OrderBy(o => o.Id).ToList()
-            }
-        }
-            };
+            // Serialize. The header comes from the loaded file rather than a
+            // hard-coded #0050 — see HavokManager.NewPackfile.
+            var packfile = manager.NewPackfile();
 
-            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(HkPackfile));
             var tempPath = path + ".tmp";
             using (var writer = new StreamWriter(tempPath, false, Encoding.UTF8))
-                serializer.Serialize(writer, packfile);
+                HkXml.Write(packfile, writer);
 
             if (File.Exists(path)) File.Delete(path);
             File.Move(tempPath, path);

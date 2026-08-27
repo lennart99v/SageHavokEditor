@@ -377,21 +377,10 @@ namespace SageHavokEditor.Core
 
         private static void SerializeManager(HavokManager mgr, string outPath)
         {
-            var packfile = new HkPackfile
-            {
-                Sections = new List<HkSection>
-                {
-                    new HkSection
-                    {
-                        Name    = "__data__",
-                        Objects = mgr.ObjectMap.Values.OrderBy(o => o.Id).ToList()
-                    }
-                }
-            };
-            var ser = new XmlSerializer(typeof(HkPackfile));
+            var packfile = mgr.NewPackfile();
             var tmp = outPath + ".tmp";
             using (var w = new StreamWriter(tmp, false, System.Text.Encoding.UTF8))
-                ser.Serialize(w, packfile);
+                HkXml.Write(packfile, w);
             if (File.Exists(outPath)) File.Delete(outPath);
             File.Move(tmp, outPath);
         }

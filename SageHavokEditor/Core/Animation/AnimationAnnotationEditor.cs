@@ -121,7 +121,7 @@ namespace SageHavokEditor.Core.Animation
 
                 var tmpXml = animFullPath + ".tmp.xml";
                 using (var w = new StreamWriter(tmpXml, false, Encoding.UTF8))
-                    serializer.Serialize(w, pack);
+                    HkXml.Write(pack, w);
 
                 if (binary)
                 {
