@@ -10,9 +10,48 @@ namespace SageHavokEditor.Core
 
         public HkObject? RootObject { get; private set; }
 
+        /// <summary>
+        /// The loaded packfile's header, kept so a save can reproduce it. Saves
+        /// rebuild the HkPackfile from ObjectMap rather than holding the original,
+        /// so without this the header attributes were written empty
+        /// (classversion="" contentsversion="" toplevelobject="") — see
+        /// HkPackfile.Skyrim*Version for the from-scratch fallbacks.
+        /// </summary>
+        public string ClassVersion { get; private set; } = "";
+        public string ContentsVersion { get; private set; } = "";
+        public string TopLevelObjectId { get; private set; } = "";
+
+        /// <summary>
+        /// The header to write for this manager: what was loaded, else Skyrim's
+        /// schema, and the real root id rather than a hard-coded #0050 — the root
+        /// is only #0050 by convention, and a wrong toplevelobject points the
+        /// runtime at the wrong object.
+        /// </summary>
+        public HkPackfile NewPackfile(string sectionName = "__data__") => new()
+        {
+            ClassVersion = string.IsNullOrEmpty(ClassVersion)
+                ? HkPackfile.SkyrimClassVersion : ClassVersion,
+            ContentsVersion = string.IsNullOrEmpty(ContentsVersion)
+                ? HkPackfile.SkyrimContentsVersion : ContentsVersion,
+            TopLevelObject = !string.IsNullOrEmpty(TopLevelObjectId) ? TopLevelObjectId
+                : !string.IsNullOrEmpty(RootObject?.Id) ? RootObject!.Id
+                : "#0050",
+            Sections = new List<HkSection>
+            {
+                new HkSection
+                {
+                    Name    = sectionName,
+                    Objects = ObjectMap.Values.OrderBy(o => o.Id).ToList()
+                }
+            }
+        };
+
         public void BuildGraph(HkPackfile packfile)
         {
             ObjectMap.Clear();
+            ClassVersion     = packfile.ClassVersion;
+            ContentsVersion  = packfile.ContentsVersion;
+            TopLevelObjectId = packfile.TopLevelObject;
             var dataSection = packfile.Sections.FirstOrDefault(s => s.Name == "__data__");
             if (dataSection == null) return;
 

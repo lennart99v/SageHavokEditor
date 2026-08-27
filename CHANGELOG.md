@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Saves wrote a packfile header of empty attributes, and one hard-coded root.**
+  Both save paths rebuild the `HkPackfile` from the manager's `ObjectMap` rather
+  than keeping the one that was loaded, and neither carried the header across —
+  so every saved file said `classversion="" contentsversion=""`.
+  `toplevelobject` was worse: empty from `HavokWorkspace.SerializeManager`
+  (character and project saves), and hard-coded `"#0050"` from
+  `MainWindow.SerializeToFile`. The root object is `#0050` only by convention,
+  and `toplevelobject` is how the runtime finds the graph — pointing it at an id
+  that isn't the root is the silent kind of wrong this domain specialises in.
+  `HavokManager` now keeps `classversion`/`contentsversion`/`toplevelobject` at
+  `BuildGraph` and hands them back through a new `NewPackfile()`, which falls
+  back to Skyrim's schema (`8` / `hk_2010.2.0-r1`) and to the real root id only
+  when a packfile is built from scratch. Found by diffing a save against the
+  same file converted by HKX2, after the `numelements` fix made the diff small
+  enough to read.
+
+- **Inline objects and the root element carried attributes Havok never writes.**
+  The same defaulted-empty-string leak as `numelements`, in three more places.
+  `HkObject` had no `ShouldSerialize` guards, so every inline (anonymous)
+  element got `name="" class="" signature=""` — 2,798 of them in vanilla
+  `dragonbehavior.hkx`, where Havok writes a bare `<hkobject>`. The root element
+  picked up `xmlns:xsi` and `xmlns:xsd` from the default XmlSerializer; all
+  writes now go through `HkXml.Write`, which passes the one-empty-entry
+  `XmlSerializerNamespaces` that suppresses them. And empty array params
+  self-closed as `<hkparam … />` where Havok writes `<hkparam …></hkparam>`;
+  `ShouldSerializeValue` now emits the text node even when it's empty, which
+  keeps the full end tag. That last one follows the converter in 500+ places
+  across the sample and differs from it in exactly one (a `quadVariableValues`
+  that HKX2 alone self-closes).
+
+  Measured across 9 vanilla files — behaviour, character, project and skeleton,
+  71,930 lines of XML — a save now differs from the same file converted by HKX2
+  in **65 lines total**: 64 are empty `<hkobject/>` in the two skeletons, and 1
+  is that `quadVariableValues`. Four of the six distinct files are exact. Every
+  file still round-trips XML → `.hkx` → XML byte-identical to the original
+  conversion, so none of this changed what the files mean. The converter's
+  14,125 `SERIALIZE_IGNORED` comments are still dropped on load and are excluded
+  from those counts — see ROADMAP for why they're separate.
+
 - **XML saves wrote `numelements=""` on every scalar param.** `HkParam.NumElements`
   defaults to `""` and carried no `ShouldSerialize` guard, so the XmlSerializer
   emitted the attribute on every param whether or not it was an array — 18,884

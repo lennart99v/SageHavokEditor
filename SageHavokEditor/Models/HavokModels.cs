@@ -131,6 +131,14 @@ namespace SageHavokEditor.Models
     [XmlRoot("hkpackfile")]
     public class HkPackfile
     {
+        /// <summary>
+        /// Skyrim's schema, shared by LE and SE. Used only as a fallback when a
+        /// packfile is built from scratch — a file that was loaded carries its
+        /// own values through HavokManager.
+        /// </summary>
+        public const string SkyrimClassVersion = "8";
+        public const string SkyrimContentsVersion = "hk_2010.2.0-r1";
+
         [XmlAttribute("classversion")]
         public string ClassVersion { get; set; } = "";
 
@@ -151,6 +159,36 @@ namespace SageHavokEditor.Models
 
         [XmlElement("hkobject")]
         public List<HkObject> Objects { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Shared plumbing for packfile XML writes. Every save goes through
+    /// <see cref="Write"/> so output stays comparable with converter output: the
+    /// default XmlSerializer decorates the root with xmlns:xsi and xmlns:xsd,
+    /// which Havok's own writer never emits and which made the root element of
+    /// every saved file differ from the same file converted by hkxconv.
+    /// </summary>
+    public static class HkXml
+    {
+        // The (Type) constructor's serializers are cached and thread-safe for
+        // Serialize/Deserialize, so one shared instance is fine.
+        public static readonly XmlSerializer Packfile = new(typeof(HkPackfile));
+
+        private static readonly XmlSerializerNamespaces Bare = BuildBare();
+
+        private static XmlSerializerNamespaces BuildBare()
+        {
+            var ns = new XmlSerializerNamespaces();
+            ns.Add("", "");     // a single empty entry suppresses the xsi/xsd pair
+            return ns;
+        }
+
+        public static void Write(HkPackfile packfile, System.IO.TextWriter writer)
+        {
+            Packfile.Serialize(writer, packfile, Bare);
+            // Havok's writer ends the file with a newline; XmlSerializer doesn't.
+            writer.WriteLine();
+        }
     }
 
     public class HkObject : NotifyBase
@@ -181,6 +219,18 @@ namespace SageHavokEditor.Models
 
         [XmlElement("hkparam")]
         public List<HkParam> Params { get; set; } = new();
+
+        /// <summary>
+        /// Inline (anonymous) elements carry none of these — Havok's writer emits a
+        /// bare &lt;hkobject&gt;. Without the guards the XmlSerializer wrote
+        /// name="" class="" signature="" on every one of them (2,798 in vanilla
+        /// dragonbehavior.hkx): the same defaulted-empty-string leak as numelements.
+        /// Each is guarded independently, so an inline element that does declare a
+        /// class keeps it.
+        /// </summary>
+        public bool ShouldSerializeId() => !string.IsNullOrEmpty(Id);
+        public bool ShouldSerializeClassName() => !string.IsNullOrEmpty(ClassName);
+        public bool ShouldSerializeSignature() => !string.IsNullOrEmpty(Signature);
 
         /// <summary>Deep-clone as an inline (anonymous) element — see HkParam.Clone.</summary>
         public HkObject CloneAsInline() => new()
@@ -357,7 +407,15 @@ namespace SageHavokEditor.Models
         {
             // If we are nesting objects inline, don't write the text Value
             if (IsInlineAccounted) return false;
-            return !string.IsNullOrEmpty(Value);
+            // hkcstring children carry the content; the element has children
+            // either way, so it can't self-close.
+            if (Strings != null && Strings.Count > 0) return !string.IsNullOrEmpty(Value);
+            // Otherwise always write the text node, even when it's empty. Havok's
+            // writer never self-closes — an empty array is
+            // <hkparam name="listeners" numelements="0"></hkparam>, not "… />" —
+            // and returning false here let the XmlSerializer collapse exactly the
+            // 232 empty arrays in dragonbehavior.hkx into the short form.
+            return true;
         }
 
         /// <summary>
