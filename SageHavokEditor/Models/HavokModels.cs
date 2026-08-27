@@ -360,6 +360,16 @@ namespace SageHavokEditor.Models
             return !string.IsNullOrEmpty(Value);
         }
 
+        /// <summary>
+        /// Only array params carry a count. NumElements defaults to "" and the
+        /// XmlSerializer would otherwise emit numelements="" on every scalar,
+        /// so app-saved XML differed from converter output on virtually every
+        /// line and hand-diffing against hkxconv output was pure noise. Blank
+        /// already means "not an array" everywhere else (HavokTypeCatalog.Annotate,
+        /// ResyncNumElements), and a genuinely empty array keeps its "0".
+        /// </summary>
+        public bool ShouldSerializeNumElements() => !string.IsNullOrWhiteSpace(NumElements);
+
         public bool ShouldSerializeStrings() => Strings != null && Strings.Count > 0;
     }
 
