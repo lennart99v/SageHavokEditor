@@ -141,6 +141,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The in-app Guide documents the live debugger properly.** The Debugger tab
+  section was a ten-line button list, which left unanswered every question the
+  panel actually raises in use: what the two named pipes carry, when the config
+  is re-sent, why a state card reads `state 12`, what a recording keeps and
+  when it is thrown away. Three new Advanced sections cover it. *Live
+  Debugging: Setup & Connection* documents the `SkyrimBehaviorDebugger` /
+  `SkyrimBehaviorDebugger_Config` pipe pair and what travels each way, the
+  retry-and-reconnect loop (a red status line is a wait, not a failure), every
+  point at which the config is rebuilt and re-sent, and the trap that state ids
+  and variable indices are resolved positionally against the file open in the
+  editor — so the file to open is the Nemesis/Pandora output the game is
+  running, not the pre-patch source. *Reading a Live Session* covers the ●
+  LIVE badge and pulsing outline, the green edge flash that identifies the
+  transition that actually fired, machine auto-follow plus pan-to-active, the
+  0.001 change threshold and relevance dimming on the variable list, how the
+  actor type (and therefore which variables count as relevant) is detected, and
+  the mount group. *Recording & Exporting a Session* states what the panel
+  never said out loud: frames arriving while paused are dropped rather than
+  buffered, the capture survives ⏹ but not ⏹ Stop Debug — so export before
+  stopping — and it documents the exported JSON's shape. The Debugger tab
+  section itself now describes the panel top to bottom, including the pop-out
+  window, and the Graph tab's live-debugging bullets mention the LIVE badge and
+  auto-follow.
+
 - **Event ids and variable indices edit as name pickers.** Every event-id
   param in the property editor was a bare integer — a transition's `eventId`,
   the `enterEventId`/`exitEventId` of a trigger or initiate interval, a state
