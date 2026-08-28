@@ -5,6 +5,46 @@ All notable changes to Sage Havok Editor are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Duplicate a state with its generator subtree.** Graph tab → right-click a
+  state → ⧉ Duplicate state…. Building a family of near-identical states (Aim /
+  Throw / Recall / Catch off one clip pattern) was an object-at-a-time job in the
+  property editor, with the domain's usual silent failure mode waiting at the
+  end: miss one `#ref` and the copy drives the *original's* generator, which
+  looks fine until both states animate as one in-game. The copy walks every ref
+  the state carries — generator chain, `variableBindingSet`, enter/exit notify
+  arrays, the transition array, nested state machines and their states — hands
+  each copy a fresh id, and rewrites the copies to point at each other. Two
+  boundaries: transition effects are shared rather than copied (one
+  `hkbBlendingTransitionEffect` normally serves a whole file and carries no
+  per-state data), and file-level singletons are never copied even if a
+  hand-edited file points the walk at one. Two options in the dialog, each
+  re-counting the objects it would create: share the generator instead of copying
+  it, and skip the transitions — skipping means *none*, never the original's
+  array, since sharing it would make editing one state's transitions edit the
+  other's. The copy gets a fresh `stateId` (unique within its machine, since
+  stateIds restart per machine) and is appended to that machine's `states` list
+  in the same undoable action — an unwired state is dropped by the orphan-pruning
+  `.hkx` save. Names are uniquified, carrying the rename through the subtree
+  where the child's name contains the state's own: duplicating `Aim` as `Throw`
+  turns `AimClip` into `ThrowClip`.
+
+  The rewiring is the part that had to be proved rather than eyeballed, so it has
+  a harness: `tools/hkx-duplicate-state` compiles the editor's own model and
+  duplicator and checks, on a real behaviour file, that every copy has a fresh
+  id, that no copy references an object that was itself copied, that every ref
+  inside the copies resolves, that the transition effects stayed shared, that
+  nothing outside the machine's `states` list changed, and that the whole result
+  survives a save/reload unchanged. Run on vanilla `dragonbehavior` (1510
+  objects; duplicating `ST_Flight` copies 244 of them, its generator being a
+  nested machine) and on a 209-state behaviour: all pass, both for the deep copy
+  and for the share-generator/no-transitions combination, including the
+  one-state-machine case where the `states` ref is cached in `Children` and
+  appending to the text alone wouldn't stick.
+
 ## [0.6.0] — 2026-08-27
 
 ### Fixed
