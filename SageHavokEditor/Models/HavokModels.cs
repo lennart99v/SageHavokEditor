@@ -126,6 +126,20 @@ namespace SageHavokEditor.Models
 
         public static string[] Tokens(string? value) =>
             (value ?? "").Split(Separators, StringSplitOptions.RemoveEmptyEntries);
+
+        /// <summary>
+        /// Rewrite every whole <c>#NNNN</c> token through <paramref name="map"/>,
+        /// leaving the original whitespace (including Havok's line wrapping) intact.
+        /// Only complete, whitespace-delimited tokens are considered, so a text
+        /// param that happens to contain a '#' — an animation path, say — is left
+        /// alone unless it is itself exactly a ref.
+        /// </summary>
+        public static string Remap(string? value, Func<string, string> map)
+        {
+            if (string.IsNullOrEmpty(value) || value.IndexOf('#') < 0) return value ?? "";
+            return System.Text.RegularExpressions.Regex.Replace(
+                value, @"(?<=^|\s)#\d+(?=$|\s)", m => map(m.Value));
+        }
     }
 
     [XmlRoot("hkpackfile")]
@@ -240,6 +254,21 @@ namespace SageHavokEditor.Models
             Signature = Signature,
             Params = Params.Select(p => p.Clone()).ToList()
         };
+
+        /// <summary>
+        /// Deep-clone with every reference rewritten — see
+        /// <see cref="HkParam.CloneRemapped"/>. <paramref name="newId"/> defaults
+        /// to empty, which is what an inline (anonymous) element needs; a
+        /// top-level copy passes the id it has been allocated.
+        /// </summary>
+        public HkObject CloneRemapped(
+            Func<HkObject, HkObject> mapRef, Func<string, string> mapId, string newId = "") => new()
+        {
+            Id = newId,
+            ClassName = ClassName,
+            Signature = Signature,
+            Params = Params.Select(p => p.CloneRemapped(mapRef, mapId)).ToList()
+        };
     }
 
     public class HkParam : NotifyBase
@@ -325,6 +354,36 @@ namespace SageHavokEditor.Models
                 IsInlineStructArray = IsInlineStructArray,
             };
             clone.Value = _value;   // raw text, not the getter's Children join
+            return clone;
+        }
+
+        /// <summary>
+        /// Deep-clone, rewriting every reference this param carries: text tokens
+        /// through <paramref name="mapId"/>, and cached resolved refs through
+        /// <paramref name="mapRef"/> — a copied object must point at the copies of
+        /// its own subtree, and at the originals for anything outside it. Both
+        /// halves have to move together: the Value getter prefers the Children
+        /// join whenever resolved refs are cached there, so remapping the text
+        /// alone would be silently ignored (the same trap as editing a #ref by
+        /// hand). Inline (anonymous) children are cloned recursively so their
+        /// nested refs are remapped too.
+        /// </summary>
+        public HkParam CloneRemapped(Func<HkObject, HkObject> mapRef, Func<string, string> mapId)
+        {
+            var clone = new HkParam
+            {
+                Name = Name,
+                NumElements = NumElements,
+                Strings = new List<string>(Strings),
+                Children = Children
+                    .Select(c => string.IsNullOrEmpty(c.Id)
+                        ? c.CloneRemapped(mapRef, mapId)
+                        : mapRef(c))
+                    .ToList(),
+                TypeInfo = TypeInfo,
+                IsInlineStructArray = IsInlineStructArray,
+            };
+            clone.Value = HkRefList.Remap(_value, mapId);
             return clone;
         }
 
