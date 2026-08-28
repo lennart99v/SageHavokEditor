@@ -736,6 +736,10 @@ namespace SageHavokEditor.UI
                 var addBehRef = new MenuItem { Header = "🔗 New behavior reference…" };
                 addBehRef.Click += (_, __) => AddBehaviorReferenceToState(node);
                 menu.Items.Add(addBehRef);
+
+                var duplicate = new MenuItem { Header = "⧉ Duplicate state…" };
+                duplicate.Click += (_, __) => DuplicateState(node);
+                menu.Items.Add(duplicate);
             }
 
             // ── Live-debug tracking — when the node is itself a state machine ────────
@@ -1481,6 +1485,118 @@ namespace SageHavokEditor.UI
             RefreshCurrentView();
             StateSelected?.Invoke(genId);
             StatusText_?.Invoke($"✓ {describe}");
+        }
+
+        /// <summary>
+        /// Copies a state and the objects hanging off it (see StateDuplicator), then
+        /// appends the copy to the same machine's states list — the wiring is what
+        /// keeps it out of the orphan-pruning .hkx save, so it happens in the same
+        /// undoable action as the copy itself.
+        /// </summary>
+        private void DuplicateState(GraphNode node)
+        {
+            if (_manager == null || !_manager.ObjectMap.TryGetValue(node.Id, out var stateObj)) return;
+            if (stateObj.ClassName != "hkbStateMachineStateInfo") return;
+
+            // The owning machine is the one listing this state — the same lookup
+            // DeleteNode does. Without it there is nowhere to wire the copy.
+            var machine = _manager.ObjectMap.Values.FirstOrDefault(o =>
+                o.ClassName == "hkbStateMachine" &&
+                HkRefList.Tokens(o.Params.FirstOrDefault(p => p.Name == "states")?.Value)
+                    .Contains(node.Id));
+            if (machine == null)
+            {
+                MessageBox.Show(
+                    $"'{node.Name}' isn't listed in any state machine's states array, so there is "
+                    + "nowhere to wire a copy — an unreferenced state is dropped when you save to .hkx.",
+                    "Duplicate State", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var genRef = stateObj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
+            string? genName = null;
+            if (!string.IsNullOrEmpty(genRef) && genRef != "null"
+                && _manager.TryResolve(genRef, out var genObj) && genObj != null)
+                genName = genObj.DisplayName;
+
+            var trRef = stateObj.Params.FirstOrDefault(p => p.Name == "transitions")?.Value;
+            int transitionCount = 0;
+            if (!string.IsNullOrEmpty(trRef) && trRef != "null"
+                && _manager.TryResolve(trRef, out var trArr) && trArr != null)
+                transitionCount = trArr.Params.FirstOrDefault(p => p.Name == "transitions")?.Children.Count ?? 0;
+
+            var dialog = new Dialogs.DuplicateStateDialog(
+                node.Name, machine.DisplayName, UniqueObjectName($"{node.Name}_Copy"),
+                genName, transitionCount,
+                (g, t) => StateDuplicator.CollectSubtree(_manager, stateObj, g, t).Count)
+            { Owner = Window.GetWindow(this) };
+            if (dialog.ShowDialog() != true) return;
+
+            var result = StateDuplicator.Duplicate(
+                _manager, stateObj, machine, dialog.NewName,
+                dialog.CopyGenerator, dialog.CopyTransitions);
+
+            var statesParam = machine.Params.FirstOrDefault(p => p.Name == "states");
+            if (statesParam == null)
+            {
+                statesParam = new HkParam { Name = "states", Value = "", NumElements = "0" };
+                machine.Params.Add(statesParam);
+            }
+
+            // A one-state machine has its states ref cached in Children, where the
+            // Value getter reads from — appending to the text alone wouldn't stick.
+            var oldChildren = new List<HkObject>(statesParam.Children);
+            var oldValue = statesParam.Value;
+            var oldNum = statesParam.NumElements;
+
+            var newChildren = new List<HkObject>(oldChildren);
+            if (oldChildren.Count > 0) newChildren.Add(result.NewState);
+            var newValue = oldChildren.Count > 0
+                ? string.Join(" ", newChildren.Select(c => c.Id))
+                : (string.IsNullOrWhiteSpace(oldValue) ? result.NewState.Id : oldValue + " " + result.NewState.Id);
+            var newNum = HkRefList.Tokens(newValue).Length.ToString();
+
+            var describe = $"Duplicate state '{node.Name}' as '{dialog.NewName}'";
+
+            void Apply()
+            {
+                foreach (var o in result.Created) _manager!.ObjectMap[o.Id] = o;
+                statesParam.Children.Clear();
+                statesParam.Children.AddRange(newChildren);
+                statesParam.Value = newValue;
+                statesParam.NumElements = newNum;
+            }
+            void Revert()
+            {
+                statesParam.Children.Clear();
+                statesParam.Children.AddRange(oldChildren);
+                statesParam.Value = oldValue;
+                statesParam.NumElements = oldNum;
+                foreach (var o in result.Created) _manager!.ObjectMap.Remove(o.Id);
+            }
+
+            Apply();
+
+            GraphEditPerformed?.Invoke(describe, Revert, Apply);
+            RefreshCurrentView();
+            StateSelected?.Invoke(result.NewState.Id);
+            StatusText_?.Invoke(
+                $"✓ {describe} — {result.Created.Count} object{(result.Created.Count == 1 ? "" : "s")}, "
+                + $"stateId {result.NewStateId}; nothing transitions to it yet");
+        }
+
+        /// <summary>Uniquify a proposed object name against every name in the file.</summary>
+        private string UniqueObjectName(string baseName)
+        {
+            if (_manager == null) return baseName;
+            var taken = new HashSet<string>(
+                _manager.ObjectMap.Values.Select(o => o.DisplayName), StringComparer.Ordinal);
+            if (!taken.Contains(baseName)) return baseName;
+            for (int i = 2; ; i++)
+            {
+                var candidate = $"{baseName}_{i}";
+                if (!taken.Contains(candidate)) return candidate;
+            }
         }
 
         private void ExportGraphAsPng()

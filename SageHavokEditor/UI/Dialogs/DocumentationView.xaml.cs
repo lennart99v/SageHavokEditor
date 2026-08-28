@@ -191,6 +191,9 @@ namespace SageHavokEditor.UI.Dialogs
                 "• 🔗 New behavior reference… — on a state: creates a new hkbBehaviorReferenceGenerator " +
                 "pointing at another behavior file and wires it as the state's generator. See " +
                 "Referencing Another Behavior File.\n" +
+                "• ⧉ Duplicate state… — on a state: copies the state and everything hanging off it " +
+                "(generator chain, transitions, notify events) with fresh ids, and adds the copy to " +
+                "the same machine. See Duplicating a State.\n" +
                 "• 🐞 Enable live-debug tracking — on a state machine (or empty canvas with a machine " +
                 "selected): makes that machine report its active state to the debugger. Only machines " +
                 "with syncVariableIndex set can be tracked; see Why Active States Are Empty.\n\n" +
@@ -501,6 +504,47 @@ namespace SageHavokEditor.UI.Dialogs
                 "under the actor's folder, and be registered in the character file's Animation Names " +
                 "list (Character tab) — otherwise the clip has nothing to play. If you are shipping a " +
                 "Nemesis/Pandora patch, the animation is registered through the patch as usual.");
+
+            AddSection("duplicate_state", "Duplicating a State",
+                "Custom behavior work is usually a family of near-identical states — Aim, Throw, " +
+                "Recall, Catch off one clip pattern. Building the second one by hand means creating " +
+                "the state, its clip, its modifiers and its transition array object by object, and " +
+                "one missed reference leaves the copy quietly driving the original's generator.\n\n" +
+                "Making a copy\n" +
+                "• Graph tab → right-click the state → ⧉ Duplicate state….\n" +
+                "• Name the copy. The dialog says how many objects it will create and re-counts as " +
+                "you change the two options.\n" +
+                "• Duplicate the generator subtree — on by default. Off, the copy points at the " +
+                "same generator as the original, so editing that generator changes both states.\n" +
+                "• Copy the outgoing transitions — on by default. Off, the copy starts with no " +
+                "outgoing transitions (it never shares the original's transition array, because " +
+                "editing one state's transitions would then edit the other's).\n" +
+                "• The whole thing is one undoable action, and the copy is added to the same state " +
+                "machine's states list — which is what keeps it out of the orphan-pruning .hkx save.\n\n" +
+                "What is copied and what is shared\n" +
+                "• Copied: the state, its generator chain (clips, modifiers, blend/select nodes, " +
+                "nested state machines and their states), its variableBindingSet, its enter/exit " +
+                "notify-event arrays, and its transition array.\n" +
+                "• Shared on purpose: hkbBlendingTransitionEffect and other transition effects. One " +
+                "effect normally serves the whole file, it carries no per-state data, and a copy per " +
+                "duplicated transition would be pure bloat.\n" +
+                "• A state whose generator is a nested state machine copies that whole machine, which " +
+                "is why the object count is worth reading before you confirm.\n\n" +
+                "Nothing transitions to the copy yet\n" +
+                "Transitions route by stateId, and the copy is given a fresh stateId — unique within " +
+                "its machine. So the copy exists, is wired into the machine and will be saved, but " +
+                "nothing reaches it in-game until you add an incoming transition (right-click the " +
+                "source state → ➕ Add Transition from this state).\n\n" +
+                "Names\n" +
+                "Copies are renamed so the file has no new name collisions. Where a child's name " +
+                "contains the original state's name the rename carries through — duplicating Aim as " +
+                "Throw turns AimClip into ThrowClip — otherwise the copy gets a _2 suffix. Havok " +
+                "itself doesn't care about names, but every list, picker and graph label here does.\n\n" +
+                "Animations are not copied\n" +
+                "A copied clip generator keeps the original's animationName, so both states play the " +
+                "same animation until you point the copy at a different one (Object Data, or the " +
+                "Clips tab). The new animation still has to be registered in the character file — " +
+                "see Adding a New Animation.");
 
             AddSection("behavior_reference", "Referencing Another Behavior File",
                 "An hkbBehaviorReferenceGenerator embeds a whole other behavior graph where a state's " +
