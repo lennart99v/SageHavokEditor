@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   number ≥ 0 is refused before it reaches the file (a comma is read as a decimal
   point, and the value is written back Havok-formatted).
 
+  The dialog only exists inside the WPF app, so the harness for this one drives
+  the real `MainWindow`: `tools/hkx-transition-blend` loads a behaviour file,
+  opens Add Transition on an actual state machine, picks the new-blend entry,
+  confirms, and checks what landed — one new effect with the typed duration and
+  Havok's defaults intact, a transition pointing at it on the right state, no id
+  shared between the new objects — then undoes it, and repeats for the Edit path.
+  Run on vanilla `dragonbehavior` (1510 objects); re-introducing the id bug below
+  turns 7 of its checks red.
+
   One trap surfaced while testing it end-to-end: `GenerateNewObjectId()` scans
   `ObjectMap`, so an object holding an id it hasn't been registered under yet
   hands that same id to the next caller. The new effect and the transition array
