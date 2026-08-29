@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Create a blending transition effect from the Add/Edit Transition dialog.** A
+  transition's `transition` param points at the `hkbTransitionEffect` that
+  decides how it blends, and the dialog never offered any way to choose one:
+  `DefaultTransitionEffectRef()` grabbed the first effect in the file and fell
+  back to `null` when there wasn't one — which is exactly the state of a file
+  scaffolded by ✨ New behavior file, so every transition authored in a fresh
+  custom behaviour snapped with zero blend and nothing said so. The dialog now
+  has a **Blend** row: `(none — snaps, no blend)`, every transition effect
+  already in the file (named, with its id and duration), and **＋ New blending
+  effect…** with an editable duration defaulting to 0.2s. Choosing it builds an
+  `hkbBlendingTransitionEffect` from HKX2's own default instance — which already
+  carries Havok's defaults for everything else (`BLEND_CURVE_SMOOTH`,
+  `END_MODE_NONE`, `SELF_TRANSITION_MODE_CONTINUE_IF_CYCLIC_BLEND_IF_ACYCLIC`),
+  verified param-for-param against a vanilla effect — names it after its duration
+  (`Blend_250ms`), and registers it together with the transition that points at
+  it in one undoable action. The picker also works on Edit, which is how an
+  already-authored snap transition gets a blend; it always contains the
+  transition's current value, rendering an id the file no longer has as
+  `‹unknown #N›` rather than quietly rewriting it. A duration that isn't a
+  number ≥ 0 is refused before it reaches the file (a comma is read as a decimal
+  point, and the value is written back Havok-formatted).
+
+  One trap surfaced while testing it end-to-end: `GenerateNewObjectId()` scans
+  `ObjectMap`, so an object holding an id it hasn't been registered under yet
+  hands that same id to the next caller. The new effect and the transition array
+  created a few lines later both came out as `#0001`, and registering the effect
+  overwrote the array — the state's `transitions` then pointed at a transition
+  effect. The effect is registered the moment it's created, and the one bail-out
+  after that point takes it back out.
+
+### Fixed
+
+- **Every ComboBox bound to `IdNamePair` showed a class name until you opened
+  it.** The dark theme's ComboBox template renders its closed selection box
+  through the item's `ToString()`, and `IdNamePair` didn't override it — so the
+  Add/Edit Transition dialog's From State, Event and To State pickers all read
+  `SageHavokEditor.Models.ViewModels.IdNamePair` while closed, and only the
+  drop-down list showed real names. The property editor's event/variable pickers
+  were unaffected because `PickerEntry` already overrides `ToString` for exactly
+  this reason; `IdNamePair` now does the same. Found while adding the Blend
+  picker to that dialog, which inherited the same blank.
+
 - **Duplicate a state with its generator subtree.** Graph tab → right-click a
   state → ⧉ Duplicate state…. Building a family of near-identical states (Aim /
   Throw / Recall / Catch off one clip pattern) was an object-at-a-time job in the
