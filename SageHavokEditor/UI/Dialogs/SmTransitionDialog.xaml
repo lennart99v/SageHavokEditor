@@ -41,6 +41,9 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="12"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="12"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="90"/>
@@ -80,6 +83,31 @@
                 <TextBox Grid.Row="6" Grid.Column="1" x:Name="FlagsBox"
                          Background="{DynamicResource BgMidBrush}" Foreground="{DynamicResource TextPrimaryBrush}"
                          BorderBrush="{DynamicResource BorderBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}" Padding="6,5"/>
+                <!-- Transition effect (the blend used when this transition fires) -->
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="Blend"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                <ComboBox Grid.Row="8" Grid.Column="1" x:Name="EffectCombo"
+                          ItemsSource="{Binding EffectOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                          DisplayMemberPath="Name" SelectedValuePath="Id"
+                          SelectedValue="{Binding SelectedEffectId, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}"
+                          SelectionChanged="EffectCombo_SelectionChanged"
+                          Background="{DynamicResource BgMidBrush}" Foreground="{DynamicResource TextPrimaryBrush}" BorderBrush="{DynamicResource BorderBrush}"/>
+                <!-- Only for "New blending effect" — collapses to nothing otherwise -->
+                <StackPanel Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" x:Name="NewBlendPanel"
+                            Margin="90,10,0,0" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Duration" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox x:Name="BlendDurationBox" Width="70"
+                                 Background="{DynamicResource BgMidBrush}" Foreground="{DynamicResource TextPrimaryBrush}"
+                                 BorderBrush="{DynamicResource BorderBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}" Padding="6,5"/>
+                        <TextBlock Text="seconds" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock Text="Creates one hkbBlendingTransitionEffect and points this transition at it. 0 snaps."
+                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10"
+                               TextWrapping="Wrap" Margin="0,6,0,0"/>
+                </StackPanel>
             </Grid>
             <!-- Buttons -->
             <Border Grid.Row="2" Background="{DynamicResource BgPanelBrush}"

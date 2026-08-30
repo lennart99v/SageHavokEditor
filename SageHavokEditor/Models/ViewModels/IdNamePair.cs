@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -27,6 +27,15 @@ namespace SageHavokEditor.Models.ViewModels
                 }
             }
         }
+        /// <summary>
+        /// The dark theme's ComboBox template renders its closed selection box straight
+        /// through the item's ToString(), so a DisplayMemberPath="Name" combo showed the
+        /// class name until the drop-down was opened — the transition dialog's four
+        /// pickers all read "SageHavokEditor.Models.ViewModels.IdNamePair". Same fix, and
+        /// same reason, as PickerEntry's.
+        /// </summary>
+        public override string ToString() => Name;
+
         public string VariableType { get; set; } = "VARIABLE_TYPE_REAL";
 
         public bool IsBool => VariableType == "VARIABLE_TYPE_BOOL";

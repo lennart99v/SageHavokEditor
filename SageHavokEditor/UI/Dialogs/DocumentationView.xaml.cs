@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -266,7 +266,8 @@ namespace SageHavokEditor.UI.Dialogs
                 "the transition lands on resolved to its name), the blend effect's duration / curve / " +
                 "start fraction / end mode, the condition, and the trigger and initiate intervals " +
                 "with their enter/exit events. Everything except the blend fields lives on the " +
-                "transition itself, so it shows even when the transition has no effect object.\n" +
+                "transition itself, so it shows even when the transition has no effect object — see " +
+                "Blending vs Snapping Transitions for what that means and how to give it one.\n" +
                 "• Right-click a row → Go to event to jump to the triggering event's definition and usages.\n" +
                 "• Filter box narrows the list by state or event name.");
 
@@ -284,7 +285,8 @@ namespace SageHavokEditor.UI.Dialogs
             AddSection("tab_sm_inspector", "SM Inspector Tab",
                 "A full transition editor for a single hkbStateMachine.\n\n" +
                 "• Select a state machine from the dropdown to load all its transitions.\n" +
-                "• + Add Transition — opens a dialog to pick source state, target state, event, and flags. " +
+                "• + Add Transition — opens a dialog to pick source state, target state, event, flags, " +
+                "and the blend the transition uses; see Blending vs Snapping Transitions. " +
                 "Choose ★ WILDCARD (any state) as the source to create a wildcard; see " +
                 "Creating a Wildcard Transition.\n" +
                 "• + Add State — adds a new state to the selected machine without building the graph. " +
@@ -591,6 +593,38 @@ namespace SageHavokEditor.UI.Dialogs
                 "machines; installing Graphviz simply gives nicer results on dense graphs.\n" +
                 "• Use the machine selector to view one machine at a time rather than -- All Machines --.\n" +
                 "• Fit (F) and the minimap help you find your way around once it is drawn.");
+
+            AddSection("blend_effect", "Blending vs Snapping Transitions",
+                "Whether a transition blends into the next animation or cuts to it instantly is not " +
+                "a field on the transition. It lives on a separate object the transition points at — " +
+                "its transition effect, normally an hkbBlendingTransitionEffect — and that object " +
+                "carries the blend duration, the blend curve, the end mode and the start fraction.\n\n" +
+                "A transition whose effect is null snaps. That is legal Havok, and it is what a " +
+                "brand-new behaviour file has: ✨ New behavior file scaffolds no effect, so until " +
+                "you make one, every transition you add to that file cuts instantly — with no " +
+                "setting anywhere on the transition to explain why.\n\n" +
+                "The Blend row in Add / Edit Transition\n" +
+                "• (none — snaps, no blend) — writes null. Correct for an instant cut.\n" +
+                "• Any transition effect already in the file, listed by name with its id and its " +
+                "duration. Vanilla files share one effect across hundreds of transitions, which is " +
+                "normal — the object holds no per-transition data.\n" +
+                "• ＋ New blending effect… — creates a new hkbBlendingTransitionEffect with the " +
+                "duration you type (0.2 seconds is a reasonable default for locomotion; attacks " +
+                "usually want less) and points this transition at it. Everything else on it takes " +
+                "Havok's own defaults, which are the values vanilla uses: a smooth curve, no end " +
+                "mode, and self-transition set to continue-if-cyclic.\n\n" +
+                "The list always contains whatever the transition currently points at, so confirming " +
+                "the dialog can never silently change its effect. An id the file no longer has shows " +
+                "as ‹unknown #N› and is preserved.\n\n" +
+                "Notes\n" +
+                "• The new effect and the reference to it are created in one undoable action, so it " +
+                "cannot be left unreferenced for the orphan-pruning .hkx save to drop.\n" +
+                "• It is named after its duration (Blend_200ms) so it is recognisable in the picker " +
+                "later; rename it in Object Data if you prefer something else.\n" +
+                "• Editing a transition is how an already-authored snap transition gets a blend — " +
+                "select the row, Edit, and pick or create an effect.\n" +
+                "• Changing an effect's duration in Object Data changes it for every transition that " +
+                "shares it. Create a second effect if you want one transition to differ.");
 
             AddSection("wildcard_create", "Creating a Wildcard Transition",
                 "A wildcard fires from ANY state in a machine, rather than from one specific state. " +

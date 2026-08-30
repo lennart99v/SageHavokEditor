@@ -4491,6 +4491,73 @@ namespace SageHavokEditor
             return effect?.Id ?? "null";
         }
 
+        /// <summary>
+        /// The transition dialog's Blend picker: "(none)", every transition effect already in
+        /// the file, and a "＋ New blending effect…" entry. <paramref name="currentEffectId"/>
+        /// is always represented — a transition pointing at an id the file no longer has still
+        /// has to be selectable, or confirming the dialog would silently rewrite it.
+        /// </summary>
+        private List<IdNamePair> BuildEffectOptions(string? currentEffectId)
+        {
+            var options = new List<IdNamePair>
+            {
+                new IdNamePair { Id = "null", Name = "(none — snaps, no blend)" }
+            };
+
+            foreach (var eff in manager.ObjectMap.Values
+                         .Where(o => (o.ClassName ?? "").EndsWith("TransitionEffect", StringComparison.Ordinal))
+                         .OrderBy(o => int.TryParse(o.Id.TrimStart('#'), out var n) ? n : int.MaxValue))
+            {
+                var name = eff.Params.FirstOrDefault(p => p.Name == "name")?.Value;
+                var label = string.IsNullOrWhiteSpace(name) ? eff.ClassName : name;
+                var dur = eff.Params.FirstOrDefault(p => p.Name == "duration")?.Value;
+                var secs = float.TryParse(dur, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
+                    ? $", {d.ToString("0.###", CultureInfo.InvariantCulture)}s"
+                    : "";
+                options.Add(new IdNamePair { Id = eff.Id, Name = $"{label}  ({eff.Id}{secs})" });
+            }
+
+            var cur = currentEffectId ?? "null";
+            if (cur.StartsWith("#") && options.All(o => o.Id != cur))
+                options.Add(new IdNamePair { Id = cur, Name = $"‹unknown {cur}›" });
+
+            options.Add(new IdNamePair
+            {
+                Id = SageHavokEditor.UI.Dialogs.SmTransitionDialog.NewBlendEffectKey,
+                Name = "＋ New blending effect…"
+            });
+            return options;
+        }
+
+        /// <summary>
+        /// Builds the hkbBlendingTransitionEffect the dialog asked for. HKX2's default instance
+        /// already carries Havok's own defaults for every other member (blend curve SMOOTH,
+        /// end mode NONE, self-transition CONTINUE_IF_CYCLIC_BLEND_IF_ACYCLIC) — only the
+        /// duration and a readable name have to be filled in. The caller wires it into the
+        /// transition and registers it in the same undoable action; an effect nothing points
+        /// at is pruned on .hkx save.
+        /// </summary>
+        private HkObject? CreateBlendingTransitionEffect(string duration)
+        {
+            var effect = ModifierCatalog.CreateDefault("hkbBlendingTransitionEffect");
+            if (effect == null) return null;
+
+            effect.Id = GenerateNewObjectId();
+
+            var ms = float.TryParse(duration, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
+                ? (int)Math.Round(d * 1000)
+                : 200;
+            var baseName = $"Blend_{ms}ms";
+            var name = baseName;
+            for (int i = 2; manager.ObjectMap.Values.Any(o =>
+                     o.Params.Any(p => p.Name == "name" && p.Value == name)); i++)
+                name = $"{baseName}_{i}";
+
+            SetObjectParam(effect, "name", name);
+            SetObjectParam(effect, "duration", duration);
+            return effect;
+        }
+
         /// <summary>Adds a Havok flag to a pipe-separated flags string if it isn't already present.</summary>
         private static string EnsureFlag(string? flags, string flag)
         {
@@ -4560,9 +4627,22 @@ namespace SageHavokEditor
                 initFlags = _selectedSmRow.Flags;
             }
 
+            // Blend picker. On Add, preselect whatever effect the file already uses; a file with
+            // none at all (a fresh scaffold) opens on "＋ New blending effect…", since otherwise
+            // every transition it gets would snap with zero blend.
+            var currentEffectId = isAdd
+                ? DefaultTransitionEffectRef()
+                : (_selectedSmRow?.TransitionChild?.Params
+                       .FirstOrDefault(p => p.Name == "transition")?.Value ?? "null");
+            var effectOptions = BuildEffectOptions(currentEffectId);
+            var initEffectId = currentEffectId == "null" && isAdd
+                ? SageHavokEditor.UI.Dialogs.SmTransitionDialog.NewBlendEffectKey
+                : currentEffectId;
+
             var popup = new SageHavokEditor.UI.Dialogs.SmTransitionDialog(
                 title, fromOptions, EventList, stateOptions,
-                initFromId, initEventId, initToStateId, initFlags)
+                initFromId, initEventId, initToStateId, initFlags,
+                effectOptions, initEffectId)
             { Owner = this };
 
             if (popup.ShowDialog() != true) return;
@@ -4583,6 +4663,22 @@ namespace SageHavokEditor
             var resultToStateId = popup.ResultToStateId;
             var resultFlags = popup.ResultFlags;
 
+            // "＋ New blending effect…" is materialised here, not in the dialog, so the object
+            // and the reference to it are undone together below. It goes into ObjectMap
+            // immediately: GenerateNewObjectId reads ObjectMap, so an unregistered object
+            // holding an id hands that same id to the next caller — which is the transition
+            // array created a few lines down, and the array would then be overwritten.
+            HkObject? newEffect = null;
+            var resultEffectId = popup.ResultEffectId;
+            if (resultEffectId == SageHavokEditor.UI.Dialogs.SmTransitionDialog.NewBlendEffectKey)
+            {
+                newEffect = CreateBlendingTransitionEffect(popup.ResultNewBlendDuration);
+                if (newEffect == null)
+                { MessageBox.Show("Could not create hkbBlendingTransitionEffect."); return; }
+                manager.ObjectMap[newEffect.Id] = newEffect;
+                resultEffectId = newEffect.Id;
+            }
+
             if (isAdd)
             {
                 // ── Commit: ADD ──────────────────────────────────────────────────────
@@ -4593,7 +4689,10 @@ namespace SageHavokEditor
                 string arrayParamName = isWildcard ? "wildcardTransitions" : "transitions";
 
                 if (arrayOwner == null)
-                { MessageBox.Show("No state machine selected."); return; }
+                {
+                    if (newEffect != null) manager.ObjectMap.Remove(newEffect.Id);
+                    MessageBox.Show("No state machine selected."); return;
+                }
 
                 var ownerParam = arrayOwner.Params.FirstOrDefault(p => p.Name == arrayParamName);
                 var transRef = ownerParam?.Value;
@@ -4657,7 +4756,7 @@ namespace SageHavokEditor
                         new HkParam { Name = "exitTime",     Value = "0.000000" }
                     }}
                 }},
-                new HkParam { Name = "transition",           Value = DefaultTransitionEffectRef() },
+                new HkParam { Name = "transition",           Value = resultEffectId },
                 new HkParam { Name = "condition",            Value = "null"   },
                 new HkParam { Name = "eventId",              Value = resultEventId   ?? "0" },
                 new HkParam { Name = "toStateId",            Value = resultToStateId ?? "0" },
@@ -4683,10 +4782,14 @@ namespace SageHavokEditor
                     {
                         tParam?.Children.Remove(newTr);
                         if (tParam != null) tParam.NumElements = tParam.Children.Count.ToString();
+                        // The effect exists only for this transition, so it goes with it —
+                        // leaving it behind would be an orphan the next .hkx save drops anyway.
+                        if (newEffect != null) manager.ObjectMap.Remove(newEffect.Id);
                         RefreshSmInspector(_selectedSM); UpdateUndoRedoButtons();
                     },
                     Redo = () =>
                     {
+                        if (newEffect != null) manager.ObjectMap[newEffect.Id] = newEffect;
                         tParam?.Children.Add(newTr);
                         if (tParam != null) tParam.NumElements = tParam.Children.Count.ToString();
                         RefreshSmInspector(_selectedSM); UpdateUndoRedoButtons();
@@ -4695,7 +4798,10 @@ namespace SageHavokEditor
                 UpdateUndoRedoButtons();
 
                 RefreshSmInspector(_selectedSM);
-                StatusText.Text = $"✓ Transition added from {capturedFromName}";
+                StatusText.Text = newEffect != null
+                    ? $"✓ Transition added from {capturedFromName} — blending over "
+                      + $"{popup.ResultNewBlendDuration.TrimEnd('0').TrimEnd('.')}s ({newEffect.Id})"
+                    : $"✓ Transition added from {capturedFromName}";
             }
             else
             {
@@ -4712,6 +4818,24 @@ namespace SageHavokEditor
                 if (eparam != null) eparam.Value = resultEventId;
                 if (tparam != null) tparam.Value = resultToStateId;
                 if (fparam != null) fparam.Value = resultFlags;
+
+                // The effect ref. An older file can be missing the param entirely, so add it
+                // rather than assume it; and re-resolve so a cached ref doesn't out-vote the
+                // new text (HkParam.Value reads Children first when they hold resolved refs).
+                var xparam = row.TransitionChild?.Params.FirstOrDefault(x => x.Name == "transition");
+                if (xparam == null && row.TransitionChild != null)
+                {
+                    xparam = new HkParam { Name = "transition", Value = "null" };
+                    row.TransitionChild.Params.Add(xparam);
+                }
+                var oldEffectId = xparam?.Value ?? "null";
+                void SetEffect(string id)
+                {
+                    if (xparam == null) return;
+                    xparam.Value = id;
+                    xparam.ReresolveChildren(manager.Resolve);
+                }
+                SetEffect(resultEffectId);
 
                 // Resolve display names
                 var stateIdToName = new Dictionary<string, string>();
@@ -4734,6 +4858,8 @@ namespace SageHavokEditor
                         if (eparam != null) eparam.Value = oldEventId;
                         if (tparam != null) tparam.Value = oldToStateId;
                         if (fparam != null) fparam.Value = oldFlags;
+                        SetEffect(oldEffectId);
+                        if (newEffect != null) manager.ObjectMap.Remove(newEffect.Id);
                         row.EventId = oldEventId;
                         row.ToStateId = oldToStateId;
                         row.Flags = oldFlags;
@@ -4747,6 +4873,8 @@ namespace SageHavokEditor
                         if (eparam != null) eparam.Value = resultEventId;
                         if (tparam != null) tparam.Value = resultToStateId;
                         if (fparam != null) fparam.Value = resultFlags;
+                        if (newEffect != null) manager.ObjectMap[newEffect.Id] = newEffect;
+                        SetEffect(resultEffectId);
                         row.EventId = resultEventId;
                         row.ToStateId = resultToStateId;
                         row.Flags = resultFlags;
@@ -4756,7 +4884,11 @@ namespace SageHavokEditor
                     }
                 });
                 UpdateUndoRedoButtons();
-                StatusText.Text = $"✓ Transition updated";
+                RefreshSmInspector(_selectedSM);
+                StatusText.Text = newEffect != null
+                    ? $"✓ Transition updated — blending over "
+                      + $"{popup.ResultNewBlendDuration.TrimEnd('0').TrimEnd('.')}s ({newEffect.Id})"
+                    : "✓ Transition updated";
             }
         }
 
@@ -4979,10 +5111,10 @@ namespace SageHavokEditor
 
             var clipId = GenerateNewObjectId();
             clip.Id = clipId;
-            SetClipParam(clip, "name", clipName);
-            SetClipParam(clip, "animationName", animPath);
-            SetClipParam(clip, "playbackSpeed", "1.000000");
-            SetClipParam(clip, "animationBindingIndex", "-1");
+            SetObjectParam(clip, "name", clipName);
+            SetObjectParam(clip, "animationName", animPath);
+            SetObjectParam(clip, "playbackSpeed", "1.000000");
+            SetObjectParam(clip, "animationBindingIndex", "-1");
 
             void Apply()
             {
@@ -5027,7 +5159,7 @@ namespace SageHavokEditor
                 MessageBoxImage.Warning);
         }
 
-        private static void SetClipParam(HkObject obj, string name, string value)
+        private static void SetObjectParam(HkObject obj, string name, string value)
         {
             var p = obj.Params.FirstOrDefault(x => x.Name == name);
             if (p != null) p.Value = value;
