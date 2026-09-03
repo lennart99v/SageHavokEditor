@@ -17,14 +17,33 @@ namespace SageHavokEditor.UI.Dialogs
         public int ErrorCount => _allIssues.Count(i => i.IsError);
         public int WarningCount => _allIssues.Count(i => i.IsWarning);
 
-        public ValidationDialog(List<ValidationIssue> issues)
+        /// <param name="preSaveFileName">
+        /// Set to run as the pre-save gate for that file: the dialog goes modal
+        /// and its Close button becomes a choice, with <c>DialogResult</c> true
+        /// meaning "save anyway". Null shows the same report as a plain read-out.
+        /// </param>
+        public ValidationDialog(GraphDoctorReport report, string? preSaveFileName = null)
         {
             InitializeComponent();
-            _allIssues = issues;
+            _allIssues = report.Issues;
             IssueList.ItemsSource = _filtered;
 
             ErrorCountText.Text = ErrorCount.ToString();
             WarningCountText.Text = WarningCount.ToString();
+            HeadlineText.Text = report.Headline;
+
+            if (preSaveFileName != null)
+            {
+                Title = $"Graph doctor — before saving {preSaveFileName}";
+                BtnCloseReport.Visibility = Visibility.Collapsed;
+                BtnSaveAnyway.Visibility = Visibility.Visible;
+                BtnCancelSave.Visibility = Visibility.Visible;
+                // Nothing here refuses the save — the editor can't know whether an
+                // unreachable state is a mistake or a work in progress — so the
+                // safe-by-default button is the one that stops and lets you look.
+                BtnCancelSave.IsDefault = true;
+                SelectHint.Text = "Click an issue to select the object in the editor";
+            }
 
             // Don't call ApplyFilter here - use Loaded event instead
             Loaded += (s, e) => ApplyFilter();
@@ -57,5 +76,17 @@ namespace SageHavokEditor.UI.Dialogs
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)
             => Close();
+
+        private void BtnSaveAnyway_Click(object sender, RoutedEventArgs e)
+        {
+            DialogResult = true;
+            Close();
+        }
+
+        private void BtnCancelSave_Click(object sender, RoutedEventArgs e)
+        {
+            DialogResult = false;
+            Close();
+        }
     }
 }
