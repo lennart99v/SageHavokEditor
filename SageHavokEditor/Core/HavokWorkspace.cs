@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -202,44 +202,16 @@ namespace SageHavokEditor.Core
             }
         }
 
-        /// <summary>Walk path segments case-insensitively. Returns real path or null.</summary>
+        /// <summary>
+        /// Both live in <see cref="Services.HkxPathResolver"/> now: the behaviour
+        /// reference index has to chase the same kind of path, by the same rules,
+        /// and two copies of a case-insensitive walk would drift.
+        /// </summary>
         private static string? FindFileCaseInsensitive(string path)
-        {
-            if (string.IsNullOrEmpty(path)) return null;
-            if (File.Exists(path)) return path; // fast path on Windows
-
-            try
-            {
-                var parts = path.Replace('/', '\\').Split('\\');
-                var current = parts[0] + "\\"; // "C:\"
-
-                for (int i = 1; i < parts.Length; i++)
-                {
-                    if (!Directory.Exists(current)) return null;
-                    var target = parts[i];
-                    var isLast = i == parts.Length - 1;
-
-                    var entries = isLast
-                        ? Directory.GetFiles(current).Select(Path.GetFileName).ToArray()
-                        : Directory.GetDirectories(current).Select(Path.GetFileName).ToArray();
-
-                    var match = entries.FirstOrDefault(e =>
-                        string.Equals(e, target, StringComparison.OrdinalIgnoreCase));
-
-                    if (match == null) return null;
-                    current = Path.Combine(current, match);
-                }
-                return File.Exists(current) ? current : null;
-            }
-            catch { return null; }
-        }
+            => Services.HkxPathResolver.FindFileCaseInsensitive(path);
 
         private static string? TryCombine(string dir, string rel)
-        {
-            if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(rel)) return null;
-            try { return Path.GetFullPath(Path.Combine(dir, rel)); }
-            catch { return null; }
-        }
+            => Services.HkxPathResolver.TryCombine(dir, rel);
 
         // ── View model builders ───────────────────────────────────────────────
 
