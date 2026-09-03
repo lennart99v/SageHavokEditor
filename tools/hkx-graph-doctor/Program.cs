@@ -12,11 +12,30 @@ using SageHavokEditor.Models;
 // re-verified against the baseline.
 //
 //   dotnet run --project tools/hkx-graph-doctor -- <behavior.xml> [character.xml]
+//                                                  [--project <character project root>]
+//
+// --project is the folder a behaviorName is relative to — the parent of the one
+// holding the character file, e.g. meshes/actors/character. Give it and the
+// behaviour references in the file are resolved and read for real, which is the
+// only way to see what the event-alignment check says about actual content.
 
 if (args.Length < 1)
 {
-    Console.Error.WriteLine("usage: hkx-graph-doctor <behavior.xml> [character.xml]");
+    Console.Error.WriteLine(
+        "usage: hkx-graph-doctor <behavior.xml> [character.xml] [--project <project root>]");
     return 1;
+}
+
+string? projectRoot = null;
+{
+    int at = Array.IndexOf(args, "--project");
+    if (at >= 0)
+    {
+        // Guarded, because IndexOf returns -1 and "-1 + 1" is the index of the
+        // file argument — an unguarded filter silently ate it.
+        if (at + 1 < args.Length) projectRoot = args[at + 1];
+        args = args.Where((_, i) => i != at && i != at + 1).ToArray();
+    }
 }
 
 var failed = 0;
@@ -56,7 +75,14 @@ if (args.Length > 1)
     Console.WriteLine($"character {Path.GetFileName(args[1])} — {animations.Count} registered animations");
 }
 
-GraphDoctorReport Run() => new GraphDoctor(manager, animations).Run();
+// One index for the whole run: it caches, and a reference read twice should not
+// cost twice. Null without --project, which skips the reference checks entirely.
+var projectIndex = projectRoot == null ? null
+    : new BehaviorReferenceIndex(new[] { Path.GetFullPath(projectRoot) });
+if (projectIndex != null)
+    Console.WriteLine($"project root {projectIndex.Anchors[0]}");
+
+GraphDoctorReport Run() => new GraphDoctor(manager, animations, projectIndex).Run();
 
 // A fingerprint per issue, so "the file came back to where it started" is a set
 // comparison rather than a count comparison — a fault that swaps one issue for
@@ -75,7 +101,7 @@ foreach (var g in baseline.Issues.GroupBy(i => $"{i.Severity}/{(i.Category.Lengt
                                  .OrderByDescending(g => g.Count()))
 {
     Console.WriteLine($"  {g.Count(),5}  {g.Key}");
-    foreach (var i in g.Take(3))
+    foreach (var i in g.Take(20))
         Console.WriteLine($"          {i.ObjectId} {i.ObjectName}: {Trim(i.Description)}");
     if (g.Count() > 3) Console.WriteLine($"          … and {g.Count() - 3} more");
 }
@@ -104,12 +130,25 @@ foreach (var quiet in new[]
 // file (toStateId or toNestedStateId) and must not be its own machine's start
 // state. That catches a walker that simply failed to find the transitions.
 {
-    var targeted = manager.ObjectMap.Values
+    // Scoped to the owning machine, because stateIds restart per machine. A
+    // global "is this id targeted anywhere" scan passes on a one-machine file
+    // and cries wolf on a real one: 0_master has 9 genuinely unreachable states
+    // and every one of their ids is targeted in some *other* machine.
+    var nested = manager.ObjectMap.Values
         .Where(o => o.ClassName == "hkbStateMachineTransitionInfoArray")
         .SelectMany(a => a.Params.Where(p => p.Name == "transitions").SelectMany(p => p.Children))
-        .SelectMany(tr => new[] { ValueOf(tr, "toStateId"), ValueOf(tr, "toNestedStateId") })
-        .Where(s => s.Length > 0)
+        .Where(tr => ValueOf(tr, "flags").Contains("TO_NESTED"))
+        .Select(tr => ValueOf(tr, "toNestedStateId"))
+        .Where(v => v.Length > 0)
         .ToHashSet();
+
+    IEnumerable<HkObject> TransitionsOf(HkObject owner, string param)
+    {
+        var r = ValueOf(owner, param);
+        if (r.Length == 0 || r == "null" || !manager.ObjectMap.TryGetValue(r, out var arr))
+            return Enumerable.Empty<HkObject>();
+        return arr!.Params.Where(p => p.Name == "transitions").SelectMany(p => p.Children);
+    }
 
     var wrong = new List<string>();
     foreach (var issue in baseline.Issues
@@ -117,11 +156,20 @@ foreach (var quiet in new[]
     {
         var state = manager.ObjectMap[issue.ObjectId];
         var sid = ValueOf(state, "stateId");
-        var owner = manager.ObjectMap.Values.FirstOrDefault(o =>
+        var owner = manager.ObjectMap.Values.First(o =>
             o.ClassName == "hkbStateMachine"
             && HkRefList.Tokens(ValueOf(o, "states")).Contains(state.Id));
-        if (targeted.Contains(sid) || ValueOf(owner!, "startStateId") == sid)
-            wrong.Add($"{issue.ObjectId} stateId {sid}");
+
+        var reachable = TransitionsOf(owner, "wildcardTransitions")
+            .Concat(HkRefList.Tokens(ValueOf(owner, "states"))
+                .Where(manager.ObjectMap.ContainsKey)
+                .SelectMany(t => TransitionsOf(manager.ObjectMap[t], "transitions")))
+            .Select(tr => ValueOf(tr, "toStateId"))
+            .Append(ValueOf(owner, "startStateId"))
+            .ToHashSet();
+
+        if (reachable.Contains(sid) || nested.Contains(sid))
+            wrong.Add($"{issue.ObjectId} stateId {sid} in '{owner.DisplayName}'");
     }
 
     var flagged = baseline.Issues.Count(i => i.Category == ValidationIssue.CategoryUnreachableState);
@@ -256,8 +304,18 @@ void Fault(string title, string expectCategory, Func<string> apply, Action undo,
 
 // -- 1. a state whose generator is null -----------------------------------
 {
+    // The generator has to be exclusively this state's, or nulling the reference
+    // orphans nothing and the prune assertion below is about the file rather than
+    // about the check. Sharing is the norm in the vanilla character behaviours.
+    var inbound = manager.ObjectMap.Values
+        .SelectMany(o => Params(o).SelectMany(t => HkRefList.Tokens(t.Param.Value)))
+        .Where(tok => tok.StartsWith('#'))
+        .GroupBy(tok => tok)
+        .ToDictionary(g => g.Key, g => g.Count());
+
     var state = manager.ObjectMap.Values.First(o =>
-        o.ClassName == "hkbStateMachineStateInfo" && RefOf(o, "generator") != null);
+        o.ClassName == "hkbStateMachineStateInfo"
+        && RefOf(o, "generator") is string g && inbound.GetValueOrDefault(g) == 1);
     var param = state.Params.First(p => p.Name == "generator");
     var (oldValue, oldChildren) = Snapshot(param);
 
@@ -476,23 +534,39 @@ else
 
 // -- 9. behaviour references ----------------------------------------------
 // Neither sample file has one, so the subject is built here: a reference node
-// pointing at this very file. A graph referencing itself is nonsense as a graph
-// and perfect as a test — the two event tables are identical by construction, so
-// a correct alignment check has nothing whatever to say about it.
+// pointing at this very file. Pass --project against a real Skyrim character
+// folder to exercise the resolver on content that has them for real.
 {
     Console.WriteLine();
     Console.WriteLine("== behaviour references ==");
 
-    var index = new BehaviorReferenceIndex(new[] { Path.GetDirectoryName(Path.GetFullPath(args[0])) });
+    // Both anchors: the project root resolves the file's real references, the
+    // file's own folder resolves the synthetic self-reference below.
+    var index = new BehaviorReferenceIndex(new[]
+        { Path.GetDirectoryName(Path.GetFullPath(args[0])), projectRoot });
     GraphDoctorReport RunRefs() => new GraphDoctor(manager, animations, index).Run();
 
     List<ValidationIssue> RefIssues(GraphDoctorReport r) => r.Issues
-        .Where(i => i.Category == ValidationIssue.CategoryBehaviorReference
-                 || i.Category == ValidationIssue.CategoryBehaviorReferenceEvents)
+        .Where(i => i.Category == ValidationIssue.CategoryBehaviorReference)
         .ToList();
 
-    Check("a file with no references has nothing to say about them",
-        RefIssues(RunRefs()).Count == 0);
+    // Real content first, when the file has any. 0_master has 13, which is the
+    // only place the resolver gets tested against paths somebody else wrote.
+    var existing = manager.ObjectMap.Values
+        .Where(o => o.ClassName == "hkbBehaviorReferenceGenerator").ToList();
+    if (existing.Count == 0)
+    {
+        Check("a file with no references has nothing to say about them",
+            RefIssues(RunRefs()).Count == 0);
+    }
+    else
+    {
+        var unresolved = RefIssues(RunRefs());
+        Check($"all {existing.Count} references in this file resolve on disk",
+            unresolved.Count == 0,
+            string.Join("; ", unresolved.Take(3).Select(i => Trim(i.Description, 70))));
+    }
+    var inherited = RefIssues(RunRefs()).Count;
 
     // Wire the node into the graph properly: an unreferenced object is dropped by
     // the .hkx save, and a check that only fires on orphans would be worthless.
@@ -520,7 +594,7 @@ else
 
         behaviorName.Value = @"Behaviors\DoctorTest_NoSuchFile.hkx";
         var missing = RefIssues(RunRefs())
-            .FirstOrDefault(i => i.Category == ValidationIssue.CategoryBehaviorReference);
+            .FirstOrDefault(i => i.ObjectId == reference.Id);
         Check("a path that isn't on disk is reported", missing != null);
         if (missing != null)
         {
@@ -538,42 +612,16 @@ else
         behaviorName.Value = self;
         var resolved = RefIssues(RunRefs());
         Check($"'{self}' resolves to the .xml beside it",
-            !resolved.Any(i => i.Category == ValidationIssue.CategoryBehaviorReference),
+            !resolved.Any(i => i.ObjectId == reference.Id),
             string.Join("; ", resolved.Take(2).Select(i => Trim(i.Description, 80))));
-        Check("and a graph referencing itself has no event that can't cross",
-            !resolved.Any(i => i.Category == ValidationIssue.CategoryBehaviorReferenceEvents),
+        Check("and a resolved reference says nothing further about itself",
+            resolved.Count == inherited,
             string.Join("; ", resolved.Take(2).Select(i => Trim(i.Description, 100))));
 
-        // Now make exactly one name disagree. Renaming rather than removing keeps
-        // the array lengths and every event id valid, so the only thing that
-        // changes is whether one name still matches across the reference.
-        var stringData = manager.ObjectMap.Values
-            .First(o => o.ClassName == "hkbBehaviorGraphStringData");
-        var eventNames = stringData.Params.First(p => p.Name == "eventNames");
-
-        var array = manager.ObjectMap.Values.First(o =>
-            o.ClassName == "hkbStateMachineTransitionInfoArray"
-            && o.Params.Any(p => p.Name == "transitions" && p.Children.Count > 0));
-        int usedIndex = int.Parse(ValueOf(array.Params.First(p => p.Name == "transitions").Children[0], "eventId"));
-        var realName = eventNames.Strings[usedIndex];
-        eventNames.Strings[usedIndex] = "DoctorTest_RenamedEvent";
-
-        try
-        {
-            var drifted = RefIssues(RunRefs())
-                .FirstOrDefault(i => i.Category == ValidationIssue.CategoryBehaviorReferenceEvents);
-            Check($"renaming one event this file uses ('{realName}') makes it uncrossable",
-                drifted != null);
-            if (drifted != null)
-            {
-                Console.WriteLine($"          → {drifted.Severity}: {Trim(drifted.Description, 150)}");
-                Check("named, and counted as one rather than one row per event",
-                    drifted.Description.Contains(realName) && drifted.Description.Contains(" 1 event name "),
-                    Trim(drifted.Description, 80));
-                Check("also a lead rather than a refusal", !drifted.IsStructural);
-            }
-        }
-        finally { eventNames.Strings[usedIndex] = realName; }
+        // Event alignment across the reference used to be asserted here. It is no
+        // longer a doctor finding at all: measured against vanilla 0_master it
+        // fires on 10 of 13 references, up to 418 events, on a file the game runs
+        // perfectly. It is a dialog now, asked for rather than volunteered.
     }
     finally
     {
