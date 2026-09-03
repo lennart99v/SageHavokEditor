@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-graph-doctor</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile the editor's own model and validation, not a copy, so this
+         exercises the same code the save path's graph doctor runs. -->
+    <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\HavokManager.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Validation\HkRefWalk.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Validation\ValidationIssue.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Validation\HavokValidator.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Validation\GraphDoctor.cs" />
+    <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
+  </ItemGroup>
+
+</Project>
