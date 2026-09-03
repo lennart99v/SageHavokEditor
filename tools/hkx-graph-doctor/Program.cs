@@ -635,7 +635,37 @@ else
         Fingerprint(Run()).SetEquals(baseFingerprint));
 }
 
-// -- 10. a file header pointing at a root that isn't there ----------------
+// -- 10. which projects get the first-person reminder ---------------------
+// Decided from the path, because the first-person project usually lives in a BSA
+// or behind a mod manager — "the folder isn't there" says nothing about whether
+// the game has one, and it always does.
+{
+    Console.WriteLine();
+    Console.WriteLine("== the first-person reminder fires on the right projects ==");
+
+    foreach (var (p, want, why) in new[]
+             {
+                 (@"D:\Data\meshes\actors\character\behaviors\0_master.hkx", true,
+                     "the third-person player project, which is the whole point"),
+                 (@"D:\Data\meshes\actors\character\characters\defaultmale.hkx", true,
+                     "its character file too — same project, same omission"),
+                 (@"D:\Data\meshes\actors\character\_1stperson\behaviors\0_master.hkx", false,
+                     "already first person, so there is nothing to be reminded of"),
+                 (@"D:/Data/meshes/actors/character/_1stperson/behaviors/0_master.hkx", false,
+                     "forward slashes are the same path"),
+                 (@"D:\Data\meshes\actors\dragon\behaviors\dragonbehavior.hkx", false,
+                     "a dragon has no first-person view"),
+                 (@"D:\Data\meshes\actors\characterassets\skeleton.hkx", false,
+                     "not the character project, despite the prefix"),
+                 ("", false, "nothing loaded"),
+             })
+    {
+        Check($"{(want ? "reminds" : "stays quiet")}: {why}",
+            FirstPersonProject.IsThirdPersonCharacter(p) == want, p);
+    }
+}
+
+// -- 11. a file header pointing at a root that isn't there ----------------
 // Not a mutation of the loaded graph: toplevelobject is read at BuildGraph, so
 // this one is loaded wrong from the start, the way a hand-edited file would be.
 {

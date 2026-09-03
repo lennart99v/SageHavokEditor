@@ -2463,6 +2463,7 @@ namespace SageHavokEditor
                 var full = dlg.FileName;
                 var animIdx = full.IndexOf("Animations\\", StringComparison.OrdinalIgnoreCase);
                 clip.AnimationPath = animIdx >= 0 ? full.Substring(animIdx) : full;
+                OfferAnimationRegistration(clip.AnimationPath, $"Clip '{clip.Name}'");
             }
         }
 
@@ -5331,6 +5332,8 @@ namespace SageHavokEditor
                 ClipsList.SelectedItem = added;
                 ClipsList.ScrollIntoView(added);
             }
+
+            OfferAnimationRegistration(animPath, $"Clip generator '{clipName}'");
 
             StatusText.Text = $"⚠ Clip generator '{clipName}' added ({clipId}) — not referenced yet";
 

@@ -84,6 +84,7 @@ namespace SageHavokEditor
 
             RebuildBehaviorReferenceIndex();
             SnapshotStructuralBaseline();
+            _firstPersonReminded = false;
         }
 
         // ── Project UI ────────────────────────────────────────────────────────
@@ -406,6 +407,78 @@ namespace SageHavokEditor
             }
         }
 
+        /// <summary>
+        /// Once per loaded file, when the thing just authored is the kind of change
+        /// that stops at the view switch. Once, because a reminder that fires every
+        /// time is a dialog people dismiss without reading, and this one is only
+        /// worth anything if it is read.
+        /// </summary>
+        private bool _firstPersonReminded;
+
+        private void RemindAboutFirstPerson()
+        {
+            if (_firstPersonReminded) return;
+
+            var path = Workspace?.BehaviorFile?.OriginalPath
+                    ?? Workspace?.CharacterFile?.OriginalPath;
+            if (!FirstPersonProject.IsThirdPersonCharacter(path)) return;
+
+            _firstPersonReminded = true;
+            MessageBox.Show(FirstPersonProject.Reminder, "First person is a separate project",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        /// <summary>
+        /// A clip names its animation by path; the runtime loads it through the
+        /// character's <c>animationNames</c>. Miss the second half and the clip
+        /// plays nothing, with no error — the graph doctor reports it, and this is
+        /// the offer to fix it at the moment the path is chosen, which is the only
+        /// moment the user is thinking about that animation at all.
+        ///
+        /// Silent when there is no character file open (nothing to register into),
+        /// when the path is blank, or when it is already registered.
+        /// </summary>
+        private void OfferAnimationRegistration(string animPath, string what)
+        {
+            var cvm = Workspace?.Character;
+            if (cvm?.CharacterStringDataObj == null) return;
+            if (string.IsNullOrWhiteSpace(animPath)) return;
+
+            static string Norm(string p) => (p ?? "").Trim().Replace('/', '\\');
+            if (cvm.AnimationNames.Any(a =>
+                    string.Equals(Norm(a), Norm(animPath), StringComparison.OrdinalIgnoreCase)))
+                return;
+
+            var fileName = Path.GetFileName(cvm.File?.OriginalPath ?? "");
+            var characterName = fileName.Length > 0 ? fileName : cvm.Name;
+
+            if (MessageBox.Show(
+                    $"{what} uses \"{animPath}\", which isn't in {characterName}'s animation list.\n\n"
+                    + "The graph names an animation by path, but the runtime loads it through the "
+                    + "character file — an unregistered path is a clip that plays nothing, with no "
+                    + "error in-game.\n\nRegister it now?",
+                    "Register animation", MessageBoxButton.YesNo, MessageBoxImage.Question)
+                != MessageBoxResult.Yes)
+                return;
+
+            int at = cvm.AnimationNames.Count;
+            void Apply() { cvm.AnimationNames.Insert(at, animPath); SyncAnimNamesToModel(cvm); }
+            void Revert() { cvm.AnimationNames.RemoveAt(at); SyncAnimNamesToModel(cvm); }
+
+            Apply();
+            _undoRedo.Record(new EditAction
+            {
+                Description = $"Register animation '{animPath}'",
+                Undo = () => { _suppressUndoRecord = true; Revert(); _suppressUndoRecord = false; },
+                Redo = () => { _suppressUndoRecord = true; Apply(); _suppressUndoRecord = false; },
+            });
+            UpdateUndoRedoButtons();
+            OnPropertyChanged(nameof(Workspace));
+
+            StatusText.Text = $"✓ Registered '{animPath}' in {characterName} "
+                            + "— remember to save the character file too";
+        }
+
         private void SyncAnimNamesToModel(CharacterViewModel cvm)
         {
             if (cvm.CharacterStringDataObj == null) return;
@@ -480,6 +553,8 @@ namespace SageHavokEditor
             GraphView.ShowAnimationRequested -= OnShowAnimationRequested;
             GraphView.OpenBehaviorReferenceRequested -= OnOpenBehaviorReferenceRequested;
             GraphView.CompareBehaviorReferenceEventsRequested -= OnCompareBehaviorReferenceEvents;
+            GraphView.AnimationChosen -= OfferAnimationRegistration;
+            GraphView.BehaviorReferenceCreated -= RemindAboutFirstPerson;
             GraphView.TransitionDeletedFromGraph += OnTransitionDeletedFromGraph;
             GraphView.NodeRenamedOnGraph += OnNodeRenamedOnGraph;
             GraphView.NodeAddedToGraph += OnNodeAddedToGraph;
@@ -490,6 +565,8 @@ namespace SageHavokEditor
             GraphView.ShowAnimationRequested += OnShowAnimationRequested;
             GraphView.OpenBehaviorReferenceRequested += OnOpenBehaviorReferenceRequested;
             GraphView.CompareBehaviorReferenceEventsRequested += OnCompareBehaviorReferenceEvents;
+            GraphView.AnimationChosen += OfferAnimationRegistration;
+            GraphView.BehaviorReferenceCreated += RemindAboutFirstPerson;
             GraphView.GraphEditPerformed -= OnGraphEditPerformed;
             GraphView.GraphEditPerformed += OnGraphEditPerformed;
 

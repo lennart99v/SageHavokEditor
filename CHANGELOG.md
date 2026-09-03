@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A clip's animation can be registered in the character file from the clip
+  flow.** The graph names an animation by path; the runtime loads it through the
+  character's `animationNames`. Do only the first half and the clip plays
+  nothing, in-game, with no error — the graph doctor already reported it, and
+  this is the button that fixes it. When a clip's `animationName` isn't in the
+  loaded character's list the editor offers to add it, at all three moments a
+  path gets chosen: the graph's 🎬 New clip generator, the Clips tab's
+  ＋ New Clip Generator, and the Clips tab's Browse. One undoable action, and the
+  status line says the character file still needs saving — it is a second file,
+  and the editor doesn't write it for you.
+
+  Silent when there is nothing to offer: no character file open, a blank path,
+  or a path already registered (compared with `/` and `\` and case treated
+  alike, which is how these paths are actually written). The graph raises the
+  event and the window answers it, because which character file is open is not
+  something a graph view knows.
+
+- **A reminder that first person is a separate project.** The player is two
+  behaviour projects: third person under `meshes\actors\character\`, and the arms
+  you see holding a sword in a wholly separate one under
+  `meshes\actors\character\_1stperson\` — its own `0_master`, its own event
+  table, its own animations. Nothing links them, so a patch against the
+  third-person graph does not reach first person, and the failure is the quiet
+  kind: it plays perfectly in third person, the player switches view, nothing
+  happens, and there is no reason to suspect the patch rather than the animation.
+
+  `FirstPersonProject` says so at the two moments the omission becomes real: on
+  patch export, appended to the success message, because that is when the patch
+  is finished and shippable; and once per loaded file when a behaviour reference
+  is authored. Once, because a reminder that fires every time is a dialog people
+  dismiss without reading, and this one is only worth anything read.
+
+  It decides from the path — under `\actors\character\` and not under
+  `\_1stperson\` — and deliberately **not** by looking for the sibling folder on
+  disk. The first-person project normally lives inside a BSA or behind a mod
+  manager's virtual file system, so "the folder isn't there" says nothing about
+  whether the game has one, and it always does. The cases are pinned in
+  `tools/hkx-graph-doctor`: the player's behaviour and character files remind,
+  a `_1stperson` path doesn't (it is already there), a dragon doesn't (no
+  first-person view), `characterassets` doesn't despite the prefix, and forward
+  slashes are the same path as backslashes.
+
 - **A behaviour reference can be followed, and the graph doctor reads what's on
   the other side.** `hkbBehaviorReferenceGenerator` is the one node whose subject
   is a different file — the bridge of every Nemesis/Pandora-style patch — and
