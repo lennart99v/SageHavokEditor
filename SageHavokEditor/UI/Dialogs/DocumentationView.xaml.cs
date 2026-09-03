@@ -887,22 +887,47 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Differences are highlighted: added objects in green, removed in red, changed in amber.\n" +
                 "• Click any diffed object to inspect it in the Object Data panel.");
 
-            AddSection("validate", "Validation",
-                "Click 🔎 Validate to run the built-in validator. What it checks:\n\n" +
+            AddSection("validate", "Validation — the graph doctor",
+                "Click 🔎 Validate to run the graph doctor over the loaded file. The same pass runs " +
+                "automatically just before every save, because this domain fails silently: a wrong " +
+                "id or a state with nothing behind it produces no error, no crash and no log line — " +
+                "the character simply T-poses in-game. \"It saved\" and \"it converted\" prove nothing.\n\n" +
+                "What it checks:\n\n" +
                 "• Broken references — every #id in every param, including refs nested inside " +
                 "array elements (a transition's blend effect, the root container's variants).\n" +
-                "• Orphaned objects — nothing references them, so the .hkx save will drop them.\n" +
+                "• Generator slots left null — a state, a blender child or the graph's own " +
+                "rootGenerator with nothing behind it. That node produces no pose.\n" +
+                "• Event ids and variable indices past the end of this file's own tables. Both are " +
+                "bare positional indices into eventNames / variableNames and the runtime does not " +
+                "bounds-check them.\n" +
+                "• Clips whose animationName isn't in the character's animationNames list, when a " +
+                "character file is open. The graph names the animation but the runtime loads it " +
+                "through the character — the usual outcome of adding an animation and forgetting " +
+                "the character file.\n" +
+                "• States nothing can enter — not the machine's start state, and no transition's " +
+                "toStateId. A duplicated state that was never wired up looks exactly like this. " +
+                "Machines that pick a state some other way (a start-state chooser, a random or " +
+                "next-higher/next-lower transition event) are skipped rather than guessed at.\n" +
+                "• Objects an .hkx save would drop — everything the walk from the file root can't " +
+                "reach. An XML save keeps them; a .hkx save does not, and says nothing. This " +
+                "replaces the old \"orphaned object\" check, which only asked whether anything " +
+                "referenced an object: two dead objects referencing each other passed it and were " +
+                "dropped anyway.\n" +
                 "• Values that don't match their declared Havok type (the red-bordered fields in " +
                 "Object Data). These also block saving as HKX.\n" +
-                "• startStateId that doesn't match any state's stateId — the machine has no valid " +
-                "start state and silently T-poses when activated.\n" +
-                "• eventNames/eventInfos and variableNames/variableInfos count mismatches — the " +
-                "game pairs these arrays by position.\n" +
-                "• Duplicate stateIds in a machine, transitions whose toStateId doesn't exist, " +
-                "machines with no states, clips with no animation path, variable name/value " +
-                "count mismatches.\n\n" +
-                "Each issue shows the severity, the affected object, and a description. " +
-                "Click an issue row to jump to the offending object.");
+                "• startStateId that doesn't match any state's stateId, duplicate stateIds in a " +
+                "machine, transitions whose toStateId doesn't exist, machines with no states, " +
+                "clips with no animation path, and eventNames/eventInfos, variableNames/" +
+                "variableInfos and variable name/value count mismatches — the game pairs those " +
+                "arrays by position.\n\n" +
+                "Each issue shows the severity, the affected object, and a description, errors " +
+                "first. Click an issue row to jump to the offending object.\n\n" +
+                "Before a save\n" +
+                "The report opens by itself when there is either a structural error or an object " +
+                "the .hkx save would drop, with Save anyway and Cancel save instead of Close. " +
+                "Nothing here refuses the save — a graph part-way through an edit legitimately has " +
+                "states nothing reaches yet — but Cancel is the default button, so pressing Enter " +
+                "stops and lets you look. Warnings alone never interrupt a save.");
 
             AddSection("le_se", "Skyrim LE ⇄ SE Conversion",
                 "The editor reads and writes both Skyrim editions' .hkx binaries. LE (Legendary " +
