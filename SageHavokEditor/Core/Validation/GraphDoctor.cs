@@ -473,34 +473,14 @@ namespace SageHavokEditor.Core.Validation
                     continue;
                 }
 
-                if (!target.Readable) continue;   // found but unreadable: not this pass's business
-
-                var cannotCross = target.UsedEventNames
-                    .Where(e => !ownEvents.Contains(e))
-                    .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                if (cannotCross.Count == 0) continue;
-
-                // One row per reference, never one per event: a referenced graph
-                // has as many events as it likes and most of them are its own
-                // business. The count is the signal, the names are the lead.
-                var sample = string.Join(", ", cannotCross.Take(6));
-                if (cannotCross.Count > 6) sample += $", … ({cannotCross.Count - 6} more)";
-
-                yield return new ValidationIssue
-                {
-                    Severity = "Warning",
-                    Category = ValidationIssue.CategoryBehaviorReferenceEvents,
-                    Cause = "an event shared between two graphs has to be in both tables; one the "
-                          + "referenced graph only uses internally is fine as it is",
-                    ObjectId = node.Id,
-                    ObjectClass = node.ClassName,
-                    ObjectName = Name(node),
-                    Description = $"{System.IO.Path.GetFileName(target.Path)} uses {cannotCross.Count} event "
-                                + $"name{(cannotCross.Count == 1 ? "" : "s")} this file's eventNames doesn't "
-                                + $"have ({sample}) — the two graphs link by name, so those can't cross "
-                                + "the reference",
-                };
+                // Event alignment across the reference used to be reported here.
+                // Measured against vanilla SSE 0_master it fires on 10 of its 13
+                // references — 1, 1, 1, 2, 3, 3, 3, 32, 135 and 418 events — on a
+                // file the game runs perfectly. "The referenced graph uses an event
+                // this one hasn't got" is the normal condition, not a defect: a
+                // child behaviour's internal events are its own business. It moved
+                // to 🔗 Compare events with referenced file, where the same numbers
+                // are an answer to a question rather than an accusation.
             }
         }
 

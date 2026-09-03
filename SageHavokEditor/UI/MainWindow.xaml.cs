@@ -4068,6 +4068,33 @@ namespace SageHavokEditor
         }
 
         /// <summary>
+        /// Lay the two event tables either side of a reference next to each other.
+        /// Asked for rather than volunteered: the graph doctor used to report the
+        /// mismatch as a warning, and vanilla 0_master fires it on 10 of its 13
+        /// references — so the numbers are worth having, and worth having only
+        /// when you went looking for them.
+        /// </summary>
+        private void OnCompareBehaviorReferenceEvents(string behaviorName)
+        {
+            if (_behaviorRefs == null) return;
+
+            var target = _behaviorRefs.Lookup(behaviorName);
+            if (!target.Readable || target.Manager == null)
+            {
+                MessageBox.Show(
+                    target.Resolved
+                        ? $"'{behaviorName}' was found but couldn't be read:\n\n{target.Error}"
+                        : $"Couldn't find '{behaviorName}' to compare against.\n\n" +
+                          "Open it once from the reference node to see where the editor looked.",
+                    "Behavior reference", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            new BehaviorReferenceEventsDialog(
+                manager, Stats.FileName ?? "this file", target) { Owner = this }.ShowDialog();
+        }
+
+        /// <summary>
         /// The structural errors the file already had when it was opened. A save
         /// is refused over the ones that aren't in here — what this session broke —
         /// and never over what it merely inherited: vanilla files carry real

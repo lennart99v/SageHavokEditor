@@ -572,12 +572,18 @@ namespace SageHavokEditor.UI.Dialogs
                 "The link is by name: an event (or variable) with the identical name in both files' " +
                 "string data is the same event at runtime. So the events that drive transitions inside " +
                 "the referenced file must also exist in the referencing graph's eventNames — add them " +
-                "on the Events tab of both files as part of the same patch. 🔎 Validate now reads the " +
-                "referenced file and reports, as one line per reference, the events it uses that this " +
-                "file's table doesn't have. Treat that as a lead rather than a verdict: an event the " +
-                "referenced graph only uses internally is perfectly fine with no entry here. What it " +
-                "catches is the opposite mistake — expecting an event to cross when it can't, which " +
-                "in-game looks exactly like everything working until the animation doesn't play.\n\n" +
+                "on the Events tab of both files as part of the same patch.\n\n" +
+                "Right-click the reference and choose 🔗 Compare events with referenced file to see " +
+                "both tables at once: every name either side declares, which side actually uses it, " +
+                "a filter for the ones that can't cross, and 📋 Copy report.\n\n" +
+                "Read that list as leads rather than faults, and expect it to be long. Vanilla " +
+                "0_master references thirteen files and ten of them use events it has never heard " +
+                "of — MT_Behavior alone accounts for 418 — on a graph the game runs perfectly, " +
+                "because a child behavior's internal events are simply its own business. This is " +
+                "why the comparison is something you ask for and not a warning you are given. What " +
+                "it is good for is the opposite mistake: expecting an event to cross when it can't, " +
+                "which in-game looks exactly like everything working until the animation doesn't " +
+                "play.\n\n" +
                 "Things that bite\n" +
                 "• A path that resolves to nothing is a silent T-pose in-game, not an error there. " +
                 "🔎 Validate warns about it, but only about files it can see: if the referenced file " +
@@ -922,9 +928,9 @@ namespace SageHavokEditor.UI.Dialogs
                 "toStateId. A duplicated state that was never wired up looks exactly like this. " +
                 "Machines that pick a state some other way (a start-state chooser, a random or " +
                 "next-higher/next-lower transition event) are skipped rather than guessed at.\n" +
-                "• Behavior references whose behaviorName isn't on disk under the project, and " +
-                "references whose file uses event names this file's table doesn't have — see " +
-                "Referencing Another Behavior File for what each means.\n" +
+                "• Behavior references whose behaviorName isn't on disk under the project. " +
+                "Comparing the two graphs' event tables is a dialog you ask for rather than a " +
+                "check — Referencing Another Behavior File explains why.\n" +
                 "• Objects an .hkx save would drop — everything the walk from the file root can't " +
                 "reach. An XML save keeps them; a .hkx save does not, and says nothing. This " +
                 "replaces the old \"orphaned object\" check, which only asked whether anything " +

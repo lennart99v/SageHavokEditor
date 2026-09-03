@@ -93,8 +93,6 @@ namespace SageHavokEditor.Core.Validation
         public const string CategoryEmptyStateMachine = "empty-state-machine";
         /// <summary>A behaviour reference whose <c>behaviorName</c> isn't on disk.</summary>
         public const string CategoryBehaviorReference = "behavior-reference";
-        /// <summary>A referenced graph using event names the referencing file doesn't have.</summary>
-        public const string CategoryBehaviorReferenceEvents = "behavior-reference-events";
 
         private static readonly HashSet<string> Structural = new(StringComparer.Ordinal)
         {
