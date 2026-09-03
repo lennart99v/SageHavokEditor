@@ -206,6 +206,11 @@ namespace SageHavokEditor.UI.Dialogs
                 if (errors.Count > 0)
                     msg += $"\n\nWarnings ({errors.Count}):\n" + string.Join("\n", errors.Take(5));
 
+                // Said at export because that is the moment the patch is finished
+                // and the omission becomes shippable.
+                if (Core.Services.FirstPersonProject.IsThirdPersonCharacter(_behaviorFilePath))
+                    msg += "\n\n— First person —\n" + Core.Services.FirstPersonProject.Reminder;
+
                 MessageBox.Show(msg, $"{target} patch exported",
                     MessageBoxButton.OK,
                     errors.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
