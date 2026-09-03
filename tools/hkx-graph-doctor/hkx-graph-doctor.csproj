@@ -15,6 +15,9 @@
     <Compile Include="..\..\SageHavokEditor\Core\HavokManager.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxPathResolver.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\BehaviorReferenceIndex.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\HkRefWalk.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\ValidationIssue.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\HavokValidator.cs" />
