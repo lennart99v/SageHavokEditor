@@ -561,14 +561,28 @@ namespace SageHavokEditor.UI.Dialogs
                 "behaviors.\n" +
                 "• The editor creates the node and points the state's generator at it in one undoable " +
                 "step. If the state already had a generator you are asked to confirm the replacement.\n\n" +
+                "Opening the file it points at\n" +
+                "Double-click the reference node in the Graph tab, or right-click it and choose " +
+                "📂 Open <file>. The path is resolved against the character project's root folder " +
+                "the same way the runtime resolves it, case-insensitively, and a project mid-edit " +
+                "that holds the referenced graph as Havok XML rather than .hkx is found too. If " +
+                "nothing matches, the editor lists the folders it searched — the path is relative to " +
+                "somewhere the file never states, so that list is usually the answer.\n\n" +
                 "How the two graphs talk\n" +
                 "The link is by name: an event (or variable) with the identical name in both files' " +
                 "string data is the same event at runtime. So the events that drive transitions inside " +
                 "the referenced file must also exist in the referencing graph's eventNames — add them " +
-                "on the Events tab of both files as part of the same patch.\n\n" +
+                "on the Events tab of both files as part of the same patch. 🔎 Validate now reads the " +
+                "referenced file and reports, as one line per reference, the events it uses that this " +
+                "file's table doesn't have. Treat that as a lead rather than a verdict: an event the " +
+                "referenced graph only uses internally is perfectly fine with no entry here. What it " +
+                "catches is the opposite mistake — expecting an event to cross when it can't, which " +
+                "in-game looks exactly like everything working until the animation doesn't play.\n\n" +
                 "Things that bite\n" +
-                "• The referenced file is not opened or validated — the path is stored as text, and a " +
-                "typo becomes a silent T-pose in-game, not an error here.\n" +
+                "• A path that resolves to nothing is a silent T-pose in-game, not an error there. " +
+                "🔎 Validate warns about it, but only about files it can see: if the referenced file " +
+                "lives inside a mod manager's virtual file system, the warning is about your disk " +
+                "rather than about the graph, and a save is never refused over it.\n" +
                 "• The orphan-pruning rule from Adding a New Animation applies: the reference is wired " +
                 "to the state immediately precisely so it survives the .hkx save.\n" +
                 "• The referenced file must be a valid SSE 64-bit behavior with its own root " +
@@ -908,6 +922,9 @@ namespace SageHavokEditor.UI.Dialogs
                 "toStateId. A duplicated state that was never wired up looks exactly like this. " +
                 "Machines that pick a state some other way (a start-state chooser, a random or " +
                 "next-higher/next-lower transition event) are skipped rather than guessed at.\n" +
+                "• Behavior references whose behaviorName isn't on disk under the project, and " +
+                "references whose file uses event names this file's table doesn't have — see " +
+                "Referencing Another Behavior File for what each means.\n" +
                 "• Objects an .hkx save would drop — everything the walk from the file root can't " +
                 "reach. An XML save keeps them; a .hkx save does not, and says nothing. This " +
                 "replaces the old \"orphaned object\" check, which only asked whether anything " +
