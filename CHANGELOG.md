@@ -24,26 +24,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lists the folders that were searched — the path is relative to somewhere the
   file never states, so "not found" alone tells you nothing you can act on.
 
-  **Two new doctor checks.** A `behaviorName` that resolves to nothing (or is
+  **One new doctor check.** A `behaviorName` that resolves to nothing (or is
   empty) is reported: at runtime the state is entered and nothing plays, with no
-  error anywhere. And because the two graphs link by event *name*, each keeping
-  its own table, the referenced graph's events are compared against this file's —
-  reported as one line per reference naming how many of the events it *uses* have
-  no entry here, with a sample.
+  error anywhere. It is deliberately not structural, so it can never refuse a
+  save — whether a file is on *this* disk says nothing about whether the graph
+  contradicts itself, and under a mod manager's virtual file system the
+  referenced file legitimately isn't there. Validated where it counts: all 13
+  references in vanilla SSE `0_master.hkx` resolve, `Behaviors\1HM_Behavior.hkx`
+  to `behaviors/1hm_behavior.hkx` and so on, which is the case-insensitive walk
+  working on paths somebody else wrote.
 
-  Three decisions in that shape are deliberate. Neither check is structural, so
-  neither can refuse a save: whether a file is on *this* disk says nothing about
-  whether the graph contradicts itself, and under a mod manager's virtual file
-  system the referenced file legitimately isn't there. The comparison uses only
-  the events some node in the referenced graph actually refers to —
-  `HavokTypeCatalog`'s `HkParamSemantic` already marks every int that is an event
-  index, so that comes for free and covers the nested sites. And it is one row
-  per reference rather than one per event, because a referenced graph declares as
-  many events as it likes and most of them are its own business: the count is the
-  signal, the names are the lead. An event the child only uses internally is fine
-  with no entry here; what the check catches is the opposite mistake, expecting
-  an event to cross when it can't, which in-game is indistinguishable from
-  everything working until the animation doesn't play.
+  **Event alignment across the reference is a dialog, not a warning — and the
+  measurement is why.** The roadmap asked for it as a check: the two graphs link
+  by event *name*, each keeping its own table, so an event the referenced graph
+  uses that this file has never heard of cannot cross between them. Built as a
+  warning, that fires on **10 of vanilla `0_master`'s 13 references** — at 1, 1,
+  1, 2, 3, 3, 3, 32, 135 and 418 events — on a file the game runs perfectly. The
+  premise is simply wrong: a child behaviour's internal events are its own
+  business, so "uses an event the parent hasn't got" is the normal condition
+  rather than a defect, and a warning that fires on stock Skyrim content is one
+  nobody reads twice.
+
+  The numbers are still worth having when you go looking for them, so they moved
+  to **🔗 Compare events with referenced file** on the reference node: both event
+  tables side by side, each name marked declared / declared-and-used on either
+  side, a filter for the ones that can't cross, and 📋 Copy report. Same framing
+  the Guide already uses for unreferenced events — leads, not faults. "Used"
+  means the same thing on both sides because both come from the same scan, and
+  that scan needed no list of param names: `HavokTypeCatalog`'s
+  `HkParamSemantic` already marks every int that is an event index, nested sites
+  included.
 
   The index reads `.hkx` through HKX2 in memory rather than the async conversion
   service — a reference lookup is not a user action, and the deserialize is
@@ -52,19 +62,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moved out of `HavokWorkspace` into a shared `HkxPathResolver`, since both now
   chase the same kind of path by the same rules and two copies would drift.
 
-  Neither sample file has a behaviour reference, so the alignment check's
-  real-world noise is unmeasured — worth saying plainly. `tools/hkx-graph-doctor`
-  builds the subject instead: a graph referencing itself, whose two event tables
-  are identical by construction, so a correct check says nothing at all about it;
-  renaming one event this file uses then makes exactly one uncrossable, named and
-  counted as one row. It also covers the empty path, the missing path, the
-  `.hkx`→`.xml` fallback, and that neither finding can refuse a save.
-  `tools/hkx-graph-doctor-ui` covers the part only the app can get wrong: that
-  the load builds an index, that the window is actually listening for the open
-  request, and that drilling into a reference asks for the file it names — and
-  asks for nothing when there is no path. That last harness has to unhook the
-  window's own handler first, or it resolves the made-up path, fails, and opens a
-  modal MessageBox nothing in the process can dismiss.
+  Neither sample file has a behaviour reference, so `tools/hkx-graph-doctor`
+  builds one: a node pointing at the file itself, which covers the empty path,
+  the missing path and the `.hkx`→`.xml` fallback. It also gained `--project`,
+  which anchors the index at a real character folder — that is how the 0_master
+  numbers above were obtained, and how "all 13 resolve" is checked against
+  content nobody wrote for a test. `tools/hkx-graph-doctor-ui` covers the part
+  only the app can get wrong: that the load builds an index, that the window is
+  actually listening for the open request, that drilling into a reference asks
+  for the file it names — and asks for nothing when there is no path — and that
+  the comparison dialog lists both tables and filters to what can't cross. Two
+  things bit while writing it: the harness has to unhook the window's own open
+  handler first, or it resolves the made-up path, fails, and opens a modal
+  MessageBox nothing in the process can dismiss; and on a 2,400-node graph the
+  main window's rendering keeps the dispatcher busy enough that a second window
+  shown modally never gets laid out, so the dialog check shows it modelessly and
+  forces the layout pass itself.
+
+  Two harness bugs fell out of running against real content, both worth naming.
+  The independent re-derivation of unreachable states scanned for a stateId
+  targeted *anywhere* in the file; that holds on a one-machine file and cries
+  wolf on a real one, since 0_master has 9 genuinely unreachable states and every
+  one of their ids is targeted in some other machine — it is scoped to the owning
+  machine now, which is where stateIds mean anything. And the null-generator
+  fault assumed the generator it nulls is exclusively that state's; in the
+  vanilla character behaviours generators are shared, so it now picks a state
+  whose generator has exactly one inbound reference.
 
 - **An `.hkx` save is refused when the graph contradicts itself.** The evidence
   for the policy is in ROADMAP → Behavior Relay: a case-insensitive `.hky`
