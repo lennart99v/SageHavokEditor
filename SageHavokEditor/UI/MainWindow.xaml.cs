@@ -905,6 +905,7 @@ namespace SageHavokEditor
                 _sourcePlatform = HkxPlatform.Unknown;
                 Stats.PlatformLabel = string.Empty;
 
+                SnapshotStructuralBaseline();
                 AddRecentFile(folderPath);
 
                 StatusText.Text = $"✓ YAML loaded: {behaviorName}  " +
@@ -2549,17 +2550,57 @@ namespace SageHavokEditor
                 }
             }
 
-            // Everything else the doctor found. None of it stops the file being
-            // written — a graph mid-edit legitimately has states nothing reaches
-            // yet — but the objects an .hkx save drops have to be said out loud
-            // before they vanish, so the report opens whenever there is real loss
-            // or a structural error to see.
             var rest = doctor.Issues
                 .Where(i => i.Category != ValidationIssue.CategoryType).ToList();
+
+            // A graph that contradicts itself is refused rather than written — but
+            // only for the contradictions this session introduced. Refusing over
+            // everything would make half of Bethesda's own files unsaveable
+            // (vanilla dragonbehavior ships a duplicate stateId and eight
+            // transitions to states that don't exist), and an editor that can't
+            // re-save the file it just opened is no use to anyone. What it must
+            // never do is emit a binary that is newly broken: that file converts,
+            // loads, and then T-poses or hard-faults with nothing in any log, so
+            // the write is the last place the reason can still be said out loud.
+            var newlyBroken = _structuralBaseline == null
+                ? new List<ValidationIssue>()
+                : doctor.StructuralErrors
+                    .Where(i => !_structuralBaseline.Contains(i.Fingerprint)).ToList();
+
+            if (saveAsHkx && newlyBroken.Count > 0)
+            {
+                var refusal = new ValidationDialog(
+                    new GraphDoctorReport
+                    {
+                        Issues = newlyBroken,
+                        GraphName = doctor.GraphName,
+                    },
+                    ValidationDialogMode.SaveRefused,
+                    Path.GetFileName(sfd.FileName),
+                    $"This graph contradicts itself in {newlyBroken.Count} " +
+                    $"place{(newlyBroken.Count == 1 ? "" : "s")} that the file didn't when you opened it, " +
+                    $"so it was not written as {editionName} HKX. Havok would accept it and say nothing.")
+                { Owner = this };
+                WireIssueNavigation(refusal);
+                refusal.ShowDialog();
+
+                // The status bar gets the one-line version, which is what stays on
+                // screen after the dialog is gone.
+                StatusText.Text = "✕ Save refused — " + doctor.RefusalLine(newlyBroken[0]);
+                return;
+            }
+
+            // Everything else the doctor found. None of it stops the file being
+            // written — a graph mid-edit legitimately has states nothing reaches
+            // yet, and a defect the file arrived with is not this save's to
+            // block — but the objects an .hkx save drops have to be said out loud
+            // before they vanish, so the report opens whenever there is real loss
+            // or a structural error to see.
             if (rest.Any(i => i.IsError) || doctor.PrunedCount > 0)
             {
                 var gate = new ValidationDialog(
                     new GraphDoctorReport { Issues = rest, PrunedCount = doctor.PrunedCount },
+                    ValidationDialogMode.PreSaveDecision,
                     Path.GetFileName(sfd.FileName))
                 { Owner = this };
                 WireIssueNavigation(gate);
@@ -3959,6 +4000,26 @@ namespace SageHavokEditor
         /// </summary>
         private GraphDoctorReport RunGraphDoctor() =>
             new GraphDoctor(manager, Workspace?.Character?.AnimationNames).Run();
+
+        /// <summary>
+        /// The structural errors the file already had when it was opened. A save
+        /// is refused over the ones that aren't in here — what this session broke —
+        /// and never over what it merely inherited: vanilla files carry real
+        /// structural defects (dragonbehavior alone ships a duplicate stateId and
+        /// eight transitions to states that don't exist), and an editor that
+        /// refuses to re-save the file it just opened is useless. Null means no
+        /// baseline was taken, which is read as "refuse nothing" — a missing
+        /// baseline must not turn into a blocked save.
+        /// </summary>
+        private HashSet<string>? _structuralBaseline;
+
+        /// <summary>
+        /// Take that baseline. Called at the end of each load, after the pipeline
+        /// has done its own repairs — the event-array reconcile in particular, so
+        /// a desync the load fixed isn't recorded as pre-existing.
+        /// </summary>
+        private void SnapshotStructuralBaseline() =>
+            _structuralBaseline = RunGraphDoctor().StructuralFingerprints();
 
         /// <summary>Clicking an issue selects its object in the tree and the property editor.</summary>
         private void WireIssueNavigation(ValidationDialog dialog)
