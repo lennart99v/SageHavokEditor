@@ -203,6 +203,7 @@ namespace SageHavokEditor.UI
         public event Action<HkObject, string, string>? TransitionRetargetedFromGraph; // (trChild, oldToStateId, newToStateId)
         public event Action<string>? NavigateToEventRequested; // (eventId) — jump to the event definition + usages
         public event Action<string>? ShowAnimationRequested;   // (stateObjectId) — open the state's clip animation + tags
+        public event Action<string>? OpenBehaviorReferenceRequested; // (behaviorName) — open the referenced file
         public event Action<HkObject, string, string>? TransitionFlagsChangedFromGraph; // (trChild, oldFlags, newFlags)
         /// <summary>A structural graph edit that should be recorded as a single undo step: (description, undo, redo).</summary>
         public event Action<string, Action, Action>? GraphEditPerformed;
@@ -431,6 +432,23 @@ namespace SageHavokEditor.UI
             //   State node → show its generator hierarchy
             //   SM node    → open that machine's state graph (it may be nested inside a
             //                generator chain, e.g. H2H_SpecialIdle_State's sub-behaviour).
+            //   Reference  → the graph continues in another file; open it.
+            if (obj.ClassName == "hkbBehaviorReferenceGenerator")
+            {
+                var behaviorName = obj.Params
+                    .FirstOrDefault(p => p.Name == "behaviorName")?.Value?.Trim() ?? "";
+                if (behaviorName.Length == 0)
+                {
+                    _visualHost.ShowOverlayText("This reference has no behaviorName to open",
+                        Color.FromRgb(0x9D, 0x9D, 0x9D));
+                    return;
+                }
+                // The path is resolved against the project on disk, which only the
+                // window knows about — the graph view has a manager, not a folder.
+                OpenBehaviorReferenceRequested?.Invoke(behaviorName);
+                return;
+            }
+
             if (obj.ClassName == "hkbStateMachineStateInfo")
             {
                 var genRef = obj.Params.FirstOrDefault(p => p.Name == "generator")?.Value;
@@ -697,6 +715,24 @@ namespace SageHavokEditor.UI
 
             var copyName = new MenuItem { Header = $"📋 Copy Name ({node.Name})" };
             copyName.Click += (_, __) => Clipboard.SetText(node.Name);
+
+            // A behaviour reference is where this graph stops and another begins —
+            // the one node whose subject is a different file.
+            if (_manager.ObjectMap.TryGetValue(node.Id, out var refObj)
+                && refObj.ClassName == "hkbBehaviorReferenceGenerator")
+            {
+                var behaviorName = refObj.Params
+                    .FirstOrDefault(p => p.Name == "behaviorName")?.Value?.Trim() ?? "";
+                var openRef = new MenuItem
+                {
+                    Header = behaviorName.Length == 0
+                        ? "📂 Open referenced behavior (no path set)"
+                        : $"📂 Open {System.IO.Path.GetFileName(behaviorName)}",
+                    IsEnabled = behaviorName.Length > 0,
+                };
+                openRef.Click += (_, __) => OpenBehaviorReferenceRequested?.Invoke(behaviorName);
+                menu.Items.Add(openRef);
+            }
 
             // Only show drill option for state nodes
             if (_manager.ObjectMap.TryGetValue(node.Id, out var obj)
@@ -2541,9 +2577,11 @@ namespace SageHavokEditor.UI
                 Name = name,
                 ClassName = obj.ClassName,
                 NodeType = ClassifyNode(obj.ClassName),
-                // A nested state machine can be opened into its own state graph
-                // (see DrillInto) — show the drill affordance so it reads as clickable.
-                CanDrillDown = obj.ClassName == "hkbStateMachine",
+                // A nested state machine can be opened into its own state graph,
+                // and a behaviour reference opens the file it names (see DrillInto)
+                // — show the drill affordance so both read as clickable.
+                CanDrillDown = obj.ClassName == "hkbStateMachine"
+                            || obj.ClassName == "hkbBehaviorReferenceGenerator",
                 Tag = obj
             };
             nodes.Add(node);
