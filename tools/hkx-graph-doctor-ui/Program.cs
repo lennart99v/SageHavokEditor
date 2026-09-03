@@ -6,6 +6,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using SageHavokEditor.Core.Validation;
+using SageHavokEditor.Models;
+using SageHavokEditor.UI;
 using SageHavokEditor.UI.Dialogs;
 
 // Drives the graph doctor's two faces through the real MainWindow and the real
@@ -82,6 +84,7 @@ internal static class Program
             GatePath(report);
             BaselinePath(mw, manager);
             RefusalPath(report);
+            BehaviorReferencePath(mw, manager);
         }
         catch (Exception ex)
         {
@@ -241,6 +244,79 @@ internal static class Program
             List(dlg).Items.Cast<ValidationIssue>().All(i => i.HasCause));
 
         dlg.Close();
+    }
+
+    // -- Following a behaviour reference --------------------------------------
+    // The one node in a graph whose subject is a different file. Double-clicking
+    // it has to reach the window, which is the only thing that knows where the
+    // project sits on disk — the graph view holds a manager, not a folder.
+    private static void BehaviorReferencePath(SageHavokEditor.MainWindow mw,
+        SageHavokEditor.Core.HavokManager manager)
+    {
+        Console.WriteLine("following a behaviour reference:");
+
+        Check("loading the file built a reference index", Member(mw, "_behaviorRefs") != null);
+
+        var graph = (StateMachineGraphView)Member(mw, "GraphView");
+        var wiring = typeof(StateMachineGraphView).GetField(
+            "OpenBehaviorReferenceRequested", BindingFlags.Instance | BindingFlags.NonPublic);
+        Check("the window is listening for the open request",
+            wiring?.GetValue(graph) != null);
+
+        // Put a reference into the graph and drill into it the way a double-click
+        // does. Nothing in these sample files has one.
+        var host = manager.ObjectMap.Values.First(o =>
+            o.ClassName == "hkbStateMachineStateInfo"
+            && (o.Params.FirstOrDefault(p => p.Name == "generator")?.Value ?? "").StartsWith("#"));
+        var generator = host.Params.First(p => p.Name == "generator");
+        var oldValue = generator.Value;
+        var oldChildren = generator.Children.ToList();
+
+        const string wanted = @"Behaviors\UiTest.hkx";
+        var reference = new HkObject { Id = "#9401", ClassName = "hkbBehaviorReferenceGenerator" };
+        reference.Params.Add(new HkParam { Name = "name", Value = "UiTest_Reference" });
+        reference.Params.Add(new HkParam { Name = "behaviorName", Value = wanted });
+        manager.ObjectMap[reference.Id] = reference;
+        generator.Children.Clear();
+        generator.Value = reference.Id;
+
+        // Take the window's own handler off first. It is the thing being proved
+        // present a few lines up — and if it runs here it resolves the made-up
+        // path, fails, and opens a modal MessageBox nothing in this process can
+        // dismiss. Restored in the finally.
+        var windowHandler = wiring?.GetValue(graph);
+        wiring?.SetValue(graph, null);
+
+        string asked = null;
+        Action<string> listener = name => asked = name;
+        graph.OpenBehaviorReferenceRequested += listener;
+
+        void Drill(GraphNode n) => typeof(StateMachineGraphView)
+            .GetMethod("DrillInto", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(graph, new object[] { n });
+
+        try
+        {
+            var node = new GraphNode { Id = reference.Id, Name = "UiTest_Reference" };
+            Drill(node);
+            Check("drilling in asks the window to open the file it names",
+                asked == wanted, asked ?? "(nothing asked)");
+
+            // A reference with no path has nothing to open, and must not send the
+            // window off to resolve an empty string.
+            asked = null;
+            reference.Params[1].Value = "";
+            Drill(node);
+            Check("a reference with no path asks for nothing", asked == null, asked);
+        }
+        finally
+        {
+            wiring?.SetValue(graph, windowHandler);
+            manager.ObjectMap.Remove(reference.Id);
+            generator.Children.Clear();
+            foreach (var c in oldChildren) generator.Children.Add(c);
+            generator.Value = oldValue;
+        }
     }
 
     /// <summary>

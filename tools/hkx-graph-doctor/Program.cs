@@ -1,5 +1,6 @@
 using System.Xml.Serialization;
 using SageHavokEditor.Core;
+using SageHavokEditor.Core.Services;
 using SageHavokEditor.Core.Validation;
 using SageHavokEditor.Models;
 
@@ -473,7 +474,120 @@ else
     }
 }
 
-// -- 9. a file header pointing at a root that isn't there -----------------
+// -- 9. behaviour references ----------------------------------------------
+// Neither sample file has one, so the subject is built here: a reference node
+// pointing at this very file. A graph referencing itself is nonsense as a graph
+// and perfect as a test — the two event tables are identical by construction, so
+// a correct alignment check has nothing whatever to say about it.
+{
+    Console.WriteLine();
+    Console.WriteLine("== behaviour references ==");
+
+    var index = new BehaviorReferenceIndex(new[] { Path.GetDirectoryName(Path.GetFullPath(args[0])) });
+    GraphDoctorReport RunRefs() => new GraphDoctor(manager, animations, index).Run();
+
+    List<ValidationIssue> RefIssues(GraphDoctorReport r) => r.Issues
+        .Where(i => i.Category == ValidationIssue.CategoryBehaviorReference
+                 || i.Category == ValidationIssue.CategoryBehaviorReferenceEvents)
+        .ToList();
+
+    Check("a file with no references has nothing to say about them",
+        RefIssues(RunRefs()).Count == 0);
+
+    // Wire the node into the graph properly: an unreferenced object is dropped by
+    // the .hkx save, and a check that only fires on orphans would be worthless.
+    var host = manager.ObjectMap.Values.First(o =>
+        o.ClassName == "hkbStateMachineStateInfo"
+        && (o.Params.FirstOrDefault(p => p.Name == "generator")?.Value ?? "").StartsWith("#"));
+    var generator = host.Params.First(p => p.Name == "generator");
+    var oldGen = generator.Value;
+    var oldGenChildren = generator.Children.ToList();
+
+    var reference = new HkObject { Id = "#9301", ClassName = "hkbBehaviorReferenceGenerator" };
+    reference.Params.Add(new HkParam { Name = "name", Value = "DoctorTest_Reference" });
+    reference.Params.Add(new HkParam { Name = "behaviorName", Value = "" });
+    var behaviorName = reference.Params[1];
+
+    manager.ObjectMap[reference.Id] = reference;
+    generator.Children.Clear();
+    generator.Value = reference.Id;
+
+    try
+    {
+        Check("an empty behaviorName is reported",
+            RefIssues(RunRefs()).Any(i => i.Category == ValidationIssue.CategoryBehaviorReference
+                                          && i.ObjectId == reference.Id));
+
+        behaviorName.Value = @"Behaviors\DoctorTest_NoSuchFile.hkx";
+        var missing = RefIssues(RunRefs())
+            .FirstOrDefault(i => i.Category == ValidationIssue.CategoryBehaviorReference);
+        Check("a path that isn't on disk is reported", missing != null);
+        if (missing != null)
+        {
+            Console.WriteLine($"          → {missing.Severity}: {Trim(missing.Description, 130)}");
+            // Deliberately not structural. Whether a file is on this disk says
+            // nothing about whether the graph contradicts itself, and a mod
+            // manager's virtual file system legitimately keeps it elsewhere — so
+            // this reports, and never refuses a save.
+            Check("but never refuses the save", !missing.IsStructural);
+        }
+
+        // .hkx is what a behaviourName always says; the file beside us is .xml,
+        // which is how a project mid-edit actually looks.
+        var self = Path.GetFileNameWithoutExtension(args[0]) + ".hkx";
+        behaviorName.Value = self;
+        var resolved = RefIssues(RunRefs());
+        Check($"'{self}' resolves to the .xml beside it",
+            !resolved.Any(i => i.Category == ValidationIssue.CategoryBehaviorReference),
+            string.Join("; ", resolved.Take(2).Select(i => Trim(i.Description, 80))));
+        Check("and a graph referencing itself has no event that can't cross",
+            !resolved.Any(i => i.Category == ValidationIssue.CategoryBehaviorReferenceEvents),
+            string.Join("; ", resolved.Take(2).Select(i => Trim(i.Description, 100))));
+
+        // Now make exactly one name disagree. Renaming rather than removing keeps
+        // the array lengths and every event id valid, so the only thing that
+        // changes is whether one name still matches across the reference.
+        var stringData = manager.ObjectMap.Values
+            .First(o => o.ClassName == "hkbBehaviorGraphStringData");
+        var eventNames = stringData.Params.First(p => p.Name == "eventNames");
+
+        var array = manager.ObjectMap.Values.First(o =>
+            o.ClassName == "hkbStateMachineTransitionInfoArray"
+            && o.Params.Any(p => p.Name == "transitions" && p.Children.Count > 0));
+        int usedIndex = int.Parse(ValueOf(array.Params.First(p => p.Name == "transitions").Children[0], "eventId"));
+        var realName = eventNames.Strings[usedIndex];
+        eventNames.Strings[usedIndex] = "DoctorTest_RenamedEvent";
+
+        try
+        {
+            var drifted = RefIssues(RunRefs())
+                .FirstOrDefault(i => i.Category == ValidationIssue.CategoryBehaviorReferenceEvents);
+            Check($"renaming one event this file uses ('{realName}') makes it uncrossable",
+                drifted != null);
+            if (drifted != null)
+            {
+                Console.WriteLine($"          → {drifted.Severity}: {Trim(drifted.Description, 150)}");
+                Check("named, and counted as one rather than one row per event",
+                    drifted.Description.Contains(realName) && drifted.Description.Contains(" 1 event name "),
+                    Trim(drifted.Description, 80));
+                Check("also a lead rather than a refusal", !drifted.IsStructural);
+            }
+        }
+        finally { eventNames.Strings[usedIndex] = realName; }
+    }
+    finally
+    {
+        manager.ObjectMap.Remove(reference.Id);
+        generator.Children.Clear();
+        foreach (var c in oldGenChildren) generator.Children.Add(c);
+        generator.Value = oldGen;
+    }
+
+    Check("removing the reference restores the baseline exactly",
+        Fingerprint(Run()).SetEquals(baseFingerprint));
+}
+
+// -- 10. a file header pointing at a root that isn't there ----------------
 // Not a mutation of the loaded graph: toplevelobject is read at BuildGraph, so
 // this one is loaded wrong from the start, the way a hand-edited file would be.
 {
