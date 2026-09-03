@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A clean file was reporting itself in the colour of a problem.** Both badges
+  at the top of the validation report are styled to turn green at zero through a
+  `DataTrigger`, and neither could ever fire: nothing set the dialog's
+  `DataContext`, so `{Binding ErrorCount}` resolved to nothing and the styles
+  kept their setter defaults. A file with no errors has been showing a purple
+  "0 Errors" since the dialog was written. One line, plus the same green-at-zero
+  treatment for the warnings badge, which never had it — an amber "0 Warnings"
+  next to a green "0 Errors" reads as a problem you haven't found yet. Caught
+  while looking at the badges rather than the list; the harness check for it
+  fails on the old code, which is the only reason to trust it.
+
+- **A referenced behaviour file was read once and remembered forever.** The
+  reference index cached every lookup for the life of the index, which is
+  rebuilt only on load — so the file the comparison dialog showed you was the
+  file as it stood when you first looked at it. That is precisely wrong for this
+  feature: the referenced graph is usually the one being edited in the other
+  window. A cached entry is now dropped when the file's write time moves, and an
+  unresolved one is always retried, because authoring the reference before the
+  file it names exists is the normal order of doing this. Costs one stat per
+  reference per pass.
+
 ### Added
 
 - **A clip's animation can be registered in the character file from the clip
@@ -99,8 +122,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   The index reads `.hkx` through HKX2 in memory rather than the async conversion
   service — a reference lookup is not a user action, and the deserialize is
-  in-memory either way, so there is no temp file to write. Results are cached for
-  the life of the index, which is rebuilt on every load. `FindFileCaseInsensitive`
+  in-memory either way, so there is no temp file to write. Results are cached,
+  and dropped when the file's write time moves (see Fixed). `FindFileCaseInsensitive`
   moved out of `HavokWorkspace` into a shared `HkxPathResolver`, since both now
   chase the same kind of path by the same rules and two copies would drift.
 

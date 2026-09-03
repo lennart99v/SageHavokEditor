@@ -81,18 +81,37 @@
                 </StackPanel>
             </Border>
 
-            <!-- Warnings badge -->
-            <Border CornerRadius="4" Padding="10,4"
-                    Background="{DynamicResource BadgeYellowBrush}"
-                    BorderBrush="{DynamicResource BadgeYellowTextBrush}"
-                    BorderThickness="1">
+            <!-- Warnings badge. Goes green at zero the way the errors badge does:
+                 an amber "0 Warnings" beside a green "0 Errors" reads as a
+                 problem you haven't found yet. -->
+            <Border CornerRadius="4" Padding="10,4" BorderThickness="1">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="{DynamicResource BadgeYellowBrush}"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource BadgeYellowTextBrush}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding WarningCount}" Value="0">
+                                <Setter Property="Background" Value="{DynamicResource BadgeGreenBrush}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource BadgeGreenTextBrush}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="⚠ " FontWeight="Bold"
-                               Foreground="{DynamicResource BadgeYellowTextBrush}"/>
+                    <StackPanel.Resources>
+                        <Style x:Key="WarningBadgeText" TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource BadgeYellowTextBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding WarningCount}" Value="0">
+                                    <Setter Property="Foreground" Value="{DynamicResource BadgeGreenTextBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Resources>
+                    <TextBlock Text="⚠ " FontWeight="Bold" Style="{StaticResource WarningBadgeText}"/>
                     <TextBlock x:Name="WarningCountText" FontWeight="SemiBold"
-                               Foreground="{DynamicResource BadgeYellowTextBrush}"/>
-                    <TextBlock Text=" Warnings"
-                               Foreground="{DynamicResource BadgeYellowTextBrush}"/>
+                               Style="{StaticResource WarningBadgeText}"/>
+                    <TextBlock Text=" Warnings" Style="{StaticResource WarningBadgeText}"/>
                 </StackPanel>
             </Border>
         </StackPanel>

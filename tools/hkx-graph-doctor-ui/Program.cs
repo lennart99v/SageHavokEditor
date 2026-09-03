@@ -147,6 +147,18 @@ internal static class Program
             List(dlg).Items.Count == report.ErrorCount,
             $"{List(dlg).Items.Count} vs {report.ErrorCount}");
 
+        // A clean file must not present itself in the colour of a problem. Both
+        // badges are styled to go green at zero through a DataTrigger, and until
+        // the dialog was given a DataContext neither trigger could ever fire.
+        var clean = new ValidationDialog(new GraphDoctorReport());
+        clean.Show();
+        clean.UpdateLayout();
+        var green = (System.Windows.Media.Brush)clean.FindResource("BadgeGreenTextBrush");
+        Check("with nothing to report, both badges read as clean",
+            ((TextBlock)clean.FindName("ErrorCountText")).Foreground == green
+            && ((TextBlock)clean.FindName("WarningCountText")).Foreground == green);
+        clean.Close();
+
         Check("the read-out offers Close, not a save decision",
             ((Button)dlg.FindName("BtnCloseReport")).Visibility == Visibility.Visible
             && ((Button)dlg.FindName("BtnSaveAnyway")).Visibility == Visibility.Collapsed);
