@@ -122,8 +122,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   The index reads `.hkx` through HKX2 in memory rather than the async conversion
   service — a reference lookup is not a user action, and the deserialize is
-  in-memory either way, so there is no temp file to write. Results are cached for
-  the life of the index, which is rebuilt on every load. `FindFileCaseInsensitive`
+  in-memory either way, so there is no temp file to write. Results are cached,
+  and dropped when the file's write time moves (see Fixed). `FindFileCaseInsensitive`
   moved out of `HavokWorkspace` into a shared `HkxPathResolver`, since both now
   chase the same kind of path by the same rules and two copies would drift.
 
