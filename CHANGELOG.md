@@ -9,6 +9,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A behaviour reference can be followed, and the graph doctor reads what's on
+  the other side.** `hkbBehaviorReferenceGenerator` is the one node whose subject
+  is a different file — the bridge of every Nemesis/Pandora-style patch — and
+  until now its `behaviorName` was a string you had to go and find yourself.
+
+  **Following it.** Double-click the node in the Graph tab, or right-click →
+  📂 Open ‹file›. A new `BehaviorReferenceIndex` resolves the path the way the
+  runtime does: against the character project's root (the parent of the folder
+  holding the character file, the same anchor `behaviorFilename` uses), falling
+  back to the folders of whatever else is open, matched case-insensitively
+  segment by segment. A `.hkx` path also resolves to a `.xml` beside it, which is
+  what a project mid-edit actually looks like. When nothing matches, the message
+  lists the folders that were searched — the path is relative to somewhere the
+  file never states, so "not found" alone tells you nothing you can act on.
+
+  **Two new doctor checks.** A `behaviorName` that resolves to nothing (or is
+  empty) is reported: at runtime the state is entered and nothing plays, with no
+  error anywhere. And because the two graphs link by event *name*, each keeping
+  its own table, the referenced graph's events are compared against this file's —
+  reported as one line per reference naming how many of the events it *uses* have
+  no entry here, with a sample.
+
+  Three decisions in that shape are deliberate. Neither check is structural, so
+  neither can refuse a save: whether a file is on *this* disk says nothing about
+  whether the graph contradicts itself, and under a mod manager's virtual file
+  system the referenced file legitimately isn't there. The comparison uses only
+  the events some node in the referenced graph actually refers to —
+  `HavokTypeCatalog`'s `HkParamSemantic` already marks every int that is an event
+  index, so that comes for free and covers the nested sites. And it is one row
+  per reference rather than one per event, because a referenced graph declares as
+  many events as it likes and most of them are its own business: the count is the
+  signal, the names are the lead. An event the child only uses internally is fine
+  with no entry here; what the check catches is the opposite mistake, expecting
+  an event to cross when it can't, which in-game is indistinguishable from
+  everything working until the animation doesn't play.
+
+  The index reads `.hkx` through HKX2 in memory rather than the async conversion
+  service — a reference lookup is not a user action, and the deserialize is
+  in-memory either way, so there is no temp file to write. Results are cached for
+  the life of the index, which is rebuilt on every load. `FindFileCaseInsensitive`
+  moved out of `HavokWorkspace` into a shared `HkxPathResolver`, since both now
+  chase the same kind of path by the same rules and two copies would drift.
+
+  Neither sample file has a behaviour reference, so the alignment check's
+  real-world noise is unmeasured — worth saying plainly. `tools/hkx-graph-doctor`
+  builds the subject instead: a graph referencing itself, whose two event tables
+  are identical by construction, so a correct check says nothing at all about it;
+  renaming one event this file uses then makes exactly one uncrossable, named and
+  counted as one row. It also covers the empty path, the missing path, the
+  `.hkx`→`.xml` fallback, and that neither finding can refuse a save.
+  `tools/hkx-graph-doctor-ui` covers the part only the app can get wrong: that
+  the load builds an index, that the window is actually listening for the open
+  request, and that drilling into a reference asks for the file it names — and
+  asks for nothing when there is no path. That last harness has to unhook the
+  window's own handler first, or it resolves the made-up path, fails, and opens a
+  modal MessageBox nothing in the process can dismiss.
+
 - **An `.hkx` save is refused when the graph contradicts itself.** The evidence
   for the policy is in ROADMAP → Behavior Relay: a case-insensitive `.hky`
   filename collision let MO2's VFS merge two mods into a structurally
