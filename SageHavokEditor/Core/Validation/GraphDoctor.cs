@@ -15,11 +15,50 @@ namespace SageHavokEditor.Core.Validation
         /// <summary>How many objects an <c>.hkx</c> save would drop — see <see cref="ValidationIssue.CategoryPruned"/>.</summary>
         public int PrunedCount { get; init; }
 
+        /// <summary>
+        /// The behaviour graph's own name (<c>DragonBehavior.hkb</c>), for the
+        /// refusal line. A file holds one graph, but the person reading the
+        /// message may have several open across the project, and the name is what
+        /// they recognise it by. Empty for a file with no graph in it.
+        /// </summary>
+        public string GraphName { get; init; } = "";
+
+        /// <summary>
+        /// One line per refused finding: which graph, what failed, and the likely
+        /// cause. Nothing here is discoverable from the file afterwards — a graph
+        /// this file describes is accepted by the converter and by Havok, so the
+        /// only place the reason can be said is here, before the write.
+        /// </summary>
+        public string RefusalLine(ValidationIssue issue)
+        {
+            var where = string.IsNullOrEmpty(GraphName) ? "" : $"{GraphName} · ";
+            var who = string.IsNullOrEmpty(issue.ObjectId)
+                ? issue.ObjectName : $"{issue.ObjectName} ({issue.ObjectId})";
+            var why = issue.HasCause ? $"  Likely cause: {issue.Cause}." : "";
+            return $"{where}{who} — {issue.Description}{why}";
+        }
+
         public int ErrorCount => Issues.Count(i => i.IsError);
         public int WarningCount => Issues.Count(i => i.IsWarning);
 
+        /// <summary>
+        /// The findings that say the graph contradicts itself — see
+        /// <see cref="ValidationIssue.IsStructural"/>. An <c>.hkx</c> save is
+        /// refused over any of these the file didn't already have.
+        /// </summary>
+        public List<ValidationIssue> StructuralErrors =>
+            Issues.Where(i => i.IsStructural).ToList();
+
         /// <summary>Nothing to say — the save can go ahead without asking.</summary>
         public bool IsClean => Issues.Count == 0;
+
+        /// <summary>
+        /// Fingerprints of every structural error, for use as a baseline: the set
+        /// a later pass is compared against to tell what this editing session
+        /// broke from what was in the file when it was opened.
+        /// </summary>
+        public HashSet<string> StructuralFingerprints() =>
+            Issues.Where(i => i.IsStructural).Select(i => i.Fingerprint).ToHashSet();
 
         /// <summary>
         /// One line naming the worst of it, for the top of the pre-save report.
@@ -97,6 +136,8 @@ namespace SageHavokEditor.Core.Validation
                 // that stops the graph loading should not be below page two.
                 Issues = issues.OrderByDescending(i => i.IsError).ToList(),
                 PrunedCount = pruned.Count,
+                GraphName = Name(_manager.ObjectMap.Values
+                    .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraph")),
             };
         }
 
@@ -122,6 +163,7 @@ namespace SageHavokEditor.Core.Validation
                     {
                         Severity = "Error",
                         Category = ValidationIssue.CategoryNullGenerator,
+                        Cause = "the generator was removed without a replacement, or never wired in",
                         ObjectId = obj.Id,
                         ObjectClass = obj.ClassName,
                         ObjectName = Name(obj),
@@ -172,6 +214,8 @@ namespace SageHavokEditor.Core.Validation
                     {
                         Severity = "Error",
                         Category = ValidationIssue.CategoryIndexRange,
+                        Cause = $"the {kind} was deleted from {table} after this field was set, "
+                              + "or the field was copied from a file with a longer table",
                         ObjectId = obj.Id,
                         ObjectClass = obj.ClassName,
                         ObjectName = Name(obj),
@@ -207,6 +251,7 @@ namespace SageHavokEditor.Core.Validation
                 {
                     Severity = "Warning",
                     Category = ValidationIssue.CategoryAnimation,
+                    Cause = "the animation was added to the graph but not to the character file",
                     ObjectId = clip.Id,
                     ObjectClass = clip.ClassName,
                     ObjectName = Name(clip),
@@ -277,6 +322,7 @@ namespace SageHavokEditor.Core.Validation
                     {
                         Severity = "Warning",
                         Category = ValidationIssue.CategoryUnreachableState,
+                        Cause = "the state was added or duplicated and no transition into it was authored yet",
                         ObjectId = state!.Id,
                         ObjectClass = state.ClassName,
                         ObjectName = Name(state),
@@ -311,7 +357,8 @@ namespace SageHavokEditor.Core.Validation
                 issues.Add(new ValidationIssue
                 {
                     Severity = "Error",
-                    Category = ValidationIssue.CategoryPruned,
+                    Category = ValidationIssue.CategoryMissingRoot,
+                    Cause = "the root object was deleted, or the file was assembled without one",
                     ObjectId = "",
                     ObjectClass = "hkpackfile",
                     ObjectName = "(file header)",
@@ -338,6 +385,8 @@ namespace SageHavokEditor.Core.Validation
                 {
                     Severity = "Warning",
                     Category = ValidationIssue.CategoryPruned,
+                    Cause = "the object was created but never wired into its parent, "
+                          + "or the only thing referencing it was deleted",
                     ObjectId = o.Id,
                     ObjectClass = o.ClassName,
                     ObjectName = Name(o),
@@ -368,8 +417,8 @@ namespace SageHavokEditor.Core.Validation
             return v.Length > 0 && v != "-1";
         }
 
-        private static string Name(HkObject o) =>
-            o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id;
+        private static string Name(HkObject? o) =>
+            o == null ? "" : o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id;
 
         private static string? Get(HkObject? o, string param) =>
             o?.Params.FirstOrDefault(p => p.Name == param)?.Value;
