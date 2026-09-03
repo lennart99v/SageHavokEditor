@@ -96,6 +96,7 @@ internal static class Program
             if (Phase("refusal")) RefusalPath(report);
             if (Phase("reference")) BehaviorReferencePath(mw, manager);
             if (Phase("compare")) CompareEventsPath(mw, manager, path);
+            if (Phase("prompts")) PromptWiringPath(mw);
         }
         catch (Exception ex)
         {
@@ -369,6 +370,39 @@ internal static class Program
         dlg.UpdateLayout();
         Shoot(dlg, "reference-events");
         dlg.Close();
+    }
+
+    // -- The two prompts the graph raises -------------------------------------
+    // Both are offers the window makes on the graph's behalf, and both are wired
+    // in WireGraphEvents — which is exactly the kind of subscription that gets
+    // dropped in a refactor and is never noticed, because a prompt that stops
+    // appearing looks like a prompt that had nothing to say.
+    private static void PromptWiringPath(SageHavokEditor.MainWindow mw)
+    {
+        Console.WriteLine("the prompts the graph raises:");
+
+        var graph = (StateMachineGraphView)Member(mw, "GraphView");
+        foreach (var name in new[] { "AnimationChosen", "BehaviorReferenceCreated" })
+        {
+            var field = typeof(StateMachineGraphView).GetField(
+                name, BindingFlags.Instance | BindingFlags.NonPublic);
+            Check($"the window is listening for {name}", field?.GetValue(graph) != null);
+        }
+
+        // The registration offer must be silent unless it has something to offer:
+        // no character file open here, so it has to return without a dialog. If it
+        // didn't, this call would block on a modal nothing can dismiss.
+        var offer = typeof(SageHavokEditor.MainWindow).GetMethod(
+            "OfferAnimationRegistration", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        offer.Invoke(mw, new object[] { @"Animations\UiTest_Unregistered.hkx", "A clip" });
+        Check("it stays silent with no character file open", true);
+
+        // Same for a project that isn't the player's: the reminder must not fire,
+        // or this blocks too.
+        var remind = typeof(SageHavokEditor.MainWindow).GetMethod(
+            "RemindAboutFirstPerson", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        remind.Invoke(mw, null);
+        Check("the first-person reminder stays quiet outside the player project", true);
     }
 
     /// <summary>
