@@ -204,6 +204,7 @@ namespace SageHavokEditor.UI
         public event Action<string>? NavigateToEventRequested; // (eventId) — jump to the event definition + usages
         public event Action<string>? ShowAnimationRequested;   // (stateObjectId) — open the state's clip animation + tags
         public event Action<string>? OpenBehaviorReferenceRequested; // (behaviorName) — open the referenced file
+        public event Action<string>? CompareBehaviorReferenceEventsRequested; // (behaviorName) — event tables side by side
         public event Action<HkObject, string, string>? TransitionFlagsChangedFromGraph; // (trChild, oldFlags, newFlags)
         /// <summary>A structural graph edit that should be recorded as a single undo step: (description, undo, redo).</summary>
         public event Action<string, Action, Action>? GraphEditPerformed;
@@ -732,6 +733,15 @@ namespace SageHavokEditor.UI
                 };
                 openRef.Click += (_, __) => OpenBehaviorReferenceRequested?.Invoke(behaviorName);
                 menu.Items.Add(openRef);
+
+                var compare = new MenuItem
+                {
+                    Header = "🔗 Compare events with referenced file",
+                    IsEnabled = behaviorName.Length > 0,
+                };
+                compare.Click += (_, __) =>
+                    CompareBehaviorReferenceEventsRequested?.Invoke(behaviorName);
+                menu.Items.Add(compare);
             }
 
             // Only show drill option for state nodes
