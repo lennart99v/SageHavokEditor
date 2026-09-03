@@ -505,7 +505,21 @@ namespace SageHavokEditor.UI.Dialogs
                 "The clip only references an animation path. The .hkx animation file still has to exist " +
                 "under the actor's folder, and be registered in the character file's Animation Names " +
                 "list (Character tab) — otherwise the clip has nothing to play. If you are shipping a " +
-                "Nemesis/Pandora patch, the animation is registered through the patch as usual.");
+                "Nemesis/Pandora patch, the animation is registered through the patch as usual.\n\n" +
+                "Registering it, from here\n" +
+                "When a character file is open and the path you typed isn't in its list, the editor " +
+                "offers to add it there and then — from 🎬 New clip generator, from ＋ New Clip " +
+                "Generator, and from Browse on an existing clip. Say yes and it goes in as one " +
+                "undoable step. Note the character file is a separate file: registering the animation " +
+                "does not save it, and the status bar says so. Nothing is offered if the animation is " +
+                "already registered, if the path is blank, or if no character file is open.\n\n" +
+                "First person is a different project\n" +
+                "If you are working on the player, remember that the arms you see in first person come " +
+                "from a separate project under _1stperson\\, with its own behavior files, event table " +
+                "and animations. Nothing you do in the third-person project reaches it. The editor " +
+                "reminds you when you export a patch or author a behavior reference, but the rule is " +
+                "worth knowing in advance: it works in third person, you switch view, and nothing " +
+                "happens — with no error anywhere to suggest the patch rather than the animation.");
 
             AddSection("duplicate_state", "Duplicating a State",
                 "Custom behavior work is usually a family of near-identical states — Aim, Throw, " +
