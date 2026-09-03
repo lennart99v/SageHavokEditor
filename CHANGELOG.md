@@ -9,6 +9,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **An `.hkx` save is refused when the graph contradicts itself.** The evidence
+  for the policy is in ROADMAP → Behavior Relay: a case-insensitive `.hky`
+  filename collision let MO2's VFS merge two mods into a structurally
+  inconsistent graph, the compiler accepted it and emitted a `0_master` 107 KB
+  short, and the game hard-faulted with no crash log and no log line — while the
+  same input, offline, produced merely wrong-but-complete bytes that every
+  offline gate passed. The lesson is that a graph like this is *accepted* at
+  every stage that could complain, so the write is the last place the reason can
+  still be said.
+
+  `ValidationIssue.IsStructural` marks the findings that mean the graph
+  contradicts itself — a `#ref` to an id the file doesn't hold, a null generator,
+  an event id or variable index past its table, a `startStateId` or `toStateId`
+  matching no state, a duplicate `stateId` within one machine, two
+  position-paired arrays disagreeing on length, a `toplevelobject` that isn't
+  there. That is Behavior Relay's four checks (dangling node references, root
+  generator resolves, `eventInfos`/`eventNames` and the three variable arrays
+  agree, `stateId` unique per machine) plus the two the graph doctor added; all
+  of them were already implemented, so what is new here is the policy. An `.hkx`
+  save carrying one of these is not written, and the report opens with no way to
+  overrule it, each row now carrying the likely cause under the description —
+  "the destination state was deleted, or its stateId was renumbered" rather than
+  only the fact of it. The status bar keeps the one-line version: which graph,
+  what failed, likely cause.
+
+  **The refusal is relative to what the file arrived with**, which is the one
+  place this diverges from Cassie's design and can't not. Her compiler owns its
+  output; an editor opens files it didn't write, and vanilla `dragonbehavior`
+  ships 12 structural errors — a duplicate `stateId`, two impossible
+  `startStateId`s and nine transitions to states that don't exist — so refusing
+  on all of them would make Bethesda's own files unsaveable. Each load takes a
+  fingerprint of the structural errors already present (`category|objectId|
+  subject`), and only findings outside that set refuse a save. Everything else is
+  unchanged: the type-error gate still refuses an HKX save outright, and every
+  other finding still opens the advisory Save anyway / Cancel report.
+
+  The fingerprint excludes the description on purpose, and the reason is a trap
+  worth naming: an inherited `toStateId` error lists its machine's valid
+  stateIds, so adding an unrelated state to that machine rewords an error the
+  user did not cause. A description-sensitive fingerprint would then refuse the
+  next `.hkx` save over Bethesda's bug. `tools/hkx-graph-doctor` pins exactly
+  that — it appends a state to a machine that already has a dangling
+  `toStateId`, asserts the wording changed, asserts the fingerprint didn't, and
+  asserts nothing became refusable. Erring coarse is the deliberate trade: a
+  fingerprint that drifts costs a blocked save, while one too coarse costs a
+  second fault on an already-faulty object going to the advisory report, where
+  it is still shown and still clickable.
+
+  Both harnesses grew with it. `tools/hkx-graph-doctor` now checks that no
+  finding is left uncategorised, that every structural error can name a likely
+  cause, that warnings and type errors never enter the structural set, and — for
+  each injected fault — whether it counts as newly broken against a load-time
+  baseline: the null generator, dangling ref, out-of-range indices and missing
+  root do; the unwired state, the dropped objects and the unregistered animation
+  deliberately don't, because each is a normal intermediate state of an edit
+  rather than a contradiction. `tools/hkx-graph-doctor-ui` checks that loading a
+  file actually takes a baseline (a load that forgot to would silently disarm the
+  whole thing), that it matches the file's own structural errors so an untouched
+  file refuses nothing, that nulling one generator produces exactly one refusable
+  finding, and that the refusal dialog offers no way to save anyway.
+
+  Nothing of Cassie's was read or copied — her repo is provisionally
+  all-rights-reserved and this editor is GPL-3.0. The four checks and the
+  refuse-don't-emit policy as described in our own ROADMAP entry are the whole
+  input.
+
 - **A pre-save "graph doctor" pass, and 🔎 Validate now runs it.** This domain's
   failure mode is silence: a wrong id or a state with nothing behind it produces
   no error, no crash and no log line, and the character T-poses in-game — so

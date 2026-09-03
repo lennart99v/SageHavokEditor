@@ -32,6 +32,7 @@ namespace SageHavokEditor.Core.Validation
                         {
                             Severity = "Error",
                             Category = ValidationIssue.CategoryBrokenRef,
+                            Cause = "the object it pointed at was deleted, or the id was typed by hand",
                             ObjectId = obj.Id,
                             ObjectClass = obj.ClassName,
                             ObjectName = GetName(obj),
@@ -57,6 +58,7 @@ namespace SageHavokEditor.Core.Validation
                     issues.Add(new ValidationIssue
                     {
                         Severity = "Warning",
+                        Category = ValidationIssue.CategoryEmptyStateMachine,
                         ObjectId = sm.Id,
                         ObjectClass = sm.ClassName,
                         ObjectName = GetName(sm),
@@ -92,6 +94,8 @@ namespace SageHavokEditor.Core.Validation
                     issues.Add(new ValidationIssue
                     {
                         Severity = "Error",
+                        Category = ValidationIssue.CategoryStartState,
+                        Cause = "the start state was deleted, or its stateId was renumbered",
                         ObjectId = sm.Id,
                         ObjectClass = sm.ClassName,
                         ObjectName = GetName(sm),
@@ -111,6 +115,7 @@ namespace SageHavokEditor.Core.Validation
                     issues.Add(new ValidationIssue
                     {
                         Severity = "Warning",
+                        Category = ValidationIssue.CategoryAnimation,
                         ObjectId = clip.Id,
                         ObjectClass = clip.ClassName,
                         ObjectName = GetName(clip),
@@ -138,6 +143,8 @@ namespace SageHavokEditor.Core.Validation
                     issues.Add(new ValidationIssue
                     {
                         Severity = "Error",
+                        Category = ValidationIssue.CategoryArrayPairing,
+                        Cause = "a variable was added or removed from one array but not the other",
                         ObjectId = valueSet.Id,
                         ObjectClass = "hkbVariableValueSet",
                         ObjectName = valueSet.Id,
@@ -163,6 +170,9 @@ namespace SageHavokEditor.Core.Validation
                         issues.Add(new ValidationIssue
                         {
                             Severity = "Error",
+                            Category = ValidationIssue.CategoryDuplicateStateId,
+                            Cause = "a state was copied into this machine keeping the original's stateId — "
+                                  + "transitions route by stateId, so both destinations are now ambiguous",
                             ObjectId = sm.Id,
                             ObjectClass = sm.ClassName,
                             ObjectName = GetName(sm),
@@ -237,6 +247,8 @@ namespace SageHavokEditor.Core.Validation
                             issues.Add(new ValidationIssue
                             {
                                 Severity = "Error",
+                                Category = ValidationIssue.CategoryToStateId,
+                                Cause = "the destination state was deleted, or its stateId was renumbered",
                                 ObjectId = stateObj.Id,
                                 ObjectClass = stateObj.ClassName,
                                 ObjectName = GetName(stateObj),
@@ -268,6 +280,11 @@ namespace SageHavokEditor.Core.Validation
                     issues.Add(new ValidationIssue
                     {
                         Severity = "Error",
+                        Category = ValidationIssue.CategoryArrayPairing,
+                        // Both pairs hang off the same hkbBehaviorGraphData, so the
+                        // array name is what tells the two findings apart.
+                        Subject = namesParam,
+                        Cause = $"an entry was added to {namesParam} without its record in {infosParam}",
                         ObjectId = graphData.Id,
                         ObjectClass = graphData.ClassName,
                         ObjectName = GetName(graphData),

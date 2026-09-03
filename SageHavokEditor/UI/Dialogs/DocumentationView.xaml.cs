@@ -920,14 +920,32 @@ namespace SageHavokEditor.UI.Dialogs
                 "clips with no animation path, and eventNames/eventInfos, variableNames/" +
                 "variableInfos and variable name/value count mismatches — the game pairs those " +
                 "arrays by position.\n\n" +
-                "Each issue shows the severity, the affected object, and a description, errors " +
-                "first. Click an issue row to jump to the offending object.\n\n" +
+                "Each issue shows the severity, the affected object, a description and — where the " +
+                "check has one to offer — the likely cause underneath it, in italics. Errors are " +
+                "listed first. Click an issue row to jump to the offending object.\n\n" +
                 "Before a save\n" +
                 "The report opens by itself when there is either a structural error or an object " +
                 "the .hkx save would drop, with Save anyway and Cancel save instead of Close. " +
-                "Nothing here refuses the save — a graph part-way through an edit legitimately has " +
-                "states nothing reaches yet — but Cancel is the default button, so pressing Enter " +
-                "stops and lets you look. Warnings alone never interrupt a save.");
+                "Cancel is the default button, so pressing Enter stops and lets you look, and " +
+                "warnings alone never interrupt a save.\n\n" +
+                "When a save is refused outright\n" +
+                "One case is not a decision: an .hkx save is refused when the graph contradicts " +
+                "itself in a way it did not when you opened the file. A reference to an object " +
+                "that isn't there, a null generator, an event id or variable index past the end of " +
+                "the table, a startStateId or transition target matching no state, two states in " +
+                "one machine sharing a stateId, paired arrays of different lengths — any of these " +
+                "and the file is not written, with no Save anyway to click.\n\n" +
+                "The reason it isn't a warning is that nothing downstream will object either. The " +
+                "conversion succeeds, the game loads the file, and then an actor T-poses or the " +
+                "process falls over with nothing written to any log. This is the last moment at " +
+                "which the reason is still knowable.\n\n" +
+                "Only what your session introduced counts. Vanilla files are not clean by this " +
+                "standard — dragonbehavior.hkx ships a duplicate stateId, two start states that " +
+                "don't exist and nine transitions to missing states — so the editor records what " +
+                "was already wrong when it opened the file and refuses only over the rest. Opening " +
+                "a file with pre-existing defects, editing it and saving works exactly as before; " +
+                "those defects stay in the report as errors. Saving to XML is never refused this " +
+                "way either: XML is the working format, not what the game loads.");
 
             AddSection("le_se", "Skyrim LE ⇄ SE Conversion",
                 "The editor reads and writes both Skyrim editions' .hkx binaries. LE (Legendary " +
