@@ -34,6 +34,9 @@ namespace SageHavokEditor.Core.Services
         /// <summary>The folders that were searched, for an error message worth reading.</summary>
         public IReadOnlyList<string> Tried { get; init; } = Array.Empty<string>();
 
+        /// <summary>The loaded graph, when the file was readable. Cached with the rest.</summary>
+        public HavokManager? Manager { get; init; }
+
         public bool Resolved => Path != null;
         public bool Readable => Path != null && Error == null;
     }
@@ -115,6 +118,7 @@ namespace SageHavokEditor.Core.Services
                     Tried = tried,
                     EventNames = names,
                     UsedEventNames = UsedEvents(manager, names),
+                    Manager = manager,
                 };
             }
             catch (Exception ex)
@@ -194,8 +198,12 @@ namespace SageHavokEditor.Core.Services
         /// HavokTypeCatalog has already marked every int that is an event index —
         /// the annotation behind the property editor's name pickers — so this
         /// catches the nested sites too, and doesn't need a list of param names.
+        ///
+        /// Public because the comparison dialog needs the same answer about the
+        /// file that is open, and "used" has to mean the same thing on both sides
+        /// of a reference or the comparison is meaningless.
         /// </summary>
-        private static HashSet<string> UsedEvents(HavokManager manager, IReadOnlyList<string> names)
+        public static HashSet<string> UsedEvents(HavokManager manager, IReadOnlyList<string> names)
         {
             var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (names.Count == 0) return used;
