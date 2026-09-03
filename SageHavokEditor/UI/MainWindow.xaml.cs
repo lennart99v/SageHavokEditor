@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -875,8 +875,6 @@ namespace SageHavokEditor
                 _originalSnapshot = TakeSnapshot();
                 _snapshotEvents = new List<string>();
                 _snapshotVars = new List<string>();
-
-                _validator = new HavokValidator(manager);
 
                 _subscribedParams.Clear();
                 _navigationHistory.Clear();
@@ -2511,11 +2509,17 @@ namespace SageHavokEditor
                 : HkxPlatform.SkyrimSE;
             var editionName = targetPlatform == HkxPlatform.SkyrimLE ? "LE" : "SE";
 
+            // One doctor pass covers both gates below: the values that would kill
+            // the conversion, and everything else that survives the save but
+            // wouldn't survive the game.
+            var doctor = RunGraphDoctor();
+
             // Values that don't parse as their declared Havok type make the
             // XML→HKX conversion die deep in HKX2 with a bare FormatException —
             // catch them here with a pointable error instead. For XML the file
             // is still writable, so offer to save anyway.
-            var typeIssues = new HavokValidator(manager).CheckParamTypes();
+            var typeIssues = doctor.Issues
+                .Where(i => i.Category == ValidationIssue.CategoryType).ToList();
             if (typeIssues.Count > 0)
             {
                 var preview = string.Join("\n", typeIssues.Take(10)
@@ -2541,6 +2545,28 @@ namespace SageHavokEditor
                     != MessageBoxResult.Yes)
                 {
                     StatusText.Text = "Save cancelled";
+                    return;
+                }
+            }
+
+            // Everything else the doctor found. None of it stops the file being
+            // written — a graph mid-edit legitimately has states nothing reaches
+            // yet — but the objects an .hkx save drops have to be said out loud
+            // before they vanish, so the report opens whenever there is real loss
+            // or a structural error to see.
+            var rest = doctor.Issues
+                .Where(i => i.Category != ValidationIssue.CategoryType).ToList();
+            if (rest.Any(i => i.IsError) || doctor.PrunedCount > 0)
+            {
+                var gate = new ValidationDialog(
+                    new GraphDoctorReport { Issues = rest, PrunedCount = doctor.PrunedCount },
+                    Path.GetFileName(sfd.FileName))
+                { Owner = this };
+                WireIssueNavigation(gate);
+
+                if (gate.ShowDialog() != true)
+                {
+                    StatusText.Text = "Save cancelled — see the graph doctor report";
                     return;
                 }
             }
@@ -3926,14 +3952,17 @@ namespace SageHavokEditor
             return rawValue; // Fallback
         }
 
-        private HavokValidator _validator = null!;
+        /// <summary>
+        /// The pre-save pass, run over the loaded graph and — when a character
+        /// file is open — its animation list, which is what lets the doctor tell
+        /// a clip naming an unregistered animation from one that is fine.
+        /// </summary>
+        private GraphDoctorReport RunGraphDoctor() =>
+            new GraphDoctor(manager, Workspace?.Character?.AnimationNames).Run();
 
-
-        private void BtnValidate_Click(object sender, RoutedEventArgs e)
+        /// <summary>Clicking an issue selects its object in the tree and the property editor.</summary>
+        private void WireIssueNavigation(ValidationDialog dialog)
         {
-            var issues = _validator.RunValidation();
-            var dialog = new ValidationDialog(issues);
-            dialog.Owner = this;
             dialog.ObjectSelected += (id) =>
             {
                 if (!manager.ObjectMap.TryGetValue(id, out var obj)) return;
@@ -3948,7 +3977,12 @@ namespace SageHavokEditor
                     if (target != null) SelectTreeNode(ObjectTree, target);
                 }
             };
+        }
 
+        private void BtnValidate_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new ValidationDialog(RunGraphDoctor()) { Owner = this };
+            WireIssueNavigation(dialog);
             dialog.Show();
         }
 
