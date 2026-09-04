@@ -32,6 +32,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **＋ Add element now appears on arrays that are empty in the file.** The
+  affordance used to need an inline element already present to notice, so an
+  array Havok shipped at `numelements="0"` — `hkbBehaviorGraphData`'s
+  `characterPropertyInfos` and word min/max value sets, `BSLookAtModifier`'s
+  `eyeBones`, `hkbKeyframeBonesModifier`'s `keyframeInfo`, every
+  `hkpRigidBody.properties` in a skeleton — could only be filled in by hand-editing
+  XML. The missing fact was whether the array holds inline structs or `#id`
+  references, which is invisible twice over: reflection sees `IList<T>` for both,
+  and an empty array of either is the same bytes on disk.
+
+  It is read out of HKX2's own XML writer. `WriteXml` calls `WriteClassArray` or
+  `WriteClassPointerArray` per member, each preceded by a `nameof(m_member)`
+  literal, so `HavokArrayKinds` walks the method's IL and keys the answer by that
+  literal — the same authority the editor round-trips through, rather than a rule
+  inferred about it. Ref arrays are now explicitly refused the button instead of
+  merely never qualifying for it.
+
+  The obvious inference was measured and rejected: "pointer arrays hold
+  `hkReferencedObject` descendants" is right for 137 of HKX2's 139 serialized
+  array members and wrong for `hkpSerializedTrack1nInfo`'s two, which point at
+  plain `IHavokObject` elements. Physics classes that never occur in a behaviour
+  file — but this codebase has been bitten enough by nearly-right that a rule with
+  known exceptions isn't worth carrying when the exact answer costs an IL walk.
+  `tools/hkx-array-kinds` cross-checks every member against the class metadata
+  Havok's exporter left in the autogen comments (a transcription nothing compiles,
+  so a genuine second opinion): zero disagreements, and every inline-struct
+  element class can produce a default element, so the button can't appear and then
+  dead-end on "no template". `tools/hkx-inline-array-ui` presses it in the real
+  property editor on `BSLookAtModifier.eyeBones` — a param with nothing to clone —
+  and undoes it again.
+
+  Two things the checks corrected. Three array members are `SERIALIZE_IGNORED`
+  (`hkbFootIkModifier.internalLegData` and two `hkp*` ones): they never reach the
+  XML, so the IL read finds nothing for them, and expecting otherwise is what
+  turned the first run red. And the button's whole point on an empty array is the
+  HKX2 default element — the clone-a-sibling fallback has no sibling to clone.
+
+
 - **A clip's animation can be registered in the character file from the clip
   flow.** The graph names an animation by path; the runtime loads it through the
   character's `animationNames`. Do only the first half and the clip plays

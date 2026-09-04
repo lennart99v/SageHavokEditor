@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-array-kinds</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The editor's own catalog, not a copy: the whole point is to check the
+         answer the property editor will get. -->
+    <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\HavokManager.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HavokArrayKinds.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
+    <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-inline-array-ui</AssemblyName>
+    <!-- The editor is self-contained, and a non-self-contained exe may not
+         reference one (NETSDK1151). -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The whole editor: this drives the real property editor, template and
+         converter included, not a copy of the visibility rule. -->
+    <ProjectReference Include="..\..\SageHavokEditor\SageHavokEditor.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MainWindow.ApplyTheme loads its dictionary by a *relative* pack URI,
+         which resolves against the entry assembly — this one, not the editor's.
+         Ship the same two files as our own resources at the same paths so the
+         window can construct. -->
+    <Resource Include="..\..\SageHavokEditor\UI\Themes\DarkTheme.xaml" Link="UI\Themes\DarkTheme.xaml" />
+    <Resource Include="..\..\SageHavokEditor\UI\Themes\LightTheme.xaml" Link="UI\Themes\LightTheme.xaml" />
+  </ItemGroup>
+
+</Project>
