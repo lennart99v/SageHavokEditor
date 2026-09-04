@@ -1,6 +1,7 @@
 using System.Text;
 using SageHavokEditor.Core;
 using SageHavokEditor.Core.Services;
+using SageHavokEditor.Core.Validation;
 using SageHavokEditor.Models;
 
 // Measures what survives 📂 Open YAML behavior folder… — and what it takes to
@@ -128,12 +129,43 @@ foreach (var folder in args)
         .Select(c => c.Params.FirstOrDefault(p => p.Name == "triggers"))
         .Count(p => p != null && manager.ObjectMap.TryGetValue(p.Value ?? "", out var t)
                     && t.ClassName == "hkbClipTriggerArray");
-    if (properArrays == declared)
-        Check("every declared trigger list became an hkbClipTriggerArray", true,
-            $"{properArrays} of {declared}");
-    else
-        Note("a clip's triggers stay inline instead of becoming an hkbClipTriggerArray",
-            $"{properArrays} of {declared} clips");
+    Check("every declared trigger list became an hkbClipTriggerArray",
+        properArrays == declared, $"{properArrays} of {declared}");
+
+    // A trigger whose event is still a name fires nothing, and the payload — the
+    // hand a HitFrame came from — is a pointer, so it has to be an object of its
+    // own or the .hkx save drops it with the rest of the unreferenced.
+    var triggerCount = 0;
+    var unresolvedIds = new List<string>();
+    var payloadRefs = 0;
+    var payloadStrings = 0;
+    foreach (var clip in clips)
+    {
+        var p = clip.Params.FirstOrDefault(x => x.Name == "triggers");
+        if (p == null || !manager.ObjectMap.TryGetValue(p.Value ?? "", out var array)) continue;
+        foreach (var trigger in array.Params.Where(x => x.Name == "triggers")
+                     .SelectMany(x => x.Children))
+        {
+            triggerCount++;
+            var ev = trigger.Params.FirstOrDefault(x => x.Name == "event")?.Children.FirstOrDefault();
+            var id = ev?.Params.FirstOrDefault(x => x.Name == "id")?.Value;
+            if (!int.TryParse(id, out _)) unresolvedIds.Add($"{clip.DisplayName}: {id}");
+
+            var payload = ev?.Params.FirstOrDefault(x => x.Name == "payload")?.Value ?? "null";
+            if (payload == "null") continue;
+            payloadRefs++;
+            if (manager.ObjectMap.TryGetValue(payload, out var po)
+                && po.ClassName == "hkbStringEventPayload") payloadStrings++;
+        }
+    }
+    if (triggerCount > 0)
+    {
+        Check("every trigger's event resolved to an id", unresolvedIds.Count == 0,
+            $"{triggerCount} triggers, {unresolvedIds.Count} unresolved"
+            + (unresolvedIds.Count == 0 ? "" : $" — {string.Join("; ", unresolvedIds.Take(3))}"));
+        Check("and every payload became an hkbStringEventPayload",
+            payloadRefs == payloadStrings, $"{payloadStrings} of {payloadRefs}");
+    }
 
     // -- the name-keyed index fields ----------------------------------------
     var stillNames = new List<string>();
@@ -151,6 +183,22 @@ foreach (var folder in args)
         Note("name-keyed index fields arrive as names and stay that way",
             $"{resolvedFields} resolved, {stillNames.Count} still names — "
             + string.Join("; ", stillNames.Take(3)));
+
+    // -- what the import leaves unreachable ----------------------------------
+    // The same question an .hkx save asks: can the root reach this object. An
+    // import that wires a new object up wrongly shows here as a jump in the
+    // count, so it is worth having on the record next to the object total.
+    {
+        var report = new GraphDoctor(manager, new List<string>()).Run();
+        var byClass = report.Issues
+            .Where(i => i.Category == ValidationIssue.CategoryPruned)
+            .GroupBy(i => i.ObjectClass)
+            .OrderByDescending(g => g.Count())
+            .Select(g => $"{g.Key} x{g.Count()}")
+            .Take(5);
+        Note("objects the root can't reach, which an .hkx save would drop",
+            $"{report.PrunedCount} of {objects.Count} — {string.Join(", ", byClass)}");
+    }
 
     // -- the end-to-end question --------------------------------------------
     var stem = Path.GetFileNameWithoutExtension(folder.TrimEnd('\\', '/'));

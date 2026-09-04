@@ -32,6 +32,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Clip triggers survive a YAML import.** A clip's `triggers:` is the list
+  itself in the source, where Havok's `hkbClipGenerator.triggers` is a *pointer*
+  to an `hkbClipTriggerArray` that holds it — so the import built the right
+  nested shape in the wrong slot. It saved as XML and then HKX2's deserializer
+  read the element's run-together text as a reference symbol and reported a
+  missing `'-0.900000trueJumpFallnull'`. **202 of vanilla `0_master`'s 289 clips
+  and 163 of `dragonbehavior`'s 214**, which between them is every clip that
+  drives anything off an animation's timeline.
+
+  Two things had to be built as well as moved. An event is a name in the source
+  and a positional index at runtime — 554 of them in `0_master`, all now
+  resolved against the file's own `eventNames`, the same treatment transitions
+  already got. And a payload (`event: HitFrame`, `payload: Left` — the hand a
+  hit came from) is a pointer to an `hkbStringEventPayload`, so it has to become
+  an object of its own: 24 of them in `0_master`, 2 in `dragonbehavior`. Left as
+  text on the trigger, a payload isn't merely ignored — `hkbClipTrigger` has no
+  such member, and the object it should have become would be dropped by the
+  orphan-pruning save.
+
+  The three booleans (`relativeToEndOfClip`, `acyclic`, `isAnnotation`) are
+  written explicitly even though the source omits them when false, so an
+  imported trigger is the same shape as one that came out of a real file.
+
+  Measured by `tools/hkx-yaml-import`, which also shows what this doesn't fix:
+  the conversion's stopping point moves from `m_triggers` to `m_children` on
+  both units, which is the next item.
+
+
 - **A YAML behaviour folder now imports with the root scaffold an `.hkx` is read
   through.** Nothing in a Behavior Relay source tree describes it, because it
   isn't behaviour: an `.hkx` is one `hkRootLevelContainer` whose `namedVariants`

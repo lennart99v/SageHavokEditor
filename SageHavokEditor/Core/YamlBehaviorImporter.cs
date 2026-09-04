@@ -91,6 +91,7 @@ namespace SageHavokEditor.Core
             WireStateTransitions();       // wrap inline transition lists → TransitionInfoArray objects
             ResolveVariableBindings();    // variable: Name → variableIndex: N
             WireInlineBindings();         // inline bindings: → hkbVariableBindingSet objects
+            WireClipTriggers();           // inline triggers: → hkbClipTriggerArray objects
             var rootId = BuildRootContainer();   // the scaffold an .hkx is read through
 
             // Through BuildGraph rather than by filling ObjectMap directly: that is
@@ -111,6 +112,135 @@ namespace SageHavokEditor.Core
             });
 
             return behaviorName;
+        }
+
+        // ── Clip triggers ─────────────────────────────────────────────────────────
+        // The YAML flattens the wrapper away: a clip's triggers: is the list
+        // itself, where Havok's hkbClipGenerator.triggers is a *pointer* to an
+        // hkbClipTriggerArray that holds it. Left inline the file still saves as
+        // XML — and then HKX2's deserializer reads the element's run-together text
+        // as a reference symbol and reports a missing '-0.900000trueJumpFallnull',
+        // which is the mash this looked like from the outside.
+        //
+        // Two things have to be built as well as moved. An event is a name here and
+        // a positional index at runtime, the same treatment transitions already get
+        // — an unresolved name is not a lesser answer, it is a trigger that fires
+        // nothing. And a payload ("HitFrame, payload: Left" — the hand a hit came
+        // from) is a pointer to an hkbStringEventPayload, which has to become an
+        // object of its own or it is dropped on the .hkx save with the rest of the
+        // unreferenced.
+
+        private void WireClipTriggers()
+        {
+            var eventIndex = BuildEventIndex();
+
+            foreach (var clip in _allObjects
+                         .Where(o => o.ClassName == "hkbClipGenerator")
+                         .ToList())
+            {
+                var param = clip.Params.FirstOrDefault(p => p.Name == "triggers");
+                if (param?.Children == null || param.Children.Count == 0) continue;
+                if (param.Children.Any(c => !string.IsNullOrEmpty(c.Id))) continue;  // already a ref
+
+                var triggers = param.Children
+                    .Select(t => BuildClipTrigger(t, eventIndex))
+                    .ToList();
+
+                var arrayObj = new HkObject
+                {
+                    Id = AllocId(),
+                    ClassName = "hkbClipTriggerArray",
+                    Signature = "0x59c23a0f",
+                    Params = new List<HkParam>
+                    {
+                        new HkParam
+                        {
+                            Name = "triggers",
+                            Children = triggers,
+                            NumElements = triggers.Count.ToString()
+                        }
+                    }
+                };
+                _allObjects.Add(arrayObj);
+
+                clip.Params.Remove(param);
+                clip.Params.Add(new HkParam { Name = "triggers", Value = arrayObj.Id });
+            }
+        }
+
+        /// <summary>
+        /// One hkbClipTrigger, in Havok's member order and with every member
+        /// present. The three booleans are absent from the YAML whenever they are
+        /// false, which is most of the time; writing them explicitly keeps the
+        /// element the same shape as one that came out of a real file.
+        /// </summary>
+        private HkObject BuildClipTrigger(
+            HkObject source, Dictionary<string, string> eventIndex)
+        {
+            string Read(string name) =>
+                source.Params.FirstOrDefault(p => p.Name == name)?.Value ?? "";
+
+            var eventName = Read("event");
+            eventIndex.TryGetValue(eventName, out var eventId);
+
+            var payloadText = Read("payload");
+            var payloadRef = "null";
+            if (!string.IsNullOrEmpty(payloadText) && payloadText != "null")
+            {
+                var payload = new HkObject
+                {
+                    Id = AllocId(),
+                    ClassName = "hkbStringEventPayload",
+                    Signature = "0xed04256a",
+                    Params = new List<HkParam>
+                    {
+                        new HkParam { Name = "data", Value = payloadText }
+                    }
+                };
+                _allObjects.Add(payload);
+                payloadRef = payload.Id;
+            }
+
+            var eventParam = new HkParam { Name = "event" };
+            eventParam.Children.Add(new HkObject
+            {
+                Params = new List<HkParam>
+                {
+                    new HkParam { Name = "id",      Value = eventId ?? "-1" },
+                    new HkParam { Name = "payload", Value = payloadRef },
+                }
+            });
+
+            return new HkObject
+            {
+                Params = new List<HkParam>
+                {
+                    new HkParam { Name = "localTime", Value = Read("localTime") is { Length: > 0 } t
+                        ? t : "0.000000" },
+                    eventParam,
+                    new HkParam { Name = "relativeToEndOfClip", Value = Bool(Read("relativeToEndOfClip")) },
+                    new HkParam { Name = "acyclic",             Value = Bool(Read("acyclic")) },
+                    new HkParam { Name = "isAnnotation",        Value = Bool(Read("isAnnotation")) },
+                }
+            };
+        }
+
+        private static string Bool(string? v) =>
+            string.Equals(v, "true", StringComparison.OrdinalIgnoreCase) ? "true" : "false";
+
+        /// <summary>Event name → its index in hkbBehaviorGraphStringData.eventNames.</summary>
+        private Dictionary<string, string> BuildEventIndex()
+        {
+            var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var strData = _allObjects.FirstOrDefault(
+                o => o.ClassName == "hkbBehaviorGraphStringData");
+            var names = strData?.Params.FirstOrDefault(p => p.Name == "eventNames")?.Strings;
+            if (names == null) return index;
+
+            for (int i = 0; i < names.Count; i++)
+                if (!string.IsNullOrEmpty(names[i]) && !index.ContainsKey(names[i]))
+                    index[names[i]] = i.ToString();
+            return index;
         }
 
         // ── The root scaffold ─────────────────────────────────────────────────────
@@ -582,7 +712,10 @@ namespace SageHavokEditor.Core
             }
 
 
-            // Trigger arrays
+            // Trigger lists. Kept as the YAML wrote them — localTime / event /
+            // relativeToEndOfClip / payload, all flat — because the shape Havok
+            // wants needs the event table, which isn't loaded yet. WireClipTriggers
+            // builds the hkbClipTriggerArray once everything is in.
             var triggers = doc.GetObjectList("triggers");
             if (triggers.Count > 0)
             {
@@ -597,24 +730,7 @@ namespace SageHavokEditor.Core
                 {
                     var child = new HkObject { Params = new List<HkParam>() };
                     foreach (var (k, v) in t)
-                        if (k != "event")
-                            child.Params.Add(new HkParam { Name = k, Value = v });
-
-                    if (t.TryGetValue("event", out var evName))
-                    {
-                        child.Params.Add(new HkParam
-                        {
-                            Name = "event",
-                            Children = new List<HkObject>
-                    {
-                        new HkObject { Params = new List<HkParam>
-                        {
-                            new HkParam { Name = "id",      Value = evName },
-                            new HkParam { Name = "payload", Value = "null" }
-                        }}
-                    }
-                        });
-                    }
+                        child.Params.Add(new HkParam { Name = k, Value = v });
                     triggersParam.Children.Add(child);
                 }
 
