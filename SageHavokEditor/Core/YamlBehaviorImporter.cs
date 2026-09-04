@@ -112,6 +112,11 @@ namespace SageHavokEditor.Core
             NormalizeEmptyArrays();       // boneIndices: [] → numelements="0"
             ResolveTransitionFields();    // event: Name → eventId: N, toState: Name → toStateId: N
             WireStateTransitions();       // wrap inline transition lists → TransitionInfoArray objects
+            // After the wrapping, not before: until the array object exists the
+            // transitions are inline children of a slot declared over
+            // hkbStateMachineTransitionInfoArray, so the walk carries the wrong
+            // class down and hkbStateMachineTransitionInfo.condition is invisible.
+            WireExpressionConditions();   // condition: "x == 1" → hkbExpressionCondition
             ResolveVariableBindings();    // variable: Name → variableIndex: N
             WireInlineBindings();         // inline bindings: → hkbVariableBindingSet objects
             WireClipTriggers();           // inline triggers: → hkbClipTriggerArray objects
@@ -136,6 +141,59 @@ namespace SageHavokEditor.Core
             });
 
             return behaviorName;
+        }
+
+        // ── Transition conditions ─────────────────────────────────────────────────
+        // A transition's condition is written as the expression itself —
+        // condition: "isInFurniture == 0" — where Havok wants a pointer to an
+        // hkbCondition object holding that text. Left as text it is the same
+        // failure as an inline array in a pointer slot: HKX2 reads it as a
+        // reference symbol and stops with "Reference symbol 'isInFurniture == 0'
+        // not found", which is where mt_behavior's conversion was ending.
+        //
+        // One object per site rather than one per distinct expression. Sharing
+        // would save 12 objects across the whole vanilla corpus and cost the thing
+        // that matters more: editing one transition's condition would silently
+        // change every transition that happened to read the same.
+
+        private void WireExpressionConditions()
+        {
+            foreach (var obj in _allObjects.ToList())
+                WireConditionsIn(obj.Params, obj.ClassName);
+        }
+
+        private void WireConditionsIn(List<HkParam> paramList, string? ownerClass)
+        {
+            if (paramList == null) return;
+            foreach (var param in paramList)
+            {
+                var info = HavokTypeCatalog.Lookup(ownerClass ?? "", param.Name);
+
+                if (info is { ArrayKind: HkArrayKind.None, ElementClassName: "hkbCondition" }
+                    && !string.IsNullOrEmpty(param.Value)
+                    && param.Value != "null"
+                    && !param.Value.StartsWith("#", StringComparison.Ordinal))
+                {
+                    var condition = new HkObject
+                    {
+                        Id = AllocId(),
+                        ClassName = "hkbExpressionCondition",
+                        Signature = "0x1c3c1045",
+                        Params = new List<HkParam>
+                        {
+                            new HkParam { Name = "expression", Value = param.Value }
+                        }
+                    };
+                    _allObjects.Add(condition);
+                    param.Value = condition.Id;
+                }
+
+                foreach (var child in param.Children.Where(c => string.IsNullOrEmpty(c.Id)))
+                    WireConditionsIn(child.Params,
+                        string.IsNullOrEmpty(child.ClassName)
+                            ? info?.ElementClassName
+                            : child.ClassName);
+            }
         }
 
         // ── Empty array literals ──────────────────────────────────────────────────
@@ -1140,68 +1198,78 @@ namespace SageHavokEditor.Core
             }
         }
 
+        // A transition list is written inline on its owner, and where it lands
+        // depends on the owner. On a state it is that state's own transitions; on a
+        // state machine the same `transitions:` key means the machine's *wildcard*
+        // transitions, which is a differently named member — the source never
+        // writes `wildcardTransitions:` at all. Either way Havok wants a pointer to
+        // an hkbStateMachineTransitionInfoArray, so both get one.
+        //
+        // Machines were missed entirely before: their transitions stayed inline in a
+        // member Havok doesn't have, so every wildcard transition in the file — the
+        // ones that fire from any state, which is how a behaviour reacts to
+        // anything at all — was dropped on conversion.
+
         private void WireStateTransitions()
         {
-            var stateObjects = _allObjects
-                .Where(o => o.ClassName == "hkbStateMachineStateInfo")
-                .ToList();
+            foreach (var stateObj in _allObjects
+                         .Where(o => o.ClassName == "hkbStateMachineStateInfo").ToList())
+                WrapTransitionList(stateObj, "transitions");
 
-            foreach (var stateObj in stateObjects)
-            {
-                var transParam = stateObj.Params.FirstOrDefault(p => p.Name == "transitions");
-
-                // No transitions param at all → add null ref
-                if (transParam == null)
-                {
-                    stateObj.Params.Add(new HkParam { Name = "transitions", Value = "null" });
-                    continue;
-                }
-
-                // Already a scalar ref (was resolved from a name to an ID) → leave it
-                if (transParam.Children == null || transParam.Children.Count == 0)
-                {
-                    // If value is empty or still a name string, set null
-                    if (string.IsNullOrEmpty(transParam.Value) || !transParam.Value.StartsWith("#"))
-                        transParam.Value = "null";
-                    continue;
-                }
-
-                // Has inline children → wrap in a TransitionInfoArray
-                var arrayObj = new HkObject
-                {
-                    Id = AllocId(),
-                    ClassName = "hkbStateMachineTransitionInfoArray",
-                    Signature = "0xe397b11e",
-                    Params = new List<HkParam>
-            {
-                new HkParam
-                {
-                    Name = "transitions",
-                    Children = transParam.Children,
-                    NumElements = transParam.Children.Count.ToString()
-                }
-            }
-                };
-                _allObjects.Add(arrayObj);
-
-                // Replace inline param with ID reference
-                stateObj.Params.Remove(transParam);
-                stateObj.Params.Add(new HkParam
-                {
-                    Name = "transitions",
-                    Value = arrayObj.Id
-                });
-            }
+            foreach (var machine in _allObjects
+                         .Where(o => o.ClassName == "hkbStateMachine").ToList())
+                WrapTransitionList(machine, "wildcardTransitions");
         }
 
         /// <summary>
-        /// Names → ids, carrying the owning class down so each reference knows what
-        /// it is allowed to point at. The class is what disambiguates a name two
-        /// objects share: hkbStateMachine.states is declared over
-        /// hkbStateMachineStateInfo and hkbStateMachineStateInfo.generator over
-        /// hkbGenerator, so "AltarIdle_Enter" means the state in one and the clip in
-        /// the other. Inline children carry their own declared class down with them.
+        /// Moves an owner's inline <c>transitions:</c> list into an
+        /// hkbStateMachineTransitionInfoArray of its own and points
+        /// <paramref name="targetMember"/> at it. A list that already resolved to a
+        /// #ref is left alone; anything else in that slot becomes null, which is
+        /// Havok's "no transitions".
         /// </summary>
+        private void WrapTransitionList(HkObject owner, string targetMember)
+        {
+            var transParam = owner.Params.FirstOrDefault(p => p.Name == "transitions");
+
+            if (transParam == null)
+            {
+                if (!owner.Params.Any(p => p.Name == targetMember))
+                    owner.Params.Add(new HkParam { Name = targetMember, Value = "null" });
+                return;
+            }
+
+            if (transParam.Children == null || transParam.Children.Count == 0)
+            {
+                owner.Params.Remove(transParam);
+                var text = string.IsNullOrEmpty(transParam.Value)
+                           || !transParam.Value.StartsWith("#", StringComparison.Ordinal)
+                    ? "null" : transParam.Value;
+                owner.Params.Add(new HkParam { Name = targetMember, Value = text });
+                return;
+            }
+
+            var arrayObj = new HkObject
+            {
+                Id = AllocId(),
+                ClassName = "hkbStateMachineTransitionInfoArray",
+                Signature = "0xe397b11e",
+                Params = new List<HkParam>
+                {
+                    new HkParam
+                    {
+                        Name = "transitions",
+                        Children = transParam.Children,
+                        NumElements = transParam.Children.Count.ToString()
+                    }
+                }
+            };
+            _allObjects.Add(arrayObj);
+
+            owner.Params.Remove(transParam);
+            owner.Params.Add(new HkParam { Name = targetMember, Value = arrayObj.Id });
+        }
+
         private void ResolveParams(List<HkParam> paramList, string? ownerClass)
         {
             if (paramList == null) return;
