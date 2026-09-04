@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using SageHavokEditor.Core.Services;
 using SageHavokEditor.Models;
 
 namespace SageHavokEditor.Core
@@ -92,6 +93,7 @@ namespace SageHavokEditor.Core
             ResolveVariableBindings();    // variable: Name → variableIndex: N
             WireInlineBindings();         // inline bindings: → hkbVariableBindingSet objects
             WireClipTriggers();           // inline triggers: → hkbClipTriggerArray objects
+            ResolveNameKeyedIndices();    // syncVariable: Name → syncVariableIndex: N, and friends
             var rootId = BuildRootContainer();   // the scaffold an .hkx is read through
 
             // Through BuildGraph rather than by filling ObjectMap directly: that is
@@ -112,6 +114,78 @@ namespace SageHavokEditor.Core
             });
 
             return behaviorName;
+        }
+
+        // ── Name-keyed index fields ───────────────────────────────────────────────
+        // The source writes the readable half of a pair: syncVariable where Havok's
+        // member is syncVariableIndex, startPlayingEvent where it is
+        // startPlayingEventId. Its own writer knows the difference — the same files
+        // carry startMatchingEventId: -1 where there is no event to name — so the
+        // suffix is dropped exactly when there is a name to put in its place.
+        //
+        // Rather than a list of the five fields this happens to affect today, the
+        // rule is asked of the class: a param the class doesn't declare, whose name
+        // plus Id or Index *is* a member the catalog has marked as an index into
+        // the event or variable table, is that member written the readable way.
+        // HavokTypeCatalog already marks those (HkParamSemantic), for the property
+        // editor's name pickers, so nothing new has to be decided here.
+        //
+        // These are read positionally at runtime. A name left in place is not a
+        // rougher version of the right answer: it fails the conversion, and would
+        // otherwise be a modifier that never activates.
+
+        private void ResolveNameKeyedIndices()
+        {
+            var eventIndex = BuildEventIndex();
+            var variableIndex = BuildVariableIndex();
+
+            foreach (var obj in _allObjects)
+            {
+                if (string.IsNullOrEmpty(obj.ClassName)) continue;
+
+                foreach (var param in obj.Params.ToList())
+                {
+                    if (string.IsNullOrEmpty(param.Value)) continue;
+                    if (int.TryParse(param.Value, out _)) continue;   // already an index
+                    if (HavokTypeCatalog.Lookup(obj.ClassName, param.Name) != null) continue;
+
+                    foreach (var suffix in new[] { "Id", "Index" })
+                    {
+                        var member = param.Name + suffix;
+                        var info = HavokTypeCatalog.Lookup(obj.ClassName, member);
+                        var table = info?.Semantic switch
+                        {
+                            HkParamSemantic.EventId => eventIndex,
+                            HkParamSemantic.VariableIndex => variableIndex,
+                            _ => null
+                        };
+                        if (table == null) continue;
+
+                        // -1 rather than dropping the param: the member exists either
+                        // way, and Havok's "no event / no variable" sentinel is what
+                        // the source itself writes when it has no name to give.
+                        table.TryGetValue(param.Value, out var resolved);
+                        obj.Params.Remove(param);
+                        obj.Params.Add(new HkParam { Name = member, Value = resolved ?? "-1" });
+                        break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>Variable name → its index in hkbBehaviorGraphStringData.variableNames.</summary>
+        private Dictionary<string, string> BuildVariableIndex()
+        {
+            var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var strData = _allObjects.FirstOrDefault(
+                o => o.ClassName == "hkbBehaviorGraphStringData");
+            var names = strData?.Params.FirstOrDefault(p => p.Name == "variableNames")?.Strings;
+            if (names == null) return index;
+
+            for (int i = 0; i < names.Count; i++)
+                if (!string.IsNullOrEmpty(names[i]) && !index.ContainsKey(names[i]))
+                    index[names[i]] = i.ToString();
+            return index;
         }
 
         // ── Clip triggers ─────────────────────────────────────────────────────────
