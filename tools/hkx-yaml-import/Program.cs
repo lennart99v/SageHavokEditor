@@ -254,6 +254,43 @@ foreach (var folder in args)
             imported >= declaredMachines, $"{imported} of {declaredMachines}");
     }
 
+    // -- data/ sidecars find their owner --------------------------------------
+    // Nothing in the source references these: the owner writes the member as
+    // null and the link is the filename. Counted from the folder, because an
+    // import that never attached one would otherwise look clean, and checked by
+    // asking whether anything points at the object rather than by trusting the
+    // rule that attached it.
+    {
+        var dataDir = Path.Combine(folder, "data");
+        var stems = Directory.Exists(dataDir)
+            ? Directory.EnumerateFiles(dataDir, "*.yaml")
+                .Where(f => File.ReadLines(f).Any(l =>
+                    l.TrimStart('﻿').StartsWith("class: ", StringComparison.Ordinal)))
+                .Select(Path.GetFileNameWithoutExtension)
+                .ToHashSet()
+            : new HashSet<string?>();
+
+        var referenced = objects
+            .SelectMany(o => o.Params)
+            .SelectMany(Refs)
+            .ToHashSet();
+
+        var orphaned = objects
+            .Where(o => stems.Contains(o.Params.FirstOrDefault(p => p.Name == "name")?.Value)
+                        || stems.Any(st => st != null && o.Id != null
+                                           && st.StartsWith(o.DisplayName, StringComparison.Ordinal)
+                                           && o.ClassName is "hkbExpressionDataArray"
+                                               or "hkbBoneIndexArray" or "hkbEventRangeDataArray"))
+            .Where(o => !referenced.Contains(o.Id))
+            .ToList();
+
+        Check("every data/ sidecar is attached to the member it belongs to",
+            orphaned.Count == 0,
+            $"{stems.Count} in data/, {orphaned.Count} left unreferenced"
+            + (orphaned.Count == 0 ? "" : " — "
+                + string.Join("; ", orphaned.Take(3).Select(o => $"{o.ClassName} {o.DisplayName}"))));
+    }
+
     // -- what the import leaves unreachable ----------------------------------
     // The same question an .hkx save asks: can the root reach this object. An
     // import that wires a new object up wrongly shows here as a jump in the
