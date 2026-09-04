@@ -30,15 +30,25 @@ namespace SageHavokEditor.UI.Converters
     }
 
     /// <summary>
-    /// "+ Add element" button: visible for inline-struct array params (sticky
-    /// IsInlineStructArray flag, or live inline children). Ref arrays edit as
-    /// text; string arrays live in their dedicated tabs.
+    /// "+ Add element" button: visible for inline-struct array params. The declared
+    /// array kind decides it outright where HKX2 knows the class — including for an
+    /// array that is empty in this file, which the data alone can't distinguish from
+    /// an empty ref array. Everything else falls back to the shape of what's loaded:
+    /// the sticky IsInlineStructArray flag, or live inline children. Ref arrays edit
+    /// as text; string arrays live in their dedicated tabs.
     /// </summary>
     public class InlineArrayAddVisibilityConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is not HkParam p) return Visibility.Collapsed;
+
+            switch (p.TypeInfo?.ArrayKind)
+            {
+                case HkArrayKind.InlineStruct: return Visibility.Visible;
+                case HkArrayKind.Pointer: return Visibility.Collapsed;
+            }
+
             bool isArray = !string.IsNullOrWhiteSpace(p.NumElements);
             bool inline = p.IsInlineStructArray || p.Children.Any(c => string.IsNullOrEmpty(c.Id));
             return isArray && inline ? Visibility.Visible : Visibility.Collapsed;
