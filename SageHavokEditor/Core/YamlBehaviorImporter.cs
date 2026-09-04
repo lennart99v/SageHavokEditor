@@ -65,6 +65,12 @@ namespace SageHavokEditor.Core
             new(StringComparer.OrdinalIgnoreCase);
         private readonly List<HkObject> _allObjects = new();
 
+        // behavior.yaml's packfile: section. Havok's own header, carried through
+        // rather than assumed: a unit from another Havok version says so here, and
+        // the SkyrimSE defaults would silently mislabel it.
+        private string _classVersion = "";
+        private string _contentsVersion = "";
+
         // ── Public entry point ────────────────────────────────────────────────────
 
         public string Import(string folderPath, HavokManager manager)
@@ -76,18 +82,81 @@ namespace SageHavokEditor.Core
             _nameToObject.Clear();
             _allObjects.Clear();
 
+            _classVersion = "";
+            _contentsVersion = "";
+
             string behaviorName = LoadAllYaml(folderPath);
             ResolveAllReferences();       // object name refs: transition: Name → #ID
             ResolveTransitionFields();    // event: Name → eventId: N, toState: Name → toStateId: N
             WireStateTransitions();       // wrap inline transition lists → TransitionInfoArray objects
             ResolveVariableBindings();    // variable: Name → variableIndex: N
             WireInlineBindings();         // inline bindings: → hkbVariableBindingSet objects
+            var rootId = BuildRootContainer();   // the scaffold an .hkx is read through
 
-            manager.ObjectMap.Clear();
-            foreach (var obj in _allObjects)
-                manager.ObjectMap[obj.Id] = obj;
+            // Through BuildGraph rather than by filling ObjectMap directly: that is
+            // what carries the header and the root over, resolves single #refs into
+            // the Children cache the way an XML load does, and attaches the declared
+            // types the property editor reads. An import used to get none of it.
+            manager.BuildGraph(new HkPackfile
+            {
+                ClassVersion = string.IsNullOrEmpty(_classVersion)
+                    ? HkPackfile.SkyrimClassVersion : _classVersion,
+                ContentsVersion = string.IsNullOrEmpty(_contentsVersion)
+                    ? HkPackfile.SkyrimContentsVersion : _contentsVersion,
+                TopLevelObject = rootId,
+                Sections = new List<HkSection>
+                {
+                    new HkSection { Name = "__data__", Objects = _allObjects.ToList() }
+                }
+            });
 
             return behaviorName;
+        }
+
+        // ── The root scaffold ─────────────────────────────────────────────────────
+        // Nothing in the source tree describes it, because it isn't behaviour: an
+        // .hkx is one hkRootLevelContainer whose namedVariants name the graph, and
+        // every reader starts there. Without it a saved XML declared
+        // toplevelobject="#0050" — an id that happens to exist but is whichever
+        // object the importer numbered fiftieth — and HKX2's deserializer died on
+        // the header before reaching any content. So the .hkx save was broken for
+        // every YAML folder, independently of anything else in the import.
+
+        private string BuildRootContainer()
+        {
+            var graph = _allObjects.FirstOrDefault(o => o.ClassName == "hkbBehaviorGraph");
+            if (graph == null) return "";   // not a behaviour unit — leave it alone
+
+            var existing = _allObjects.FirstOrDefault(o => o.ClassName == "hkRootLevelContainer");
+            if (existing != null) return existing.Id;
+
+            var variant = new HkObject
+            {
+                Params = new List<HkParam>
+                {
+                    new HkParam { Name = "name",      Value = "hkbBehaviorGraph" },
+                    new HkParam { Name = "className", Value = "hkbBehaviorGraph" },
+                    new HkParam { Name = "variant",   Value = graph.Id },
+                }
+            };
+
+            var root = new HkObject
+            {
+                Id = AllocId(),
+                ClassName = "hkRootLevelContainer",
+                Signature = "0x2772c11e",
+                Params = new List<HkParam>
+                {
+                    new HkParam
+                    {
+                        Name = "namedVariants",
+                        NumElements = "1",
+                        Children = new List<HkObject> { variant },
+                    }
+                }
+            };
+            _allObjects.Add(root);
+            return root.Id;
         }
 
         // ── Pass 1: Load all YAML files ───────────────────────────────────────────
@@ -126,6 +195,14 @@ namespace SageHavokEditor.Core
             var doc = YamlDocument.Parse(text);
 
             string behaviorName = "behavior";
+
+            // ── packfile: header ──────────────────────────────────────────────────
+            var packfileSection = doc.GetSection("packfile");
+            if (packfileSection != null)
+            {
+                _classVersion = packfileSection.GetScalar("classversion") ?? "";
+                _contentsVersion = packfileSection.GetScalar("contentsversion") ?? "";
+            }
 
             // ── Root hkbBehaviorGraph object ──────────────────────────────────────
             var behaviorSection = doc.GetSection("behavior");
