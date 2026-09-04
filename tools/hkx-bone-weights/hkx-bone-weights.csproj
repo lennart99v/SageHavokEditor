@@ -5,12 +5,10 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>hkx-yaml-import</AssemblyName>
+    <AssemblyName>hkx-bone-weights</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The editor's own importer and model, not a copy: this measures the code
-         behind 📂 Open YAML behavior folder…, and the save it feeds. -->
     <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\HavokManager.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\YamlBehaviorImporter.cs" />
@@ -18,16 +16,10 @@
     <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
-    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxPathResolver.cs" />
-    <Compile Include="..\..\SageHavokEditor\Core\Services\FirstPersonProject.cs" />
-    <Compile Include="..\..\SageHavokEditor\Core\Services\BehaviorReferenceIndex.cs" />
-    <Compile Include="..\..\SageHavokEditor\Core\Validation\HkRefWalk.cs" />
-    <Compile Include="..\..\SageHavokEditor\Core\Validation\ValidationIssue.cs" />
-    <Compile Include="..\..\SageHavokEditor\Core\Validation\HavokValidator.cs" />
-    <Compile Include="..\..\SageHavokEditor\Core\Validation\GraphDoctor.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Skeletons\NifSkeletonReader.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Skeletons\SkeletonRegistry.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Skeletons\HkxSkeletonReader.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxPathResolver.cs" />
     <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
   </ItemGroup>
 
