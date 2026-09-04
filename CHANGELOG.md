@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Transition conditions and wildcard transitions survive a YAML import.** Two
+  things that turned out to be one job.
+
+  A transition's condition is written as the expression itself —
+  `condition: "isInFurniture == 0"` — where Havok wants a pointer to an
+  `hkbCondition` holding that text. Left as text HKX2 reads it as a reference
+  symbol and stops, which is exactly where `mt_behavior`'s conversion was ending.
+  Each site now gets its own `hkbExpressionCondition`: 31 in `0_master`, 19 in
+  `mt_behavior`, 2 in `dragonbehavior`. One object per site rather than one per
+  distinct expression — sharing would save 12 objects across the whole vanilla
+  corpus and cost the thing that matters more, since editing one transition's
+  condition would then silently change every transition that read the same.
+
+  **A state machine's transitions were being dropped entirely.** The source
+  writes the same `transitions:` key on a machine as on a state, and on a machine
+  it means the machine's *wildcard* transitions — a differently named member
+  (`wildcardTransitions`), which the source never writes. So they stayed inline
+  in a member Havok doesn't have and vanished on conversion: **116 machines in
+  `mt_behavior`, 17 in `dragonbehavior`, 11 in `0_master`**. Those are the
+  transitions that fire from any state, which is how a behaviour responds to
+  anything at all.
+
+  Finding the conditions needed the wildcard fix first, and the ordering is the
+  lesson: the condition pass has to run *after* the transition lists are wrapped.
+  Until the array object exists, the transitions are inline children of a slot
+  declared over `hkbStateMachineTransitionInfoArray`, so the walk carries the
+  wrong class down and `hkbStateMachineTransitionInfo.condition` is invisible —
+  which is why the first version of this fix changed nothing at all.
+
+  All three vanilla units now reach the same single remaining stop, `m_children`.
+
+
 - **A YAML import never attached the `data/` sidecars, so the expressions were
   gone.** An expression list, a bone-index list and an event-range list each live
   in their own file under `data/`, and nothing in the source references them: the
