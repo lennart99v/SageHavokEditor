@@ -93,12 +93,24 @@ namespace SageHavokEditor.Core.Services
         {
             if (string.IsNullOrEmpty(className) || string.IsNullOrEmpty(baseClassName))
                 return false;
-            if (className == baseClassName) return true;
             EnsureIndexes();
+            // Both names have to be classes HKX2 knows, the equal case included —
+            // otherwise IsKindOf("Anything", "Anything") is true and a caller using
+            // it to ask "is this a class at all" gets yes for every string.
             return _havokTypesByName!.TryGetValue(className, out var t)
                    && _havokTypesByName.TryGetValue(baseClassName, out var b)
                    && b.IsAssignableFrom(t);
         }
+
+        /// <summary>
+        /// Every param of a class, by name. Callers that have to look for a member
+        /// by shape rather than by name need this — "which member of this class is
+        /// the one array of pointers", for instance, when the source calls it
+        /// something else.
+        /// </summary>
+        public static IReadOnlyDictionary<string, HkParamTypeInfo> ParamsOf(string className)
+            => (IReadOnlyDictionary<string, HkParamTypeInfo>?)GetClassMap(className)
+               ?? new Dictionary<string, HkParamTypeInfo>();
 
         private static Dictionary<string, HkParamTypeInfo>? GetClassMap(string className)
         {

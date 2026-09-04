@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using SageHavokEditor.Core.Services;
+using SageHavokEditor.Core.Skeletons;
 using SageHavokEditor.Models;
 
 namespace SageHavokEditor.Core
@@ -36,6 +37,14 @@ namespace SageHavokEditor.Core
             };
 
         // ── Fields holding single object-name references ─────────────────────────
+        // Only a fallback now. Which params are references is a fact about the
+        // class, and HavokTypeCatalog knows it for every class HKX2 ships; these two
+        // lists are what a class outside that set falls back on. Kept because a
+        // hand-written or modded class does turn up, and dropped from the decision
+        // wherever the metadata can answer — the lists were missing pClipGenerator,
+        // pOnActivateModifier and pOnDeactivateModifier, so a paired killmove's clip
+        // and a BSModifyOnceModifier's modifiers were left as names and never
+        // resolved: 80 slots in vanilla 0_master, 28 in dragonbehavior.
         private static readonly HashSet<string> SingleRefFields =
             new(StringComparer.OrdinalIgnoreCase)
             {
@@ -92,7 +101,29 @@ namespace SageHavokEditor.Core
 
         // ── Public entry point ────────────────────────────────────────────────────
 
+        /// <summary>Bone names in animation-skeleton order, for boneWeights. See Import.</summary>
+        private IReadOnlyList<string> _skeletonBones = Array.Empty<string>();
+
+        /// <summary>
+        /// How many bone-weight maps were read but not built, for want of a
+        /// skeleton. Nonzero means the graph is structurally complete and
+        /// behaviourally not: a blender child with no weights blends the whole
+        /// body where it should blend an arm.
+        /// </summary>
+        public int UnbuiltBoneWeights { get; private set; }
+
         public string Import(string folderPath, HavokManager manager)
+            => Import(folderPath, manager, null);
+
+        /// <summary>
+        /// <paramref name="skeletonBones"/> is the character project's animation
+        /// skeleton, in bone order — see HkxSkeletonReader. Bone weights are written
+        /// by name in the source and indexed by position in the file, so without it
+        /// they cannot be built at all; the import still produces a correct graph
+        /// and reports the count through <see cref="UnbuiltBoneWeights"/>.
+        /// </summary>
+        public string Import(string folderPath, HavokManager manager,
+            IReadOnlyList<string>? skeletonBones)
         {
             if (!Directory.Exists(folderPath))
                 throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
@@ -100,27 +131,44 @@ namespace SageHavokEditor.Core
             _nextId = 1;
             _byName.Clear();
             _pendingRefLists.Clear();
+            _skeletonBones = skeletonBones ?? Array.Empty<string>();
+            UnbuiltBoneWeights = 0;
+            _synthesisedByClass.Clear();
+            SynthesisedFromClassName = 0;
             _dataSidecars.Clear();
             _allObjects.Clear();
 
             _classVersion = "";
             _contentsVersion = "";
 
+            // Shape first, names last. Every pass below rearranges objects into the
+            // shape Havok declares, and only then are the name references resolved —
+            // which matters because resolution is class-aware, and an inline child's
+            // class is only knowable once it sits under the param it belongs to.
+            // Resolving first was quietly wrong: a transition's `transition:` was
+            // read while the transitions were still inline on a state, where the
+            // declared class is hkbStateMachineTransitionInfoArray and says nothing
+            // about them, so a name two objects shared could resolve to a blender
+            // and the conversion died on an InvalidCastException instead of naming
+            // the bad reference.
             string behaviorName = LoadAllYaml(folderPath);
-            ResolveAllReferences();       // object name refs: transition: Name → #ID
             AttachDataSidecars();         // data/<owner>_*.yaml → the owner's null member
             NormalizeEmptyArrays();       // boneIndices: [] → numelements="0"
             ResolveTransitionFields();    // event: Name → eventId: N, toState: Name → toStateId: N
             WireStateTransitions();       // wrap inline transition lists → TransitionInfoArray objects
-            // After the wrapping, not before: until the array object exists the
-            // transitions are inline children of a slot declared over
-            // hkbStateMachineTransitionInfoArray, so the walk carries the wrong
-            // class down and hkbStateMachineTransitionInfo.condition is invisible.
             WireExpressionConditions();   // condition: "x == 1" → hkbExpressionCondition
+            // Both of the two above have to come after the wrapping: until the array
+            // object exists, a state machine still has a `transitions` param, which
+            // is not one of its members — so the class walk carries the wrong class
+            // down and misses the conditions, and the "one pointer array" fallback
+            // takes the list for the machine's `states`.
+            HoistPointerArrayChildren();  // inline children: → objects the owner points at
             ResolveVariableBindings();    // variable: Name → variableIndex: N
             WireInlineBindings();         // inline bindings: → hkbVariableBindingSet objects
             WireClipTriggers();           // inline triggers: → hkbClipTriggerArray objects
+            WireGraphData();              // graph data → its string data and value set
             ResolveNameKeyedIndices();    // syncVariable: Name → syncVariableIndex: N, and friends
+            ResolveAllReferences();       // object name refs: generator: Name → #ID
             var rootId = BuildRootContainer();   // the scaffold an .hkx is read through
 
             // Through BuildGraph rather than by filling ObjectMap directly: that is
@@ -141,6 +189,238 @@ namespace SageHavokEditor.Core
             });
 
             return behaviorName;
+        }
+
+        // ── Pointer-array children ────────────────────────────────────────────────
+        // A blender's children are written inline on the blender, where Havok's
+        // member is an array of *pointers* to hkbBlenderGeneratorChild objects.
+        // Same failure as the clip triggers: it saves as XML and then HKX2 reads
+        // the element text as a reference symbol — '#01911.0000001.000000', a ref
+        // and two weights run together — which is where every unit's conversion was
+        // ending once the earlier fixes were in.
+        //
+        // The member is found by shape, not by name, because the source doesn't
+        // always use Havok's name: BSBoneSwitchGenerator's member is ChildrenA and
+        // the source writes children:. Each of these classes has exactly one array
+        // of pointers, so "the class's one pointer array" identifies it without a
+        // table of aliases.
+
+        private void HoistPointerArrayChildren()
+        {
+            foreach (var owner in _allObjects.ToList())
+            {
+                if (string.IsNullOrEmpty(owner.ClassName)) continue;
+
+                foreach (var param in owner.Params.ToList())
+                {
+                    if (param.Children.Count == 0) continue;
+                    if (param.Children.Any(c => !string.IsNullOrEmpty(c.Id))) continue;
+
+                    var target = PointerArrayTarget(owner.ClassName, param.Name);
+                    if (target == null) continue;
+
+                    var ids = param.Children
+                        .Select(child => BuildElement(child, target.Value.ElementClass).Id)
+                        .ToList();
+
+                    owner.Params.Remove(param);
+                    owner.Params.Add(new HkParam
+                    {
+                        Name = target.Value.Member,
+                        Value = string.Join(" ", ids),
+                        NumElements = ids.Count.ToString()
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Where an inline list on <paramref name="className"/> belongs, when it
+        /// belongs in an array of pointers. The declared member wins if the source
+        /// used its real name; otherwise the class's single pointer array is it.
+        /// Two of them and there is nothing to choose between, so the list is left
+        /// where it is rather than put somewhere plausible.
+        /// </summary>
+        private static (string Member, string ElementClass)? PointerArrayTarget(
+            string className, string paramName)
+        {
+            var declared = HavokTypeCatalog.Lookup(className, paramName);
+            if (declared is { ArrayKind: HkArrayKind.Pointer, ElementClassName: { } element })
+                return (paramName, element);
+            if (declared != null) return null;   // a real member of some other shape
+            if (BelongsToAFlattenedWrapper(className, paramName)) return null;
+
+            var pointerArrays = HavokTypeCatalog.ParamsOf(className)
+                .Where(kv => kv.Value.ArrayKind == HkArrayKind.Pointer
+                             && kv.Value.ElementClassName != null)
+                .ToList();
+            return pointerArrays.Count == 1
+                ? (pointerArrays[0].Key, pointerArrays[0].Value.ElementClassName!)
+                : null;
+        }
+
+        /// <summary>
+        /// Is this inline list the contents of a wrapper object the source flattened
+        /// away, rather than the class's own array? A blender writes
+        /// <c>bindings:</c> on itself where Havok keeps them one level down, in the
+        /// hkbVariableBindingSet its variableBindingSet points at — and
+        /// hkbBlenderGenerator's one array of pointers is <c>children</c>, so without
+        /// this the bindings were hoisted in as a blender child: 40 empty
+        /// hkbBlenderGeneratorChild objects in vanilla dragonbehavior, 137 in
+        /// 0_master, each of them a node that plays nothing.
+        ///
+        /// The test is the same shape as the flattening: some single-pointer member
+        /// of this class targets a class that declares an inline-struct array of
+        /// exactly this name. Those lists have their own passes; this only has to
+        /// keep its hands off them.
+        /// </summary>
+        private static bool BelongsToAFlattenedWrapper(string className, string paramName)
+        {
+            foreach (var member in HavokTypeCatalog.ParamsOf(className).Values)
+            {
+                if (member.ArrayKind != HkArrayKind.None || member.ElementClassName == null)
+                    continue;
+                var inner = HavokTypeCatalog.ParamsOf(member.ElementClassName);
+                if (inner.TryGetValue(paramName, out var innerMember)
+                    && innerMember.ArrayKind == HkArrayKind.InlineStruct)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// One element of a pointer array, as its own object. Built from HKX2's
+        /// default so the signature and every member Havok expects are present, then
+        /// overwritten with what the source gave — a member the source omits keeps
+        /// the vanilla default rather than disappearing.
+        /// </summary>
+        private HkObject BuildElement(HkObject source, string elementClass)
+        {
+            var element = ModifierCatalog.CreateDefault(elementClass)
+                          ?? new HkObject { ClassName = elementClass, Params = new List<HkParam>() };
+            element.Id = AllocId();
+            element.ClassName = elementClass;
+            _allObjects.Add(element);
+            AddName(source.Params.FirstOrDefault(p => p.Name == "name")?.Value, element);
+
+            var weights = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            // Written but empty is not the same as absent. Eight children in vanilla
+            // 0_master say `boneWeights: named:` with no bones under it, which is a
+            // weight array of zeros — the child contributes nothing per bone — and
+            // is a different thing from a child with no boneWeights at all, which is
+            // a null pointer.
+            var sawBoneWeights = false;
+            var bindings = new SortedDictionary<string, List<HkParam>>(StringComparer.Ordinal);
+
+            foreach (var p in source.Params)
+            {
+                // boneWeights.named.<bone> — the dotted path the parser keeps for a
+                // nested mapping. The bare boneWeights / boneWeights.named markers
+                // carry no value and are skipped with it.
+                const string prefix = "boneWeights.named.";
+                if (p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (float.TryParse(p.Value, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var w))
+                        weights[p.Name.Substring(prefix.Length)] = w;
+                    continue;
+                }
+                if (p.Name.StartsWith("boneWeights", StringComparison.OrdinalIgnoreCase))
+                {
+                    sawBoneWeights = true;
+                    continue;
+                }
+                if (p.Name.StartsWith("bindings.", StringComparison.OrdinalIgnoreCase))
+                {
+                    // bindings.<n>.<key> — put back together as the inline list the
+                    // later passes expect, so a binding on a blender child reaches
+                    // hkbVariableBindingSet like any other.
+                    var rest = p.Name.Substring("bindings.".Length);
+                    var dot = rest.IndexOf('.');
+                    if (dot <= 0) continue;
+                    var index = rest.Substring(0, dot);
+                    var key = rest.Substring(dot + 1);
+                    if (key.Contains('.')) continue;
+                    if (!bindings.TryGetValue(index, out var fields))
+                        bindings[index] = fields = new List<HkParam>();
+                    fields.Add(new HkParam { Name = key, Value = p.Value });
+                    continue;
+                }
+                if (p.Name.Contains('.')) continue;   // some other nesting we don't model
+
+                var existing = element.Params.FirstOrDefault(x => x.Name == p.Name);
+                if (existing != null) existing.Value = p.Value;
+                else if (HavokTypeCatalog.Lookup(elementClass, p.Name) != null)
+                    element.Params.Add(new HkParam { Name = p.Name, Value = p.Value });
+            }
+
+            if (sawBoneWeights) AttachBoneWeights(element, elementClass, weights);
+
+            if (bindings.Count > 0)
+            {
+                element.Params.RemoveAll(x => x.Name == "bindings");
+                element.Params.Add(new HkParam
+                {
+                    Name = "bindings",
+                    NumElements = bindings.Count.ToString(),
+                    Children = bindings.Values
+                        .Select(fields => new HkObject { Params = fields })
+                        .ToList()
+                });
+            }
+
+            return element;
+        }
+
+        /// <summary>
+        /// Builds the hkbBoneWeightArray for one element and points its bone-weight
+        /// member at it. The member is found by class rather than by name — it is
+        /// boneWeights on a blender child and spBoneWeight on a bone-switch child,
+        /// while the source calls both boneWeights.
+        ///
+        /// Needs the skeleton: the source names its bones and the file indexes them
+        /// by position, so there is nothing to write without the bone order. Without
+        /// it the map is counted and dropped, which is a blend that covers the whole
+        /// body instead of an arm — wrong, but visibly wrong, where a guessed
+        /// ordering would be wrong invisibly.
+        /// </summary>
+        private void AttachBoneWeights(HkObject element, string elementClass,
+            Dictionary<string, float> weights)
+        {
+            if (_skeletonBones.Count == 0) { UnbuiltBoneWeights++; return; }
+
+            var slot = HavokTypeCatalog.ParamsOf(elementClass)
+                .Where(kv => kv.Value.ElementClassName == "hkbBoneWeightArray")
+                .Select(kv => kv.Key)
+                .FirstOrDefault();
+            if (slot == null) { UnbuiltBoneWeights++; return; }
+
+            var floats = new float[_skeletonBones.Count];
+            for (int i = 0; i < _skeletonBones.Count; i++)
+                if (weights.TryGetValue(_skeletonBones[i], out var w))
+                    floats[i] = w;
+
+            var array = new HkObject
+            {
+                Id = AllocId(),
+                ClassName = "hkbBoneWeightArray",
+                Signature = "0xcd902b77",
+                Params = new List<HkParam>
+                {
+                    new HkParam
+                    {
+                        Name = "boneWeights",
+                        NumElements = floats.Length.ToString(),
+                        Value = string.Join(" ", floats.Select(
+                            f => f.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)))
+                    }
+                }
+            };
+            _allObjects.Add(array);
+
+            var param = element.Params.FirstOrDefault(x => x.Name == slot);
+            if (param != null) param.Value = array.Id;
+            else element.Params.Add(new HkParam { Name = slot, Value = array.Id });
         }
 
         // ── Transition conditions ─────────────────────────────────────────────────
@@ -348,6 +628,36 @@ namespace SageHavokEditor.Core
                 if (!string.IsNullOrEmpty(names[i]) && !index.ContainsKey(names[i]))
                     index[names[i]] = i.ToString();
             return index;
+        }
+
+        // ── The three graph-data objects ──────────────────────────────────────────
+        // hkbBehaviorGraphData holds the variable types, and points at the string
+        // data that holds every event and variable *name* and at the value set that
+        // holds their starting values. The import built all three and linked none of
+        // them, so the names — which is what the whole editor is about — hung off
+        // nothing: unreachable from the root, dropped by an .hkx save, and a
+        // converted file whose events had no names at all. It converted, which is
+        // exactly why this went unnoticed.
+
+        private void WireGraphData()
+        {
+            var graphData = _allObjects.FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphData");
+            if (graphData == null) return;
+
+            Link("stringData", "hkbBehaviorGraphStringData");
+            Link("variableInitialValues", "hkbVariableValueSet");
+
+            void Link(string member, string className)
+            {
+                var target = _allObjects.FirstOrDefault(o => o.ClassName == className);
+                if (target == null) return;
+
+                var param = graphData.Params.FirstOrDefault(p => p.Name == member);
+                if (param == null)
+                    graphData.Params.Add(new HkParam { Name = member, Value = target.Id });
+                else if (string.IsNullOrEmpty(param.Value) || param.Value == "null")
+                    param.Value = target.Id;
+            }
         }
 
         // ── Clip triggers ─────────────────────────────────────────────────────────
@@ -805,9 +1115,13 @@ namespace SageHavokEditor.Core
                 var strData = FindOrCreateStringData();
                 AddName(fileName + "_strings", strData);
 
-                // If the file ALSO has regular object fields (unusual but possible),
-                // fall through to create a normal object below.
-                // If it has NO class at all, we're done.
+                // Done — unless the file carries fields of its own beyond the lists,
+                // which would make it a real object as well. Falling through on the
+                // class alone was wrong: data/ defaults every classless file to
+                // hkbBehaviorGraphData, so graphdata.yaml built the variable objects
+                // and then a second, empty hkbBehaviorGraphData on top of them.
+                if (!doc.Scalars.Keys.Any(k => !k.Equals("class", StringComparison.OrdinalIgnoreCase)))
+                    return;
                 if (string.IsNullOrEmpty(className)) return;
             }
 
@@ -1009,7 +1323,9 @@ namespace SageHavokEditor.Core
 
         private void ResolveAllReferences()
         {
-            foreach (var obj in _allObjects)
+            // Snapshotted: resolving can invent an object (see ClassNamedReference)
+            // and append it, and the new one needs no resolving of its own.
+            foreach (var obj in _allObjects.ToList())
                 ResolveParams(obj.Params, obj.ClassName);
         }
         private void ResolveVariableBindings()
@@ -1241,11 +1557,15 @@ namespace SageHavokEditor.Core
 
             if (transParam.Children == null || transParam.Children.Count == 0)
             {
+                // A name here is a reference to a shared array and resolution hasn't
+                // run yet, so it is carried over rather than flattened to null —
+                // which is what the old ordering could afford and this one can't.
                 owner.Params.Remove(transParam);
-                var text = string.IsNullOrEmpty(transParam.Value)
-                           || !transParam.Value.StartsWith("#", StringComparison.Ordinal)
-                    ? "null" : transParam.Value;
-                owner.Params.Add(new HkParam { Name = targetMember, Value = text });
+                owner.Params.Add(new HkParam
+                {
+                    Name = targetMember,
+                    Value = string.IsNullOrEmpty(transParam.Value) ? "null" : transParam.Value
+                });
                 return;
             }
 
@@ -1278,15 +1598,24 @@ namespace SageHavokEditor.Core
                 var info = HavokTypeCatalog.Lookup(ownerClass ?? "", param.Name);
                 var expected = info?.ElementClassName;
 
+                // What the declared type says, with the hand lists as the fallback
+                // for a class HKX2 has no definition for.
+                bool isSingleRef = info != null
+                    ? info.ArrayKind == HkArrayKind.None && info.ElementClassName != null
+                    : SingleRefFields.Contains(param.Name);
+                bool isRefList = info != null
+                    ? info.ArrayKind == HkArrayKind.Pointer
+                    : MultiRefFields.Contains(param.Name);
+
                 if (_pendingRefLists.TryGetValue(param, out var names))
                 {
                     param.Value = string.Join(" ",
                         names.Select(n => ResolveNameToId(n, expected)));
                     _pendingRefLists.Remove(param);
                 }
-                else if (SingleRefFields.Contains(param.Name))
+                else if (isSingleRef)
                     param.Value = ResolveNameToId(param.Value, expected);
-                else if (MultiRefFields.Contains(param.Name) && !string.IsNullOrEmpty(param.Value))
+                else if (isRefList && !string.IsNullOrEmpty(param.Value))
                 {
                     var parts = param.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                     param.Value = string.Join(" ", parts.Select(t => ResolveNameToId(t, expected)));
@@ -1311,7 +1640,7 @@ namespace SageHavokEditor.Core
             if (string.IsNullOrEmpty(value) || value == "null") return value ?? "";
             if (value.StartsWith("#")) return value;
             if (!_byName.TryGetValue(value, out var candidates) || candidates.Count == 0)
-                return value;
+                return ClassNamedReference(value, expectedClass) ?? value;
             if (candidates.Count == 1 || string.IsNullOrEmpty(expectedClass))
                 return candidates[0].Id;
 
@@ -1320,8 +1649,56 @@ namespace SageHavokEditor.Core
 
             var derived = candidates.FirstOrDefault(
                 o => HavokTypeCatalog.IsKindOf(o.ClassName, expectedClass));
-            return (derived ?? candidates[0]).Id;
+            if (derived != null) return derived.Id;
+
+            // Nothing of the declared class carries this name. Where the class is one
+            // HKX2 knows, that is evidence and not ignorance, so the name is left
+            // unresolved rather than pointed at a candidate of the wrong class: the
+            // conversion then says "reference symbol not found", naming it, instead
+            // of dying on an InvalidCastException from a blender in a transition
+            // effect's slot. Where the class is unknown there is no evidence, and the
+            // first registered wins as it always did.
+            return HavokTypeCatalog.IsKindOf(expectedClass, expectedClass)
+                ? value
+                : candidates[0].Id;
         }
+
+        /// <summary>
+        /// A reference to a name no file carries, where the name is exactly a Havok
+        /// class that fits the slot. Vanilla dragonbehavior's modifier lists name a
+        /// BSGetTimeStepModifier that has no file, because the object it came from
+        /// had no name of its own and the class is all there was to call it — and
+        /// the class holds nothing but a runtime value, so a default instance is
+        /// the object. Created once and reused, since two lists naming the same
+        /// class mean the same shared modifier.
+        ///
+        /// Deliberately narrow: the name must *be* an HKX2 class, that class must
+        /// fit the declared slot, and nothing may already carry the name. A
+        /// reference that misses for any other reason stays a miss.
+        /// </summary>
+        private string? ClassNamedReference(string name, string? expectedClass)
+        {
+            if (expectedClass == null) return null;
+            if (!HavokTypeCatalog.IsKindOf(name, expectedClass)) return null;
+
+            if (_synthesisedByClass.TryGetValue(name, out var existing)) return existing.Id;
+
+            var obj = ModifierCatalog.CreateDefault(name);
+            if (obj == null) return null;
+            obj.Id = AllocId();
+            obj.ClassName = name;
+            _allObjects.Add(obj);
+            _synthesisedByClass[name] = obj;
+            AddName(name, obj);
+            SynthesisedFromClassName++;
+            return obj.Id;
+        }
+
+        private readonly Dictionary<string, HkObject> _synthesisedByClass =
+            new(StringComparer.Ordinal);
+
+        /// <summary>How many objects the import had to invent from a class name.</summary>
+        public int SynthesisedFromClassName { get; private set; }
 
         // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -1432,6 +1809,18 @@ namespace SageHavokEditor.Core
             string? currentListField = null;      // e.g. "variables" or "eventNames"
             bool currentListIsObjects = false;   // true if items have sub-keys
             Dictionary<string, string>? currentItem = null;
+            // Open sub-mappings inside the item being read, innermost last. A list
+            // item can nest — boneWeights: → named: → "NPC Root [Root]": 1.0 — and
+            // flattening that loses which bone the number belongs to, so a nested
+            // key is stored under its dotted path.
+            var nest = new List<(int Indent, string Key)>();
+            // Where this list's own items start, so a deeper "- " can be told from
+            // the next item. Without it a list nested inside an item — a blender
+            // child's bindings — split the item in two, and the second half was a
+            // sibling made of the binding's own keys: 137 empty
+            // hkbBlenderGeneratorChild objects out of vanilla 0_master.
+            int itemIndent = -1;
+            var nestedCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 
             for (int i = 0; i < lines.Length; i++)
             {
@@ -1445,6 +1834,24 @@ namespace SageHavokEditor.Core
                 // ── List item continuation ────────────────────────────────────────
                 if (currentListField != null && indent >= 2)
                 {
+                    if (trimmed.StartsWith("- ") && itemIndent >= 0 && indent > itemIndent)
+                    {
+                        // An item of a list nested inside this one. Recorded under a
+                        // numbered path (bindings.0.memberPath) so the shape survives;
+                        // the item being read carries on.
+                        while (nest.Count > 0 && nest[^1].Indent >= indent)
+                            nest.RemoveAt(nest.Count - 1);
+                        if (currentItem != null)
+                        {
+                            var path = string.Join(".", nest.Select(n => n.Key));
+                            nestedCounts.TryGetValue(path, out var n);
+                            nestedCounts[path] = n + 1;
+                            nest.Add((indent, n.ToString()));
+                            ParseKv(trimmed[2..].Trim(), currentItem, nest, indent);
+                        }
+                        continue;
+                    }
+
                     if (trimmed.StartsWith("- "))
                     {
                         // Commit previous item if any
@@ -1452,7 +1859,10 @@ namespace SageHavokEditor.Core
                             FlushItem(doc, currentListField, currentItem,
                                 ref currentListIsObjects);
 
+                        if (itemIndent < 0) itemIndent = indent;
                         var rest = trimmed[2..].Trim();
+                        nest.Clear();
+                        nestedCounts.Clear();
                         if (rest.Contains(':'))
                         {
                             // Object item: - key: value
@@ -1473,8 +1883,10 @@ namespace SageHavokEditor.Core
 
                     if (currentItem != null && indent >= 4)
                     {
-                        // Sub-key of current object item
-                        ParseKv(trimmed, currentItem);
+                        // Sub-key of the current object item, at whatever depth.
+                        while (nest.Count > 0 && nest[^1].Indent >= indent)
+                            nest.RemoveAt(nest.Count - 1);
+                        ParseKv(trimmed, currentItem, nest, indent);
                         continue;
                     }
 
@@ -1484,6 +1896,7 @@ namespace SageHavokEditor.Core
                             ref currentListIsObjects);
                     currentItem = null;
                     currentListField = null;
+                    itemIndent = -1;
                 }
                 else if (currentListField != null)
                 {
@@ -1498,6 +1911,7 @@ namespace SageHavokEditor.Core
                     currentItem = null;
                     currentListField = null;
                     currentListIsObjects = false;
+                    itemIndent = -1;
                 }
 
                 // ── Section continuation ──────────────────────────────────────────
@@ -1539,6 +1953,7 @@ namespace SageHavokEditor.Core
                             currentListField = key;
                             currentItem = null;
                             currentListIsObjects = false;
+                            itemIndent = -1;
                         }
                         else
                         {
@@ -1586,13 +2001,29 @@ namespace SageHavokEditor.Core
             sl.Add(value);
         }
 
-        private static void ParseKv(string line, Dictionary<string, string> target)
+        /// <summary>
+        /// One <c>key: value</c> line into <paramref name="target"/>. With a
+        /// <paramref name="nest"/> the key is written under its dotted path
+        /// (<c>boneWeights.named.NPC Root [Root]</c>) and a key with no value opens
+        /// a level rather than closing one — the flat form kept only the leaf, which
+        /// is fine for a transition and useless for a bone weight. The empty
+        /// placeholder is still written, so anything reading the flat key sees what
+        /// it always saw.
+        /// </summary>
+        private static void ParseKv(string line, Dictionary<string, string> target,
+            List<(int Indent, string Key)>? nest = null, int indent = 0)
         {
             var idx = line.IndexOf(':');
             if (idx <= 0) return;
-            var k = line[..idx].Trim();
+            var k = line[..idx].Trim().Trim('"', '\'');
             var v = StripComment(line[(idx + 1)..]).Trim().Trim('"', '\'');
-            target[k] = v;
+
+            var path = nest is { Count: > 0 }
+                ? string.Join(".", nest.Select(n => n.Key)) + "." + k
+                : k;
+            target[path] = v;
+
+            if (nest != null && v.Length == 0) nest.Add((indent, k));
         }
 
         private static string StripComment(string s)
