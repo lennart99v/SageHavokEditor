@@ -66,6 +66,20 @@ namespace SageHavokEditor.Core.Services
             }
         }
 
+        /// <summary>
+        /// Declared type of one param of one class, without needing an object to
+        /// hang it on. The YAML importer asks about params that aren't there yet —
+        /// "does hkbPoseMatchingGenerator have a startPlayingEventId, and is it an
+        /// event index?" — which is a question about the class, not the instance.
+        /// Null when the class or the param is outside HKX2's type set.
+        /// </summary>
+        public static HkParamTypeInfo? Lookup(string className, string paramName)
+        {
+            if (string.IsNullOrEmpty(className) || string.IsNullOrEmpty(paramName)) return null;
+            var map = GetClassMap(className);
+            return map != null && map.TryGetValue(paramName, out var info) ? info : null;
+        }
+
         private static Dictionary<string, HkParamTypeInfo>? GetClassMap(string className)
         {
             lock (_lock)
