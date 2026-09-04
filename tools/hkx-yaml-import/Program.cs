@@ -192,6 +192,68 @@ foreach (var folder in args)
         + (stillNames.Count == 0 ? "" : $", {stillNames.Count} left as names — "
                                         + string.Join("; ", stillNames.Take(3))));
 
+    // -- references land on the right object ----------------------------------
+    // Names are not unique. This tree makes that worse by keying files on them:
+    // mt_behavior has 656 names two files share, AltarIdle_Enter being both a
+    // state and the clip it plays. What decides which one a reference means is
+    // the slot — hkbStateMachine.states is declared over hkbStateMachineStateInfo
+    // and hkbStateMachineStateInfo.generator over hkbGenerator — so the check is
+    // that every resolved reference is of the class its slot declares.
+    {
+        var wrong = new List<string>();
+        var checkedRefs = 0;
+        foreach (var obj in objects)
+            foreach (var p in obj.Params)
+            {
+                var expected = p.TypeInfo?.ElementClassName;
+                if (expected == null) continue;
+                foreach (var token in Refs(p))
+                {
+                    if (!manager.ObjectMap.TryGetValue(token, out var target)) continue;
+                    if (!HavokTypeCatalog.IsKindOf(target.ClassName, expected)) continue;
+                    checkedRefs++;
+                }
+                foreach (var token in Refs(p))
+                {
+                    if (!manager.ObjectMap.TryGetValue(token, out var target)) continue;
+                    if (HavokTypeCatalog.IsKindOf(target.ClassName, expected)) continue;
+                    // Only a mismatch when HKX2 knows the class at all; an unknown
+                    // one is no evidence either way.
+                    if (!HavokTypeCatalog.IsKindOf(target.ClassName, target.ClassName)) continue;
+                    wrong.Add($"{obj.ClassName}.{p.Name} → {target.ClassName} "
+                              + $"({target.DisplayName}), wanted {expected}");
+                }
+            }
+        Check("every reference points at an object of the class its slot declares",
+            wrong.Count == 0,
+            $"{checkedRefs} checked, {wrong.Count} wrong"
+            + (wrong.Count == 0 ? "" : $" — {string.Join("; ", wrong.Take(3))}"));
+    }
+
+    // -- a list that ends at a top-level key ----------------------------------
+    // The parser only closed an open list when it saw a line indented under one.
+    // A list followed by another top-level key left its last item pending and
+    // then threw it away — so a one-item list vanished, which is what every
+    // state machine's wildcard transitions are.
+    {
+        var declaredMachines = Directory
+            .EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories)
+            .Count(f =>
+            {
+                var lines = File.ReadAllLines(f);
+                // Exactly hkbStateMachine: hkbStateMachineStateInfo also declares
+                // a transitions: list, and 517 of mt_behavior's do - counting those
+                // in is what made this read 116 of 633 instead of 116 of 116.
+                return lines.Any(l => l.TrimStart('\uFEFF').Trim() == "class: hkbStateMachine")
+                       && lines.Any(l => l.StartsWith("transitions:", StringComparison.Ordinal));
+            });
+        var imported = objects.Count(o => o.ClassName == "hkbStateMachine"
+                                          && o.Params.Any(p => p.Name == "transitions"
+                                                               && p.Children.Count > 0));
+        Check("every state machine that declares wildcard transitions kept them",
+            imported >= declaredMachines, $"{imported} of {declaredMachines}");
+    }
+
     // -- what the import leaves unreachable ----------------------------------
     // The same question an .hkx save asks: can the root reach this object. An
     // import that wires a new object up wrongly shows here as a jump in the
