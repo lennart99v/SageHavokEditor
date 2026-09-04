@@ -80,6 +80,26 @@ namespace SageHavokEditor.Core.Services
             return map != null && map.TryGetValue(paramName, out var info) ? info : null;
         }
 
+        /// <summary>
+        /// Is <paramref name="className"/> the class named by
+        /// <paramref name="baseClassName"/>, or one deriving from it? The question
+        /// a reference asks: a param declared hkbGenerator accepts an
+        /// hkbClipGenerator and not an hkbStateMachineStateInfo. False when either
+        /// name is outside HKX2's type set — a caller can't then tell "no" from
+        /// "don't know", which is why the YAML importer treats an unknown class as
+        /// no evidence rather than as a mismatch.
+        /// </summary>
+        public static bool IsKindOf(string? className, string? baseClassName)
+        {
+            if (string.IsNullOrEmpty(className) || string.IsNullOrEmpty(baseClassName))
+                return false;
+            if (className == baseClassName) return true;
+            EnsureIndexes();
+            return _havokTypesByName!.TryGetValue(className, out var t)
+                   && _havokTypesByName.TryGetValue(baseClassName, out var b)
+                   && b.IsAssignableFrom(t);
+        }
+
         private static Dictionary<string, HkParamTypeInfo>? GetClassMap(string className)
         {
             lock (_lock)
