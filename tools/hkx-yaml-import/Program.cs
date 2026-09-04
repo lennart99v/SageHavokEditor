@@ -247,11 +247,41 @@ foreach (var folder in args)
                 return lines.Any(l => l.TrimStart('\uFEFF').Trim() == "class: hkbStateMachine")
                        && lines.Any(l => l.StartsWith("transitions:", StringComparison.Ordinal));
             });
+        // wildcardTransitions, not transitions: the source writes the same key on a
+        // machine as on a state, and on a machine it means the wildcard list.
         var imported = objects.Count(o => o.ClassName == "hkbStateMachine"
-                                          && o.Params.Any(p => p.Name == "transitions"
-                                                               && p.Children.Count > 0));
+            && o.Params.FirstOrDefault(p => p.Name == "wildcardTransitions") is { } w
+            && manager.ObjectMap.TryGetValue(w.Value ?? "", out var arr)
+            && arr.ClassName == "hkbStateMachineTransitionInfoArray");
         Check("every state machine that declares wildcard transitions kept them",
             imported >= declaredMachines, $"{imported} of {declaredMachines}");
+    }
+
+    // -- transition conditions ------------------------------------------------
+    // A condition is written as the expression itself, where Havok wants a
+    // pointer to an hkbCondition holding that text. Left as text HKX2 reads it
+    // as a reference symbol, which is where mt_behavior's conversion ended.
+    {
+        var declaredConditions = Directory
+            .EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories)
+            .SelectMany(File.ReadLines)
+            .Count(l => l.TrimStart().StartsWith("condition: ", StringComparison.Ordinal)
+                        && !l.TrimEnd().EndsWith("null", StringComparison.Ordinal));
+
+        var built = objects.Count(o => o.ClassName == "hkbExpressionCondition");
+        var textLeft = new List<string>();
+        foreach (var obj in objects)
+            foreach (var p in obj.Params)
+                foreach (var child in p.Children.Where(c => string.IsNullOrEmpty(c.Id)))
+                    foreach (var cp in child.Params.Where(x => x.Name == "condition"))
+                        if (!string.IsNullOrEmpty(cp.Value) && cp.Value != "null"
+                            && !cp.Value.StartsWith("#", StringComparison.Ordinal))
+                            textLeft.Add($"{obj.ClassName}: {Trim(cp.Value, 40)}");
+
+        Check("every transition condition became an hkbExpressionCondition",
+            textLeft.Count == 0 && built >= declaredConditions,
+            $"{declaredConditions} in the source, {built} built, {textLeft.Count} left as text"
+            + (textLeft.Count == 0 ? "" : $" — {string.Join("; ", textLeft.Take(3))}"));
     }
 
     // -- data/ sidecars find their owner --------------------------------------
