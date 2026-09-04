@@ -32,6 +32,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The name-keyed index fields resolve on a YAML import.** The source writes
+  the readable half of a pair — `syncVariable: iSyncSprintState` where Havok's
+  member is `syncVariableIndex`, `startPlayingEvent: GetUpStart` where it is
+  `startPlayingEventId` — and its own writer drops the suffix exactly when it
+  has a name to put in place of the number, so the same files carry
+  `startMatchingEventId: -1` where there is no event to name. The importer kept
+  the readable form, which is a member Havok doesn't have, holding a string
+  where an int belongs. 24 sites in vanilla `0_master`, 15 in `dragonbehavior`,
+  13 in `mt_behavior` — an `hkbEventDrivenModifier` that never activates, an
+  `hkbPoseMatchingGenerator` that never starts matching.
+
+  Rather than a list of the five fields this affects today, the rule is asked of
+  the class: a param the class doesn't declare, whose name plus `Id` or `Index`
+  *is* a member `HavokTypeCatalog` has marked as an index into the event or
+  variable table, is that member written the readable way. Those marks already
+  existed for the property editor's name pickers, so nothing new had to be
+  decided — and a sixth field appearing in a future source tree needs no code.
+  A name with no match resolves to `-1`, Havok's own "no event" sentinel and
+  what the source itself writes in that case, rather than the param being
+  dropped.
+
+  `HavokTypeCatalog.Lookup(className, paramName)` is new and public for this:
+  the importer asks about params that aren't there yet, which is a question
+  about the class rather than the instance.
+
+
 - **Clip triggers survive a YAML import.** A clip's `triggers:` is the list
   itself in the source, where Havok's `hkbClipGenerator.triggers` is a *pointer*
   to an `hkbClipTriggerArray` that holds it — so the import built the right
