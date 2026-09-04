@@ -168,21 +168,29 @@ foreach (var folder in args)
     }
 
     // -- the name-keyed index fields ----------------------------------------
+    // Counted from the source, because a resolved field is renamed: the check has
+    // to know how many were written the readable way, not how many still are.
+    var declaredNameKeyed = Directory
+        .EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories)
+        .SelectMany(File.ReadLines)
+        .Count(l => eventNameFields.Concat(new[] { variableNameField })
+            .Any(f => l.StartsWith(f + ":", StringComparison.Ordinal)));
+
     var stillNames = new List<string>();
-    var resolvedFields = 0;
+    var resolved = 0;
     foreach (var obj in objects)
         foreach (var p in obj.Params)
         {
-            if (!eventNameFields.Contains(p.Name) && p.Name != variableNameField) continue;
-            if (int.TryParse(p.Value, out _)) resolvedFields++;
-            else stillNames.Add($"{obj.ClassName}.{p.Name} = {p.Value}");
+            if (eventNameFields.Contains(p.Name) || p.Name == variableNameField)
+            { stillNames.Add($"{obj.ClassName}.{p.Name} = {p.Value}"); continue; }
+            if (eventNameFields.Any(f => p.Name == f + "Id") || p.Name == variableNameField + "Index")
+                if (int.TryParse(p.Value, out _)) resolved++;
         }
-    if (stillNames.Count == 0)
-        Check("the name-keyed index fields resolved to indices", true, $"{resolvedFields} resolved");
-    else
-        Note("name-keyed index fields arrive as names and stay that way",
-            $"{resolvedFields} resolved, {stillNames.Count} still names — "
-            + string.Join("; ", stillNames.Take(3)));
+    Check("every name-keyed index field became the index member it names",
+        stillNames.Count == 0 && resolved >= declaredNameKeyed,
+        $"{declaredNameKeyed} written by name in the source, {resolved} index members resolved"
+        + (stillNames.Count == 0 ? "" : $", {stillNames.Count} left as names — "
+                                        + string.Join("; ", stillNames.Take(3))));
 
     // -- what the import leaves unreachable ----------------------------------
     // The same question an .hkx save asks: can the root reach this object. An
