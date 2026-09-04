@@ -7,7 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A YAML behaviour folder converts to `.hkx`, and bone weights come from the
+  character project.** The last of the import work, and the end of it: vanilla
+  `0_master` imports to 2310 objects with nothing the root can't reach, converts,
+  and reads back with **1217 of 1217 events, 230 of 230 variables and 289 of 289
+  clip generators**. `mt_behavior` the same. Load → 📂 Open YAML behavior folder…
+  → Save as `.hkx` is a round trip.
+
+  **Bone weights need the character project, which is why they came last.** A
+  blender child's weights are written by bone *name* in the source and stored as
+  a flat array indexed by the animation skeleton's bone *order*, so there is
+  nothing to write without the skeleton. The import now reads
+  `<project>/character assets/skeleton.hkx` — the folder next to `behaviors/` —
+  and builds the array from it. Without one the graph still loads, and the status
+  bar says how many weight maps could not be built and what that means, rather
+  than the editor guessing an order.
+
+  **It has to be the `.hkx` skeleton, not the `.nif`.** The registry the editor
+  already had reads bone order from `skeleton.nif`, and on the dragon project the
+  two orderings agree on nothing: 84 bones against the NIF's 89, and every one of
+  the 84 at a different index, because the NIF carries footstep and attachment
+  nodes the animation skeleton has no place for. A weight array built from the
+  NIF would be wrong in every entry and wrong silently. `tools/hkx-bone-weights`
+  is that measurement.
+
+  Three more things the source flattens, all found by following the conversion's
+  own complaints: a blender's `children:` are written inline where Havok wants
+  pointers (the member is found by shape, not name — `BSBoneSwitchGenerator`
+  calls its `ChildrenA`); `pClipGenerator`, `pOnActivateModifier` and
+  `pOnDeactivateModifier` were missing from the hand-written list of reference
+  fields, leaving **80 slots in `0_master`** and 28 in `dragonbehavior`
+  unresolved, so reference resolution now comes from the declared type and keeps
+  the list only as a fallback; and a reference naming a class no file defines
+  (`BSGetTimeStepModifier`) builds a default instance of it, which is what the
+  source means when an object had no name of its own.
+
 ### Fixed
+
+- **A YAML import built a behaviour graph with no event names in it.** The three
+  graph-data objects — the variable types, the string data holding every event
+  and variable *name*, the value set holding their starting values — were all
+  built and none of them linked, so the names hung off nothing: unreachable from
+  the root, dropped by the save, and a converted file whose events had no names
+  at all. **It converted**, which is exactly why nothing caught it until the
+  harness started reading the binary back instead of only checking that it was
+  written.
+
+- **Two parser faults that manufactured objects.** A list nested inside a list
+  item — a blender child's `bindings:` — split the item in two, and the second
+  half was a sibling made of the binding's own keys. And a `bindings:` list
+  written on a blender itself belongs one level down, in the
+  `hkbVariableBindingSet` its `variableBindingSet` points at, so hoisting it as
+  "the class's one array of pointers" turned it into a blender child. Between
+  them: **137 empty `hkbBlenderGeneratorChild` objects in `0_master`**, 40 in
+  `dragonbehavior`, each one a node that plays nothing and reads as a T-pose. The
+  graph doctor now reports nothing at all on any of the three vanilla units.
+
 
 - **Transition conditions and wildcard transitions survive a YAML import.** Two
   things that turned out to be one job.
