@@ -46,6 +46,17 @@ namespace SageHavokEditor.Core.Skeletons
             Register(skeletonId, bones);
         }
 
+        /// <summary>
+        /// Load skeleton bone order from a .hkx — the ordering an hkbBoneWeightArray
+        /// is actually indexed by. Prefer this to <see cref="LoadFromNif"/> wherever
+        /// the .hkx is available: the two orderings are not the same file's view of
+        /// the same thing, and on the dragon project they agree on nothing.
+        /// </summary>
+        public void LoadFromHkx(string skeletonId, string hkxPath)
+        {
+            Register(skeletonId, HkxSkeletonReader.ReadBoneOrder(hkxPath));
+        }
+
         /// <summary>Load skeleton from a JSON file produced by ExportToJson.</summary>
         public void LoadFromJson(string jsonPath)
         {
