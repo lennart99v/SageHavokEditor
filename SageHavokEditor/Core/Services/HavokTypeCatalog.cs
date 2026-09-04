@@ -52,6 +52,13 @@ namespace SageHavokEditor.Core.Services
             {
                 if (!map.TryGetValue(p.Name, out var info)) continue;
                 p.TypeInfo = info;
+
+                // What the structural pass above can't see: an array that is empty
+                // in this file still has a declared element shape, and for an
+                // inline-struct array that is what "+ Add element" needs.
+                if (info.ArrayKind == HkArrayKind.InlineStruct)
+                    p.IsInlineStructArray = true;
+
                 if (info.ElementClassName == null) continue;
                 foreach (var child in p.Children)
                     if (string.IsNullOrEmpty(child.Id))   // inline structs only, not cached refs
@@ -91,7 +98,32 @@ namespace SageHavokEditor.Core.Services
                 var info = Classify(prop.PropertyType);
                 if (info != null) map[paramName] = info;
             }
+            ApplyArrayKinds(type, map);
             return map;
+        }
+
+        /// <summary>
+        /// Mark which array params hold inline structs and which hold #id refs.
+        /// Reflection can't tell them apart (both are IList&lt;T&gt;), so the answer
+        /// comes from HKX2's own XML writer — see HavokArrayKinds.
+        /// </summary>
+        private static void ApplyArrayKinds(Type type, Dictionary<string, HkParamTypeInfo> map)
+        {
+            var kinds = HavokArrayKinds.ForType(type);
+            foreach (var (name, kind) in kinds)
+            {
+                if (!map.TryGetValue(name, out var info)) continue;
+                map[name] = new HkParamTypeInfo
+                {
+                    Kind = info.Kind,
+                    EnumChoices = info.EnumChoices,
+                    ElementClassName = info.ElementClassName,
+                    Semantic = info.Semantic,
+                    Min = info.Min,
+                    Max = info.Max,
+                    ArrayKind = kind,
+                };
+            }
         }
 
         private static HkParamTypeInfo? Classify(Type t)
@@ -191,6 +223,7 @@ namespace SageHavokEditor.Core.Services
                     Min = info.Min,
                     Max = info.Max,
                     Semantic = semantic,
+                    ArrayKind = info.ArrayKind,
                 };
             }
         }
