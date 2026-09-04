@@ -80,6 +80,10 @@ namespace SageHavokEditor.Core
         // safe once the names are gone.
         private readonly Dictionary<HkParam, List<string>> _pendingRefLists = new();
 
+        // Objects loaded from data/, with the filename they came from. That name is
+        // the only thing linking them to their owner — see AttachDataSidecars.
+        private readonly List<(string Stem, HkObject Object)> _dataSidecars = new();
+
         // behavior.yaml's packfile: section. Havok's own header, carried through
         // rather than assumed: a unit from another Havok version says so here, and
         // the SkyrimSE defaults would silently mislabel it.
@@ -96,6 +100,7 @@ namespace SageHavokEditor.Core
             _nextId = 1;
             _byName.Clear();
             _pendingRefLists.Clear();
+            _dataSidecars.Clear();
             _allObjects.Clear();
 
             _classVersion = "";
@@ -103,6 +108,8 @@ namespace SageHavokEditor.Core
 
             string behaviorName = LoadAllYaml(folderPath);
             ResolveAllReferences();       // object name refs: transition: Name → #ID
+            AttachDataSidecars();         // data/<owner>_*.yaml → the owner's null member
+            NormalizeEmptyArrays();       // boneIndices: [] → numelements="0"
             ResolveTransitionFields();    // event: Name → eventId: N, toState: Name → toStateId: N
             WireStateTransitions();       // wrap inline transition lists → TransitionInfoArray objects
             ResolveVariableBindings();    // variable: Name → variableIndex: N
@@ -129,6 +136,88 @@ namespace SageHavokEditor.Core
             });
 
             return behaviorName;
+        }
+
+        // ── Empty array literals ──────────────────────────────────────────────────
+        // YAML writes an empty array as []. Left as the text "[]" the param goes out
+        // with no numelements at all and the conversion stops on it — "numelemnets
+        // is not vaild number", HKX2's own spelling. Seven sites across the vanilla
+        // corpus (six boneIndices, one legs), all of them array members, and "[]" is
+        // not a value anything else in this format takes.
+
+        private void NormalizeEmptyArrays()
+        {
+            foreach (var obj in _allObjects)
+                foreach (var param in obj.Params)
+                    if (param.Value == "[]")
+                    {
+                        param.Value = "";
+                        param.NumElements = "0";
+                    }
+        }
+
+        // ── data/ sidecars ────────────────────────────────────────────────────────
+        // An expression list, a bone-index list and an event-range list live in
+        // their own file under data/, and nothing in the source references them:
+        // the owner writes the member as `null` and the only link is the filename.
+        // Unattached they are unreachable from the root, so an .hkx save drops
+        // them and the modifier evaluates nothing — 41 objects in vanilla
+        // dragonbehavior, 17 in 0_master.
+        //
+        // The filename is <owner> followed by a note about what it is, and that
+        // note is not the member name: _expressions happens to match
+        // hkbEvaluateExpressionModifier.expressions, but _ranges stands for
+        // eventRanges and _boneIndex for bones or keyframedBonesList. So the
+        // member is not read out of the name at all. The owner is the longest
+        // object name that prefixes the stem, and the member is whichever of its
+        // members is declared to point at exactly this file's class and is still
+        // null — which for every class involved here is precisely one. Where it is
+        // more than one, or none, the file is left unattached rather than guessed
+        // at: a wrong link here is silent, and an unreferenced object at least
+        // shows up in the doctor's pruning report.
+
+        private void AttachDataSidecars()
+        {
+            foreach (var (stem, sidecar) in _dataSidecars)
+            {
+                if (string.IsNullOrEmpty(sidecar.ClassName)) continue;
+
+                foreach (var owner in OwnerCandidates(stem, sidecar))
+                {
+                    var slots = owner.Params
+                        .Where(param =>
+                        {
+                            var info = HavokTypeCatalog.Lookup(owner.ClassName, param.Name);
+                            return info != null
+                                   && info.ArrayKind == HkArrayKind.None
+                                   && info.ElementClassName == sidecar.ClassName
+                                   && (string.IsNullOrEmpty(param.Value) || param.Value == "null");
+                        })
+                        .ToList();
+
+                    if (slots.Count != 1) break;   // ambiguous, or this owner has no room
+                    slots[0].Value = sidecar.Id;
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Objects whose name prefixes the file stem at an underscore, longest
+        /// first — Foo_Bar_expressions is Foo_Bar's before it is Foo's. The sidecar
+        /// itself is skipped: a bone-index file is named after the member it fills
+        /// (DriveRagdollRB_bones), so it prefixes its own stem.
+        /// </summary>
+        private IEnumerable<HkObject> OwnerCandidates(string stem, HkObject sidecar)
+        {
+            for (int i = stem.Length - 1; i > 0; i--)
+            {
+                if (stem[i] != '_') continue;
+                if (!_byName.TryGetValue(stem.Substring(0, i), out var owners)) continue;
+                foreach (var owner in owners)
+                    if (!ReferenceEquals(owner, sidecar))
+                        yield return owner;
+            }
         }
 
         // ── Name-keyed index fields ───────────────────────────────────────────────
@@ -624,6 +713,7 @@ namespace SageHavokEditor.Core
 
         private void LoadObjectYaml(string yamlPath, string? defaultClass)
         {
+            var folder = Path.GetFileName(Path.GetDirectoryName(yamlPath) ?? "");
             var text = File.ReadAllText(yamlPath);
             var doc = YamlDocument.Parse(text);
 
@@ -847,6 +937,9 @@ namespace SageHavokEditor.Core
             }
 
             RegisterObject(obj, objectName);
+
+            if (string.Equals(folder, "data", StringComparison.OrdinalIgnoreCase))
+                _dataSidecars.Add((fileName, obj));
 
             // Also register under filename so e.g. "data: graphdata" resolves
             // even when the object has a different internal name param
