@@ -30,6 +30,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file it names exists is the normal order of doing this. Costs one stat per
   reference per pass.
 
+### Fixed
+
+- **A YAML import was silently losing references, three different ways.** Found
+  by chasing the one number `tools/hkx-yaml-import` reports that nothing else
+  asks: how many objects the root can't reach, which is exactly what an `.hkx`
+  save drops. It was **1459 of `mt_behavior`'s 4102** — 36% of the file, mostly
+  state infos with nothing pointing at them. It is now **58 of 4176**.
+  `0_master` goes 326 of 1657 → 151 of 1817, `dragonbehavior` 77 of 1229 → 63 of
+  1275. The dragon unit now loads with **no structural errors at all**, where it
+  had four.
+
+  **Names are not unique, and the importer resolved them first-come.**
+  `mt_behavior` has 656 names two files share — `AltarIdle_Enter` is both a state
+  and the clip that state plays — so `AltarBehavior`'s `states` list pointed at
+  three clips. This is the exact failure the roadmap records from Behavior
+  Relay's own history: two same-named nodes collapsing in a name-keyed map, and
+  in her case an in-game crash. What decides which one a reference means is the
+  slot it sits in: `hkbStateMachine.states` is declared over
+  `hkbStateMachineStateInfo` and `hkbStateMachineStateInfo.generator` over
+  `hkbGenerator`. So resolution now carries the owning class down and prefers a
+  candidate of the declared class, falling back to first-registered — the old
+  behaviour — only where the class can't decide. New
+  `HavokTypeCatalog.IsKindOf`.
+
+  **A list that ended at a top-level key lost its last item.** The parser only
+  closed an open list when it saw a line indented under one, so a list followed
+  by another top-level key left its final item pending and then threw it away —
+  and a one-item list vanished entirely. That is what every state machine's
+  wildcard transitions are: 116 machines in `mt_behavior`, 11 in `0_master`, 17
+  in `dragonbehavior`, all of them silently dropped.
+
+  **A name containing a space couldn't survive the name list.** Multi-reference
+  fields were joined into one space-separated string and split apart again, but
+  141 of `mt_behavior`'s object names contain a space (`Paired
+  OffsetBoundStandingCut`), so **110 of its 1234 list entries** came back as two
+  tokens pointing at two wrong objects, or none. The names are kept as a list
+  until they're resolved; ids never contain a space, so the joined form is safe
+  once the names are gone.
+
+  Two checks pin it: every resolved reference must be of the class its slot
+  declares (4063 checked in `mt_behavior`, 0 wrong), and every state machine
+  that declares wildcard transitions must still have them.
+
 ### Added
 
 - **The name-keyed index fields resolve on a YAML import.** The source writes
