@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Export FBX from the clip preview.** The preview could play a Skyrim animation
+  but not get it out of the editor. There is now an **Export FBX** button beside
+  *Show in graph*: it writes the previewed clip as a binary FBX — the project's
+  animation skeleton as a bone hierarchy with the file's own names, parenting and
+  reference pose, plus every frame of every bone baked as a key at the animation's
+  own `frameDuration`. No mesh, no materials, no skin weights; it is an animation
+  carrier.
+
+  Baking rather than re-fitting curves is deliberate: the decoder already
+  evaluates Havok's splines frame by frame, so a fitted curve would be a second
+  approximation layered on the first. The one thing FBX forces is Euler rotation,
+  and every rotation has two equivalent XYZ spellings — near the y = ±90
+  singularity, which is exactly where twist bones sit, the naive choice swings a
+  channel most of a turn while the bone barely moves. The conversion picks per
+  frame whichever spelling lands closest to the previous frame; on a real troll
+  clip that took the worst single-frame channel step from 159.61° down to 84.45°,
+  against a genuine worst-case motion of 47.44°.
+
+  Binary, not ASCII: Blender answers "ASCII FBX files are not supported" and
+  refuses the file outright, so the readable flavour is worth nothing here and
+  lives only in `tools/hkx-fbx-export --ascii` as a debug view.
+
+  Translations are written in Havok units unscaled — Blender reads the file as
+  centimetres and divides by 100, so a bone at Havok 100 arrives at 1.0 Blender
+  unit. Nothing in a `.hkx` says what a Havok unit is worth in metres, so the
+  export copies the numbers rather than guessing at them.
+
+  Verified against Blender 4.5 rather than by eye: for each exported clip,
+  Blender's own playback was sampled per frame and diffed against the transforms
+  the editor believes in. A 59-frame single-block clip matches to 0.0002 Blender
+  units and 0.117° over 3,304 bone-frames; a 285-frame two-block clip to 0.0004
+  and 0.120° over 15,960. Both are float32 key storage, not anything structural.
+  All 62 animations in a troll project export and verify.
+
+
 - **Clips longer than ~256 frames preview.** Havok splits a long
   `hkaSplineCompressedAnimation` into blocks, and the parser refused any file
   with `numBlocks > 1` outright — so the clip preview simply couldn't open a

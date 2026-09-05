@@ -13,6 +13,8 @@
     <Compile Include="..\..\SageHavokEditor\Core\Animation\SkeletonParser.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Animation\HavokSplineDecoder.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Animation\HavokAnimationParser.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Animation\FbxDocument.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Animation\FbxAnimationScene.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
     <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
   </ItemGroup>
