@@ -247,7 +247,7 @@ namespace HKX2
             // if not exist it is SERIALIZE_IGNORED flag (null)
             var ele = GetPropertyElement(element, name);
             if (ele is null || ele.Value == "\u2400") return null;
-            return ele.Value.Trim();
+            return Unindent(ele.Value);
         }
 
         public bool ReadBoolean(XElement element, string name)
@@ -426,6 +426,15 @@ namespace HKX2
             return ele;
         }
 
+        /// <summary>
+        /// Strips the line breaks and tabs a pretty-printer may have wrapped a
+        /// value in, and nothing else. Spaces are content: Havok strings can
+        /// carry leading or trailing ones (vanilla magicbehavior has a variable
+        /// named " iState_NPCSneaking"), and since events, variables and
+        /// character properties bind by name, trimming those renamed them.
+        /// </summary>
+        private static string Unindent(string value) => value.Trim('\r', '\n', '\t');
+
         public IList<string> ReadStringArray(XElement element, string name)
         {
             var ele = ReadBaseArray(element, name);
@@ -433,7 +442,7 @@ namespace HKX2
                 return Array.Empty<string>();
 
             return ele.Elements("hkcstring")
-                      .Select(ele => ele.Value.Trim())
+                      .Select(ele => Unindent(ele.Value))
                       .ToList();
         }
         private static readonly char[] SplitSpaceList = { ' ', '\n', '\r', '\t' };

@@ -132,6 +132,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Strings with leading or trailing spaces are no longer silently renamed on
+  load.** `PackFileDeserializer.ReadStringPointer` ended `return ret.Trim()`, and
+  the XML reader did the same, so every string the editor read had its padding
+  stripped — a Havok string is the bytes between its pointer and the NUL, and the
+  padding is content. Vanilla `magicbehavior.hkx` ships a graph variable literally
+  named `" iState_NPCSneaking"` *alongside* a plain `"iState_NPCSneaking"`: opening
+  that file here collapsed the two into one name. Events, variables and character
+  properties are the part of a behaviour graph that binds **by name** rather than
+  by id or index, so this was a rename, not a cosmetic difference — a Nemesis or
+  Pandora patch keyed to the padded name stops matching, and two symbols that the
+  game keeps apart become one in the editor. Two of the seven vanilla LE files on
+  hand were affected: `magicbehavior`'s variable, and `horsebehavior`'s expression
+  `"iCombatStance = 1 "`, whose trailing space the editor removed on every save.
+
+  The binary reader now returns the string verbatim. The XML reader strips line
+  breaks and tabs only — the indentation a pretty-printer can wrap a value in —
+  and leaves spaces alone, so a value that was written across lines still reads
+  back correctly while a padded name survives. Verified by repacking: the original
+  bytes read `\x00iCombatStance = 1 \x00`, a repack before the fix wrote
+  `\x00iCombatStance = 1\x00`, and a repack after it reproduces the original.
+  Across the sample corpus the Havok XML a file deserialises to is byte-identical
+  to before except in those two files, LE⇄SE conversion still round-trips content
+  exactly, and `tools/hkx-service-test` (the editor's own Open/Save/convert path)
+  passes every check.
+
+  Found by `tools/hkx-idalign`'s scalar cross-check — the first thing here that
+  compares the editor's strings against the converter's, which is why a bug this
+  old went unseen.
+
 - **Opening a behaviour no longer freezes the window for ten-plus seconds.** The
   behaviour tree in the left panel expanded every node by default — a `TreeViewItem`
   style with `IsExpanded="True"` — and WPF builds a visual for each visible node, so
