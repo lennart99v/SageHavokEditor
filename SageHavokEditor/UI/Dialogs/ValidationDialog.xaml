@@ -17,8 +17,12 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Summary badges -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+        <!-- Headline + summary badges -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+        <TextBlock x:Name="HeadlineText" Margin="0,0,0,8"
+                   Foreground="{DynamicResource TextPrimaryBrush}"
+                   FontSize="13" TextWrapping="Wrap"/>
+        <StackPanel Orientation="Horizontal">
             <!-- Errors badge -->
             <Border CornerRadius="4" Padding="10,4" Margin="0,0,8,0"
                     Background="{DynamicResource BadgePurpleBrush}"
@@ -92,6 +96,7 @@
                 </StackPanel>
             </Border>
         </StackPanel>
+        </StackPanel>
 
         <!-- Filter -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
@@ -107,7 +112,11 @@
         </StackPanel>
 
         <!-- Issue list -->
+        <!-- No horizontal scroll: the description is the point of a row, and the
+             doctor's are long enough that a row scrolled off to the right reads
+             as a blank. Rows wrap to the dialog's width instead. -->
         <ListBox x:Name="IssueList" Grid.Row="2"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  Background="{DynamicResource BgMidBrush}"
                  Foreground="{DynamicResource TextPrimaryBrush}"
                  BorderBrush="{DynamicResource BorderBrush}"
@@ -178,7 +187,12 @@
                        Foreground="{DynamicResource TextSecondaryBrush}"
                        FontSize="11" VerticalAlignment="Center" Margin="0,0,15,0"
                        Text="Click an issue to navigate to the object"/>
-            <Button Content="Close" Click="BtnClose_Click" Padding="14,5"/>
+            <!-- Pre-save mode swaps Close for a decision; see ValidationDialog.cs -->
+            <Button x:Name="BtnSaveAnyway" Content="Save anyway" Padding="14,5"
+                    Margin="0,0,8,0" Visibility="Collapsed" Click="BtnSaveAnyway_Click"/>
+            <Button x:Name="BtnCancelSave" Content="Cancel save" Padding="14,5"
+                    Visibility="Collapsed" IsCancel="True" Click="BtnCancelSave_Click"/>
+            <Button x:Name="BtnCloseReport" Content="Close" Click="BtnClose_Click" Padding="14,5"/>
         </StackPanel>
     </Grid>
 </Window>

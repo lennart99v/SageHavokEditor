@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using SageHavokEditor.Models;
-using SageHavokEditor.Models.ViewModels;
 
 namespace SageHavokEditor.Core.Validation
 {
@@ -21,12 +18,12 @@ namespace SageHavokEditor.Core.Validation
                 o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id;
 
             // 1. Broken references — #xxxx tokens that don't exist in ObjectMap.
-            // EnumerateRefs walks inline (anonymous) children too — transition
-            // arrays and hkRootLevelContainer.namedVariants carry their refs in
-            // nested params, not the param value.
+            // HkRefWalk walks inline (anonymous) children too — transition arrays
+            // and hkRootLevelContainer.namedVariants carry their refs in nested
+            // params, not the param value.
             foreach (var obj in _manager.ObjectMap.Values)
             {
-                foreach (var (path, refId) in EnumerateRefs(obj))
+                foreach (var (path, refId) in HkRefWalk.EnumerateRefs(obj))
                 {
                     if (refId == "#0000") continue; // null ref convention
                     if (!_manager.ObjectMap.ContainsKey(refId))
@@ -34,6 +31,7 @@ namespace SageHavokEditor.Core.Validation
                         issues.Add(new ValidationIssue
                         {
                             Severity = "Error",
+                            Category = ValidationIssue.CategoryBrokenRef,
                             ObjectId = obj.Id,
                             ObjectClass = obj.ClassName,
                             ObjectName = GetName(obj),
@@ -43,31 +41,11 @@ namespace SageHavokEditor.Core.Validation
                 }
             }
 
-            // 2. Orphaned objects — objects not referenced by anything
-            var allRefs = new HashSet<string>();
-            foreach (var obj in _manager.ObjectMap.Values)
-                foreach (var (_, r) in EnumerateRefs(obj))
-                    allRefs.Add(r);
-
-            // Top level container is never referenced by anything — exclude it
-            var topLevel = _manager.ObjectMap.Values
-                .FirstOrDefault(o => o.ClassName == "hkRootLevelContainer");
-
-            foreach (var obj in _manager.ObjectMap.Values)
-            {
-                if (obj == topLevel) continue;
-                if (!allRefs.Contains(obj.Id))
-                {
-                    issues.Add(new ValidationIssue
-                    {
-                        Severity = "Warning",
-                        ObjectId = obj.Id,
-                        ObjectClass = obj.ClassName,
-                        ObjectName = GetName(obj),
-                        Description = "Orphaned object — not referenced by any other object"
-                    });
-                }
-            }
+            // 2. Objects nothing reaches used to be reported here as "orphaned —
+            // not referenced by any other object". GraphDoctor reports them
+            // instead, as what actually happens to them: an .hkx save keeps only
+            // what is reachable from the root, so a mutually-referencing pair of
+            // dead objects passes an inbound-reference test and is dropped anyway.
 
             // 3. State machines with no states
             foreach (var sm in _manager.ObjectMap.Values
@@ -332,6 +310,7 @@ namespace SageHavokEditor.Core.Validation
                 issues.Add(new ValidationIssue
                 {
                     Severity = "Error",
+                    Category = ValidationIssue.CategoryType,
                     ObjectId = owner.Id,
                     ObjectClass = owner.ClassName,
                     ObjectName = getName(owner),
@@ -352,33 +331,5 @@ namespace SageHavokEditor.Core.Validation
 
         private static string Truncate(string? v) =>
             (v ?? "").Length <= 40 ? v ?? "" : v!.Substring(0, 37) + "…";
-
-        /// <summary>
-        /// Every #ref token in an object, with its param path — including refs
-        /// inside inline (anonymous) child structs, which top-level-only scans
-        /// miss (transition arrays, hkRootLevelContainer.namedVariants).
-        /// </summary>
-        private static IEnumerable<(string Path, string RefId)> EnumerateRefs(HkObject obj)
-        {
-            foreach (var (path, param) in EnumerateParams(obj))
-                foreach (var tok in HkRefList.Tokens(param.Value))
-                    if (tok.StartsWith("#"))
-                        yield return (path, tok);
-        }
-
-        private static IEnumerable<(string Path, HkParam Param)> EnumerateParams(HkObject obj)
-        {
-            foreach (var p in obj.Params)
-            {
-                yield return (p.Name, p);
-                for (int i = 0; i < p.Children.Count; i++)
-                {
-                    var c = p.Children[i];
-                    if (!string.IsNullOrEmpty(c.Id)) continue;  // cached resolved ref, not inline
-                    foreach (var (subPath, sp) in EnumerateParams(c))
-                        yield return ($"{p.Name}[{i}].{subPath}", sp);
-                }
-            }
-        }
     }
 }

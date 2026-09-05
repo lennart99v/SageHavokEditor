@@ -9,6 +9,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A pre-save "graph doctor" pass, and 🔎 Validate now runs it.** This domain's
+  failure mode is silence: a wrong id or a state with nothing behind it produces
+  no error, no crash and no log line, and the character T-poses in-game — so
+  "it saved" and "it converted" both prove nothing. `GraphDoctor` runs
+  `HavokValidator`'s file-integrity checks plus five new ones, over the loaded
+  graph and (when a character file is open) its animation list:
+
+  - **A generator slot holding `null`** — `hkbStateMachineStateInfo.generator`,
+    a blender child's, or `hkbBehaviorGraph.rootGenerator`. That node produces
+    no pose.
+  - **An event id or variable index past the end of the file's own table.** Both
+    are bare positional indices into `eventNames` / `variableNames` and the
+    runtime doesn't bounds-check them. The check is generic rather than a list
+    of param names: `HavokTypeCatalog` already marks which ints are which — the
+    same annotation that drives the property editor's name pickers — so it
+    covers transition `eventId`s, the intervals nested inside them, notify
+    events, clip triggers and modifier bindings alike.
+  - **A clip naming an animation the character project never registered.** The
+    graph names animations by path but the runtime loads them through the
+    character's `animationNames`, so an unregistered path is a clip that plays
+    nothing.
+  - **A state nothing can enter** — not its machine's start state, not any
+    transition's `toStateId`. A duplicated state that was never wired up looks
+    exactly like this. Three blind spots keep it from crying wolf: a machine
+    with a `startStateChooser`, or with `randomTransitionEventId` /
+    `transitionToNext{Higher,Lower}StateEventId` set (those enter a state
+    positionally, so any state is fair game), is skipped whole, and a
+    `toNestedStateId` anywhere in the file counts as reaching that stateId in
+    any machine rather than only the nested one it names.
+  - **The objects an `.hkx` save would drop**, named and counted rather than
+    silently pruned. This replaces the old "orphaned object" warning, which
+    asked only whether anything referenced an object — two dead objects
+    referencing each other passed that test and were dropped anyway. Reachability
+    from `toplevelobject` is what actually decides the save, and a
+    `toplevelobject` that isn't in the file is now its own error rather than a
+    report claiming every object will be pruned.
+
+  Save runs one doctor pass and uses it twice. The type-error gate is unchanged
+  (an HKX save is still refused outright, an XML save still offers save-anyway);
+  everything else opens the report with **Save anyway** / **Cancel save** when
+  there is a structural error or real loss, and never for warnings alone. Nothing
+  refuses the save — a graph mid-edit legitimately has states nothing reaches yet
+  — but Cancel is the default button, so Enter stops and lets you look, and
+  closing the window is a cancel too. The report itself is the existing
+  validation dialog: errors sorted first, a headline naming what was found, rows
+  that wrap instead of scrolling off to the right, and click-to-navigate wiring
+  now shared between both entry points.
+
+  Two harnesses, because the pass has two halves. `tools/hkx-graph-doctor`
+  compiles the editor's own validation code and re-introduces each bug on
+  purpose — null generator, dangling ref, out-of-range event id and variable
+  index, an unwired state appended to a machine, two dead objects referencing
+  each other, an unregistered animation, a `toplevelobject` that isn't there —
+  checking each is reported on the right object and that removing it restores the
+  baseline issue set *exactly*. The findings are also re-derived independently:
+  the prune list against a regex walk of the raw XML (which caught a real trap —
+  `XElement.Value` glues adjacent text nodes, so `variableBindingSet` `#0053`
+  followed by `userData` `0` reads as `#00530`), and every unreachable state
+  against a brute-force scan for any transition in the file targeting its
+  stateId. `tools/hkx-graph-doctor-ui` drives the real `MainWindow` and the real
+  dialog: ✓ Validate's read-out lists what the pass found, clicking a row still
+  opens the object, and the gate's two buttons return the DialogResult the save
+  path branches on.
+
+  On the dragonbehavior sample (1510 objects) every new check is silent except
+  the two that aren't meant to be: 3 objects the `.hkx` save drops, and 15 states
+  nothing enters — 7 of which sit in machines the existing `toStateId` /
+  `startStateId` checks already flag, the file having a state numbered 32 where
+  three transitions target 3. The same checks come back clean on a 1518-object
+  modded dragon behaviour but for one state, and silent on character, project,
+  skeleton and animation files, which have no graph to walk.
+
 - **Create a blending transition effect from the Add/Edit Transition dialog.** A
   transition's `transition` param points at the `hkbTransitionEffect` that
   decides how it blends, and the dialog never offered any way to choose one:
