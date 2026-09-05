@@ -51,9 +51,9 @@ public static class FbxAnimationScene
         var tx = New(nb, clip.NumFrames); var ty = New(nb, clip.NumFrames); var tz = New(nb, clip.NumFrames);
         var rx = New(nb, clip.NumFrames); var ry = New(nb, clip.NumFrames); var rz = New(nb, clip.NumFrames);
 
+        var rots = new System.Numerics.Quaternion[clip.NumFrames];
         for (int b = 0; b < nb; b++)
         {
-            double px = 0, py = 0, pz = 0;          // previous frame's Euler, for unwrapping
             for (int f = 0; f < clip.NumFrames; f++)
             {
                 var row = clip.Frames[f];
@@ -63,10 +63,13 @@ public static class FbxAnimationScene
                 ty[b][f] = (float)(t.Translation.Y * opt.TranslationScale);
                 tz[b][f] = (float)(t.Translation.Z * opt.TranslationScale);
 
-                var (ex, ey, ez) = QuatToEulerXyzDegrees(t.Rotation);
-                if (f > 0) { ex = Unwrap(ex, px); ey = Unwrap(ey, py); ez = Unwrap(ez, pz); }
-                rx[b][f] = (float)ex; ry[b][f] = (float)ey; rz[b][f] = (float)ez;
-                px = ex; py = ey; pz = ez;
+                rots[f] = t.Rotation;
+            }
+
+            var (ex, ey, ez) = BakeEulerTrack(rots);
+            for (int f = 0; f < clip.NumFrames; f++)
+            {
+                rx[b][f] = (float)ex[f]; ry[b][f] = (float)ey[f]; rz[b][f] = (float)ez[f];
             }
         }
 
@@ -272,6 +275,47 @@ public static class FbxAnimationScene
     }
 
     // ── math ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// One bone's rotations to a continuous Euler track, in degrees.
+    ///
+    /// Every rotation has TWO XYZ Euler spellings — (x, y, z) and
+    /// (x+180, 180-y, z+180) name the same orientation — and near the y = ±90
+    /// singularity the naive one swings a channel by most of a turn while the
+    /// bone barely moves. Twist bones sit right on that singularity, so on a real
+    /// clip this is not a corner case: picking per frame whichever spelling lands
+    /// closer to the previous frame, and only then unwrapping, is what keeps the
+    /// curve a description of the motion rather than of the parameterisation.
+    /// </summary>
+    public static (double[] x, double[] y, double[] z) BakeEulerTrack(
+        IReadOnlyList<System.Numerics.Quaternion> rotations)
+    {
+        int n = rotations.Count;
+        var ox = new double[n]; var oy = new double[n]; var oz = new double[n];
+        double px = 0, py = 0, pz = 0;
+
+        for (int f = 0; f < n; f++)
+        {
+            var (ax, ay, az) = QuatToEulerXyzDegrees(rotations[f]);
+
+            if (f == 0) { ox[0] = ax; oy[0] = ay; oz[0] = az; px = ax; py = ay; pz = az; continue; }
+
+            // candidate 1: this spelling, unwrapped
+            double c1x = Unwrap(ax, px), c1y = Unwrap(ay, py), c1z = Unwrap(az, pz);
+            double d1 = Math.Abs(c1x - px) + Math.Abs(c1y - py) + Math.Abs(c1z - pz);
+
+            // candidate 2: the equivalent spelling, unwrapped
+            double c2x = Unwrap(ax + 180, px), c2y = Unwrap(180 - ay, py), c2z = Unwrap(az + 180, pz);
+            double d2 = Math.Abs(c2x - px) + Math.Abs(c2y - py) + Math.Abs(c2z - pz);
+
+            if (d2 < d1) { ox[f] = c2x; oy[f] = c2y; oz[f] = c2z; }
+            else { ox[f] = c1x; oy[f] = c1y; oz[f] = c1z; }
+
+            px = ox[f]; py = oy[f]; pz = oz[f];
+        }
+
+        return (ox, oy, oz);
+    }
 
     /// <summary>
     /// Quaternion to FBX eEulerXYZ degrees. FBX composes an XYZ node as
