@@ -115,6 +115,40 @@ And don't read "to be finalized" as "GPL eventually." Her `LICENSE` records the 
 
 ## Animation / clip preview
 
+- [ ] **Export an animation as FBX.** Read-only preview is half a bridge: you can
+  watch a clip but not take it anywhere. `tools/hkx-fbx-export` is the harness —
+  it feeds `HavokSplineDecoder`'s `[frame][bone]` locals plus the project
+  skeleton into a hand-written FBX writer, and `--selftest` drives a synthetic
+  720°-spin clip over a real `skeleton.hkx` so the writer can be exercised
+  without an animation on disk. Verified 2026-09-05 against the pddragon
+  skeleton: Blender 4.5 imports it as an 84-bone armature with the right names,
+  hierarchy, frame count and fps, and the spinning bone's total angular travel
+  measures 720.00°.
+
+  **Write the binary form, not ASCII.** The first cut wrote FBX 7.4 ASCII on the
+  theory that it is readable and universally accepted; Blender answers "ASCII FBX
+  files are not supported" and refuses the file. ASCII now survives only behind
+  `--ascii` as a debug view of the same record tree, which is why the tree is
+  built once and serialised twice.
+
+  Two things the format forces and one it doesn't settle. FBX animates rotation
+  as **Euler**, so every quaternion is converted (eEulerXYZ, R = Rz·Ry·Rx) and
+  unwrapped against the previous frame — without the unwrap a wrapped atan2 reads
+  as a one-frame spin, which is the same "wrong on some frames" symptom a decode
+  bug gives. Every channel is keyed on every frame rather than re-fitted, since
+  the decoder already evaluates the spline per frame and a second fit is a second
+  place to be wrong. Unsettled: **the Havok-unit scale.** Nothing in the file says
+  what a unit is worth; the dragon's rest pose spans 1097 × 1333 × 301 units, and
+  Blender reads `UnitScaleFactor 1` as centimetres and divides by 100, so it
+  arrives 10.97 × 13.33 × 3.01 Blender units. `--scale` exists for that and
+  defaults to 1 rather than inventing a constant.
+
+  Still open: `numBlocks > 1` (the parser refuses it, and it is the top suspect
+  for the "some frames decode wrong" reports — Havok splits at
+  `maxFramesPerBlock`, and the frame index fed to the spline has to be
+  block-local), scale tracks (the decoder skips them), and a run against a real
+  `hkaSplineCompressedAnimation`, which needs a sample this machine doesn't have.
+
 - [x] **Trigger list panel in the clip preview.** The ☰ side panel gets a "Triggers" section under the annotations — time, frame, event name, relative-to-end marker — click a row to seek, edit time inline, Del to delete, right-click to add/edit/delete (event changes go through the trigger dialog, which knows the graph's event list).
 - [x] **Add/edit/delete clip triggers on the timeline.** The orange ticks are editable like the purple ones: right-click/double-click to edit (event picker with create-new-event, time/frame, relativeToEndOfClip anchor), drag to move, timeline right-click to add. Creates and wires the hkbClipTriggerArray in the same undoable action when the clip has none; warns before editing an array shared by multiple clips.
 - [x] **Annotation list panel in the clip preview.** Toggleable table (☰) of all annotations — time, frame, track, text — click a row to seek, edit time/text inline, Del to delete.
