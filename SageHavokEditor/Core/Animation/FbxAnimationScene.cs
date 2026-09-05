@@ -1,6 +1,7 @@
-using SageHavokEditor.Core.Animation;
+using System;
+using System.Collections.Generic;
 
-namespace SageHavokEditor.Tools.FbxExport;
+namespace SageHavokEditor.Core.Animation;
 
 public sealed class FbxExportOptions
 {

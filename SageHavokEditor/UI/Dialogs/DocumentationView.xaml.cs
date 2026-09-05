@@ -377,7 +377,8 @@ namespace SageHavokEditor.UI.Dialogs
                 "Playback\n" +
                 "• Play/pause, a scrubbable timeline, and front / side / top camera views.\n" +
                 "• Ctrl+click a timeline tick to seek straight to it.\n" +
-                "• The window remembers the size you resize it to.\n\n" +
+                "• The window remembers the size you resize it to.\n" +
+                "• Export FBX writes the clip out for Blender/Max/Maya — see Export FBX.\n\n" +
                 "Timeline markers\n" +
                 "• Purple pentagons pointing up are annotations — timed text markers stored inside the " +
                 "animation file itself (the hkanno kind).\n" +
@@ -442,6 +443,35 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Out-of-range times are clamped (you are told how many); imported annotations land " +
                 "on track 0.\n" +
                 "• Copy and export also work in read-only previews.");
+
+            AddSection("preview_fbx", "Export FBX",
+                "The Export FBX button writes the clip you are looking at as a binary FBX — the " +
+                "skeleton as a bone hierarchy, plus the animation. It is the way out of the editor " +
+                "for anyone who wants a Skyrim animation in Blender, Max or Maya rather than in this " +
+                "preview.\n\n" +
+                "What lands in the file\n" +
+                "• One bone per bone in the project’s animation skeleton, with the file’s own names " +
+                "and parenting, and the reference pose as the rest pose.\n" +
+                "• Every frame of every bone written as a key, rather than curves fitted to the " +
+                "motion. The editor already evaluates Havok’s splines frame by frame, so baking keeps " +
+                "the export a copy of what it plays rather than a second approximation of it.\n" +
+                "• The animation’s own frame rate, taken from its frameDuration.\n" +
+                "• No mesh, no materials, no skin weights. This is an animation carrier: bring your " +
+                "own body mesh and attach it to the imported armature.\n\n" +
+                "Scale\n" +
+                "Translations are written in Havok units, unscaled. Blender reads the file as " +
+                "centimetres and divides by 100 on import, so a bone at Havok 100 arrives at 1.0 " +
+                "Blender unit. That keeps the export a faithful copy of the numbers in the file rather " +
+                "than a guess at what a Havok unit is worth in metres — scale it in your 3D package " +
+                "if you need real-world size.\n\n" +
+                "Things to know\n" +
+                "• Rotations are stored as Euler angles, because that is what FBX animates. The " +
+                "conversion picks, per frame, whichever of the two equivalent Euler spellings sits " +
+                "closest to the previous frame, which is what stops a twist bone appearing to snap a " +
+                "full turn between two frames.\n" +
+                "• Bone scaling is not exported (Skyrim animations do not use it).\n" +
+                "• It is a binary FBX, not the ASCII flavour — Blender refuses ASCII FBX outright, " +
+                "so the binary form is the only one worth writing.");
 
             AddSection("preview_list", "The Annotation & Trigger List (☰)",
                 "The ☰ button toggles a side panel listing every annotation and trigger in the clip — " +

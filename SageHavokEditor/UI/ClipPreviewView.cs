@@ -53,6 +53,13 @@ namespace SageHavokEditor.UI
             ToolTip = "Annotations & triggers panel"
         };
         private readonly Button _graphBtn = new() { Content = "Show in graph", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(6, 0, 6, 0) };
+        private readonly Button _fbxBtn = new()
+        {
+            Content = "Export FBX",
+            Margin = new Thickness(6, 0, 0, 0),
+            Padding = new Thickness(6, 0, 6, 0),
+            ToolTip = "Export this clip as an FBX: the skeleton, plus every frame baked as a key"
+        };
         private readonly TextBlock _time = new() { VerticalAlignment = VerticalAlignment.Center, MinWidth = 90, FontSize = 11, Foreground = Brushes.Gainsboro };
         private readonly TextBlock _status = new() { Foreground = Brushes.Gainsboro, Margin = new Thickness(6), FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly Canvas _tickOverlay = new() { IsHitTestVisible = true, Height = 24 };
@@ -87,6 +94,7 @@ namespace SageHavokEditor.UI
         private readonly Stopwatch _watch = new();
         private bool _suppressScrub;
         private AnimationClip? _clip;
+        private Skeleton? _skeleton;
         private List<PreviewTrigger> _triggers = new();
         private ViewAxis _view = ViewAxis.Side;
 
@@ -125,12 +133,14 @@ namespace SageHavokEditor.UI
             DockPanel.SetDock(_addBtn, Dock.Left);
             DockPanel.SetDock(_time, Dock.Left);
             DockPanel.SetDock(_graphBtn, Dock.Right);
+            DockPanel.SetDock(_fbxBtn, Dock.Right);
             DockPanel.SetDock(_viewBtn, Dock.Right);
             DockPanel.SetDock(_listBtn, Dock.Right);
             controls.Children.Add(_play);
             controls.Children.Add(_addBtn);
             controls.Children.Add(_time);
             controls.Children.Add(_graphBtn);
+            controls.Children.Add(_fbxBtn);
             controls.Children.Add(_viewBtn);
             controls.Children.Add(_listBtn);
             controls.Children.Add(_scrubArea);
@@ -166,6 +176,7 @@ namespace SageHavokEditor.UI
             // handle their own right-click (edit/delete) and mark the event handled.
             _scrubArea.MouseRightButtonUp += OnTimelineRightClick;
             _addBtn.Click += (_, __) => { if (_clip != null) _ = AddAnnotationFlow(CurrentTime()); };
+            _fbxBtn.Click += (_, __) => ExportFbxFlow();
             // Double-click: on an annotation/trigger tick → edit it, anywhere else on
             // the timeline → add an annotation at that spot. Preview-tunneling fires
             // before the slider can react, so OriginalSource is the actual hit element.
@@ -225,12 +236,14 @@ namespace SageHavokEditor.UI
         {
             Stop();
             _clip = null;
+            _skeleton = null;
             _skel.Clear();
             _status.Text = msg;
             _time.Text = "";
             _tickOverlay.Children.Clear();
             _graphBtn.IsEnabled = false;
             _addBtn.IsEnabled = false;
+            _fbxBtn.IsEnabled = false;
             _triggers = new List<PreviewTrigger>();
             RefreshAnnotationRows();
             RefreshTriggerRows();
@@ -245,6 +258,8 @@ namespace SageHavokEditor.UI
                 ? (_scrub.Value / 1000.0) * clip.Duration
                 : -1;
             _clip = clip;
+            _skeleton = skeleton;
+            _fbxBtn.IsEnabled = true;
             _triggers = triggers ?? new List<PreviewTrigger>();
 
             var world = new HkTransform[clip.NumFrames][];
@@ -625,6 +640,58 @@ namespace SageHavokEditor.UI
             }
 
             menu.IsOpen = true;
+        }
+
+        // ── FBX export ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Write the previewed clip out as a binary FBX: the skeleton as a bone
+        /// hierarchy, and every frame of every bone baked as a key.
+        ///
+        /// Translations go out in Havok units unscaled. Blender reads the file's
+        /// UnitScaleFactor of 1 as centimetres and divides by 100 on import, so a
+        /// bone at Havok 100 arrives at 1.0 Blender unit — which keeps the export
+        /// a faithful copy of what the file says rather than a guess at what a
+        /// Havok unit is worth in metres.
+        /// </summary>
+        private void ExportFbxFlow()
+        {
+            if (_clip == null || _skeleton == null) return;
+            Stop();
+
+            var baseName = string.IsNullOrEmpty(AnimationPath)
+                ? "animation"
+                : System.IO.Path.GetFileNameWithoutExtension(AnimationPath);
+
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export clip as FBX",
+                FileName = baseName + ".fbx",
+                Filter = "Autodesk FBX (*.fbx)|*.fbx|All files (*.*)|*.*"
+            };
+            if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
+
+            try
+            {
+                var tree = Core.Animation.FbxAnimationScene.Build(_skeleton, _clip,
+                    new Core.Animation.FbxExportOptions
+                    {
+                        FrameDuration = _clip.FrameDuration > 0 ? _clip.FrameDuration : 1.0 / 30.0,
+                        TakeName = baseName
+                    });
+                Core.Animation.FbxBinarySerializer.Write(dlg.FileName, tree);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "Could not write the FBX:" + Environment.NewLine + Environment.NewLine + ex.Message,
+                    "Export FBX", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            double fps = _clip.FrameDuration > 0 ? 1.0 / _clip.FrameDuration : 30.0;
+            _status.Text = $"Exported {_skeleton.BoneNames.Length} bones x {_clip.NumFrames} frames " +
+                           $"at {fps:0.##} fps to {System.IO.Path.GetFileName(dlg.FileName)}";
         }
 
         // ── hkanno text import/export ───────────────────────────────────────────

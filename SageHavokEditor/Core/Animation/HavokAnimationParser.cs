@@ -16,6 +16,9 @@ namespace SageHavokEditor.Core.Animation
     public sealed class AnimationClip
     {
         public float Duration;
+        /// <summary>Seconds between frames, from the animation's own frameDuration.
+        /// Deriving it from duration/numFrames is the classic off-by-one-frame timing bug.</summary>
+        public float FrameDuration;
         public int NumFrames;
         public int NumTracks;                                       // numberOfTransformTracks
         public HkTransform[][] Frames = Array.Empty<HkTransform[]>(); // [frame][bone] LOCAL space, skeleton-sized
@@ -60,6 +63,7 @@ namespace SageHavokEditor.Core.Animation
 
             float duration = ParseF(P("duration"), 1f);
             int numFrames = ParseI(P("numFrames"), 0);
+            float frameDuration = ParseF(P("frameDuration"), 0f);
             int numBlocks = ParseI(P("numBlocks"), 1);
             int maxFramesPerBlock = ParseI(P("maxFramesPerBlock"), 256);
             int maskSize = ParseI(P("maskAndQuantizationSize"), 0);
@@ -112,6 +116,8 @@ namespace SageHavokEditor.Core.Animation
             var clip = new AnimationClip
             {
                 Duration = duration,
+                FrameDuration = frameDuration > 0 ? frameDuration
+                    : (numFrames > 1 ? duration / (numFrames - 1) : 1f / 30f),
                 NumFrames = numFrames,
                 NumTracks = numTracks,
                 Frames = frames,

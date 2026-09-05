@@ -159,8 +159,14 @@ And don't read "to be finalized" as "GPL eventually." Her `LICENSE` records the 
   reaches playback in Blender, which rebuilds quaternion curves at import; it
   would cost sub-frame accuracy only in a consumer that keeps Euler curves.
 
+  **Shipped as a clip-preview button.** `FbxDocument` and `FbxAnimationScene`
+  moved into `SageHavokEditor/Core/Animation/`, and the harness now compiles the
+  app's copies rather than its own, so there is one implementation and the
+  harness stays the way it is verified. The ASCII serialiser stayed behind in
+  `tools/` — it is a debug view of a format Blender will not load.
+
   Still open: scale tracks (the decoder skips them, so `Lcl Scaling` stays 1),
-  and promoting this into an "Export to FBX" button on the clip preview.
+  and a scale option on the export for anyone who wants real-world units.
 
 - [x] **Multi-block animations decode.** `numBlocks > 1` was refused outright, so
   no clip longer than ~256 frames would preview. `HavokSplineDecoder.DecodeBlocks`
