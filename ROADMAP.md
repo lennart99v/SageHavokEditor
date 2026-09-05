@@ -9,6 +9,8 @@ Planned improvements and polish, grouped by area. Items here are candidates — 
 
 ## Behavior tree (left panel)
 
+- [x] **Don't open the whole tree at load.** Every `TreeViewItem` carried `<Setter Property="IsExpanded" Value="True"/>`, so opening a file realised one WPF visual per node before the window could paint — 7,300 of them for a 1,518-object dragon behaviour, and the tree doesn't virtualise (its item template hosts children in a `StackPanel`, which measures with infinite height, so a `VirtualizingStackPanel` under it realises everything anyway — tried, and it renders blank rows once scrolled). Measured in an instrumented Debug build: the load pipeline itself finished in 81 ms and `LoadFileAsync` returned at 281 ms, but the UI thread stayed busy until **15.8 s**, which is what the freeze was. `IsExpanded` now binds two-way to the node, and the builder opens the tree breadth-first under a 500-visible-node budget: a small behaviour still comes up fully expanded exactly as before, a large one opens as far as it can afford and the rest expands on click. Filtering expands the path to every match, so search still reveals deep hits. Same file now settles at 2.1 s in Debug. Done 2026-09-05.
+
 - [x] **Right-click context menu on tree items.** Add a context menu when right-clicking nodes in the behavior tree, with more options than are available today. First option: **"Jump to in graph"** — select/reveal that object in the graph view (drill to the right level and highlight the node). Other candidates to consider: copy id/name, inspect in Object Data, bookmark.
 
 ## Graph view
