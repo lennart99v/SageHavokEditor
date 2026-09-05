@@ -143,11 +143,35 @@ And don't read "to be finalized" as "GPL eventually." Her `LICENSE` records the 
   arrives 10.97 × 13.33 × 3.01 Blender units. `--scale` exists for that and
   defaults to 1 rather than inventing a constant.
 
-  Still open: `numBlocks > 1` (the parser refuses it, and it is the top suspect
-  for the "some frames decode wrong" reports — Havok splits at
-  `maxFramesPerBlock`, and the frame index fed to the spline has to be
-  block-local), scale tracks (the decoder skips them), and a run against a real
-  `hkaSplineCompressedAnimation`, which needs a sample this machine doesn't have.
+  Run against the 62 real troll animations in `C:\hkxworking_64	roll`: all 62
+  export, and both a single-block and a multi-block clip round-trip through
+  Blender to within 0.0004 Blender units and 0.12 degrees over 15,960
+  bone-frames, which is float32 key storage rather than anything structural.
+  That sweep is also what found the multi-block gap, now closed (below).
+
+  Two findings worth keeping. A twist bone first reported a 159.61 degree
+  single-frame Euler jump, which reads exactly like a decode bug; it was the
+  parameterisation. Every rotation has two XYZ Euler spellings, and near the
+  y = ±90 singularity — where twist bones sit — the naive one swings a channel
+  most of a turn while the bone barely moves. Choosing per frame whichever
+  spelling lands closer to the previous one drops it to 84.45, against a real
+  worst-case motion of 47.44 degrees. And the residual Euler excess never
+  reaches playback in Blender, which rebuilds quaternion curves at import; it
+  would cost sub-frame accuracy only in a consumer that keeps Euler curves.
+
+  Still open: scale tracks (the decoder skips them, so `Lcl Scaling` stays 1),
+  and promoting this into an "Export to FBX" button on the clip preview.
+
+- [x] **Multi-block animations decode.** `numBlocks > 1` was refused outright, so
+  no clip longer than ~256 frames would preview. `HavokSplineDecoder.DecodeBlocks`
+  walks `blockOffsets`, slicing each block so its offsets stay block-relative.
+  The rule: consecutive blocks **share their boundary frame**, so a block advances
+  the timeline by `maxFramesPerBlock - 1`. Measured rather than assumed — on
+  `getupfaceup` (285 frames, 2 blocks) block 0's local frame 255 and block 1's
+  local frame 0 are 1.90° apart against 8.32° for the next candidate and ~8°
+  between ordinary neighbours: the same instant, quantised twice. Off by one here
+  is what makes a clip play correctly for a few hundred frames and wrongly after,
+  which is the shape of the community "wrong on some frames" reports.
 
 - [x] **Trigger list panel in the clip preview.** The ☰ side panel gets a "Triggers" section under the annotations — time, frame, event name, relative-to-end marker — click a row to seek, edit time inline, Del to delete, right-click to add/edit/delete (event changes go through the trigger dialog, which knows the graph's event list).
 - [x] **Add/edit/delete clip triggers on the timeline.** The orange ticks are editable like the purple ones: right-click/double-click to edit (event picker with create-new-event, time/frame, relativeToEndOfClip anchor), drag to move, timeline right-click to add. Creates and wires the hkbClipTriggerArray in the same undoable action when the clip has none; warns before editing an array shared by multiple clips.

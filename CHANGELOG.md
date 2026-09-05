@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Clips longer than ~256 frames preview.** Havok splits a long
+  `hkaSplineCompressedAnimation` into blocks, and the parser refused any file
+  with `numBlocks > 1` outright — so the clip preview simply couldn't open a
+  long animation, and said so with an error rather than a picture.
+  `HavokSplineDecoder.DecodeBlocks` now walks `blockOffsets`, slicing each block
+  into its own buffer so every offset inside it stays block-relative (which is
+  what the single-block decode, alignment steps included, already assumed).
+
+  The rule that makes this correct is that **consecutive blocks share their
+  boundary frame**, so a block advances the timeline by `maxFramesPerBlock - 1`,
+  not by `maxFramesPerBlock`. The file states it twice — `blockDuration` is
+  `(maxFramesPerBlock - 1) * frameDuration`, and Havok selects a block with
+  `floor(time * blockInverseDuration)`, which puts the frame at exactly
+  `blockDuration` in the *next* block — and it was then measured rather than
+  assumed: on the troll's `getupfaceup` (285 frames, 2 blocks) block 0's local
+  frame 255 and block 1's local frame 0 sit 1.90° apart, against 8.32° for the
+  next candidate and ~8° between ordinary neighbours. The same instant, quantised
+  twice; blocks quantise independently, which is why it doesn't reconstruct
+  identically. Getting this off by one is the classic cause of an animation that
+  plays correctly for the first few hundred frames and wrongly after — the shape
+  of the "wrong on some frames" reports this came from.
+
+  Found by sweeping 62 real troll animations through `tools/hkx-fbx-export`:
+  61 decoded, and the only failure was the one multi-block file. All 62 pass now,
+  and `getupfaceup` exports and round-trips through Blender across 15,960
+  bone-frames to within 0.0004 units and 0.12°.
+
+
 - **Create a blending transition effect from the Add/Edit Transition dialog.** A
   transition's `transition` param points at the `hkbTransitionEffect` that
   decides how it blends, and the dialog never offered any way to choose one:
