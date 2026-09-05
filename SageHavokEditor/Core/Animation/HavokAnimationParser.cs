@@ -61,21 +61,34 @@ namespace SageHavokEditor.Core.Animation
             float duration = ParseF(P("duration"), 1f);
             int numFrames = ParseI(P("numFrames"), 0);
             int numBlocks = ParseI(P("numBlocks"), 1);
+            int maxFramesPerBlock = ParseI(P("maxFramesPerBlock"), 256);
             int maskSize = ParseI(P("maskAndQuantizationSize"), 0);
             int numTracks = ParseI(P("numberOfTransformTracks"), maskSize / 4);
 
             if (numFrames <= 0) throw new AnimationParseException($"No frames (numFrames={numFrames}).");
             if (maskSize <= 0) throw new AnimationParseException("maskAndQuantizationSize missing or zero.");
-            if (numBlocks != 1)
-                throw new AnimationParseException(
-                    $"Multi-block animation (numBlocks={numBlocks}) not yet supported " +
-                    "(affects clips longer than ~256 frames).");
 
             byte[] data = ParseBytes(P("data"));
             if (data.Length < maskSize)
                 throw new AnimationParseException("data blob smaller than mask table.");
 
-            var trackFrames = HavokSplineDecoder.Decode(data, numFrames, maskSize);  // [frame][track]
+            uint[] blockOffsets = ParseUInts(P("blockOffsets"));
+            if (numBlocks > 1 && blockOffsets.Length < numBlocks)
+                throw new AnimationParseException(
+                    $"Multi-block animation declares {numBlocks} blocks but only " +
+                    $"{blockOffsets.Length} block offset(s).");
+
+            HkTransform[][] trackFrames;                                 // [frame][track]
+            try
+            {
+                trackFrames = HavokSplineDecoder.DecodeBlocks(
+                    data, numFrames, maskSize, numBlocks, maxFramesPerBlock, blockOffsets);
+            }
+            catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException)
+            {
+                throw new AnimationParseException(
+                    $"Could not decode the animation's {numBlocks} block(s): {ex.Message}");
+            }
 
             int[]? trackToBone = ParseTrackToBone(doc);     // null = identity (track i → bone i)
             int boneCount = skeleton.ReferencePose.Length;
@@ -153,6 +166,12 @@ namespace SageHavokEditor.Core.Animation
                          .Select(int.Parse).ToArray();
             return arr.Length == 0 ? null : arr;
         }
+
+        private static uint[] ParseUInts(string s) =>
+            string.IsNullOrWhiteSpace(s)
+                ? Array.Empty<uint>()
+                : s.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+                   .Select(t => uint.TryParse(t, out var v) ? v : 0u).ToArray();
 
         // fast byte-list parse (same approach as the standalone's ParseBytesFast)
         private static byte[] ParseBytes(string s)

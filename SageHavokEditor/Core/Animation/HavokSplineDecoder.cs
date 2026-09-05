@@ -6,7 +6,7 @@ namespace SageHavokEditor.Core.Animation
     /// <summary>
     /// Havok spline-compressed animation decompressor (TC40 quaternion + B-spline).
     /// Decode math ported verbatim from the validated standalone viewer.
-    /// Operates on a SINGLE block; the parser guards numBlocks != 1.
+    /// DecodeBlocks handles Havok's multi-block layout; Decode does one block.
     /// Returns [frame][track] LOCAL transforms (translation + rotation; scale = 1).
     /// The parser maps tracks → bones and fills un-animated bones from the reference pose.
     /// </summary>
@@ -17,6 +17,69 @@ namespace SageHavokEditor.Core.Animation
         {
             public float X, Y, Z, W;
             public HavokQuaternion(float x, float y, float z, float w) { X = x; Y = y; Z = z; W = w; }
+        }
+
+        /// <summary>
+        /// Decode an animation that Havok split across blocks.
+        ///
+        /// Long clips are cut into blocks of at most <paramref name="maxFramesPerBlock"/>
+        /// frames, each a self-contained payload — its own mask table, its own
+        /// curves — starting at its entry in <paramref name="blockOffsets"/>. Two
+        /// things make this easy to get subtly wrong, and both produce an
+        /// animation that is right for the first few hundred frames and wrong
+        /// after, which is the shape of the "wrong on some frames" reports:
+        ///
+        ///  - The frame index handed to the spline must be BLOCK-LOCAL. A global
+        ///    index runs off the end of the block's knot vector.
+        ///  - Consecutive blocks SHARE their boundary frame, so a block advances
+        ///    the timeline by maxFramesPerBlock - 1, not by maxFramesPerBlock.
+        ///    The file states this twice over: blockDuration is
+        ///    (maxFramesPerBlock - 1) * frameDuration, and Havok picks a block
+        ///    with floor(time * blockInverseDuration), which lands the frame at
+        ///    exactly blockDuration in the NEXT block. Measured on the troll's
+        ///    getupfaceup (285 frames, 2 blocks): block 0's local frame 255 and
+        ///    block 1's local frame 0 are 1.90 degrees apart, against 8.32 for
+        ///    the next candidate and ~8 between ordinary neighbours — the same
+        ///    instant, quantised twice. Blocks quantise independently, which is
+        ///    why the shared frame does not reconstruct identically; taking it
+        ///    from one block consistently is what keeps the seam smooth.
+        ///
+        /// Each block is sliced into its own array so every offset inside stays
+        /// block-relative, which is what the single-block decode below already
+        /// assumes — including its absolute 4-byte alignment steps.
+        /// </summary>
+        public static HkTransform[][] DecodeBlocks(byte[] data, int numFrames, int maskSize,
+            int numBlocks, int maxFramesPerBlock, uint[] blockOffsets)
+        {
+            if (numBlocks <= 1 || blockOffsets.Length < numBlocks || maxFramesPerBlock <= 1)
+                return Decode(data, numFrames, maskSize);
+
+            int stride = maxFramesPerBlock - 1;
+            var frames = new HkTransform[numFrames][];
+            int written = 0;
+
+            for (int b = 0; b < numBlocks && written < numFrames; b++)
+            {
+                int start = (int)blockOffsets[b];
+                int end = (b + 1 < numBlocks) ? (int)blockOffsets[b + 1] : data.Length;
+                if (start < 0 || end > data.Length || end <= start)
+                    throw new ArgumentException(
+                        $"Block {b} spans {start}..{end} of a {data.Length}-byte payload.");
+
+                var slice = new byte[end - start];
+                Array.Copy(data, start, slice, 0, slice.Length);
+
+                int framesInBlock = Math.Min(stride, numFrames - written);
+                var decoded = Decode(slice, framesInBlock, maskSize);
+                for (int f = 0; f < framesInBlock; f++) frames[written + f] = decoded[f];
+                written += framesInBlock;
+            }
+
+            if (written < numFrames)
+                throw new ArgumentException(
+                    $"{numBlocks} blocks of {stride} frames covered {written} of {numFrames} frames.");
+
+            return frames;
         }
 
         public static HkTransform[][] Decode(byte[] rawBytes, int numFrames, int maskSize)
