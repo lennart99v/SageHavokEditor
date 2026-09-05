@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Export scale on the FBX export.** The export wrote Havok units unscaled and
+  gave you no say in it, which is fine for inspecting a clip and wrong the moment
+  you want it beside anything else. There is now an editable box beside the
+  button, remembered between sessions, with three measured presets: `1` (Havok
+  units — a 161-unit troll imports 1.61 Blender units tall), `100` (one Havok
+  unit becomes one Blender unit — 161.12), and `1.428` (roughly real-world
+  metres on the usual ~1.43 cm/unit estimate — 2.30 m, about right for a troll).
+  All three verified by importing the result into Blender and measuring.
+
+  Parsing lives in `FbxScaleOption` rather than in the view, because it is a
+  string-to-number decision with real edge cases and none of them are worth only
+  being exercisable by clicking. That paid for itself immediately: splitting the
+  preset text on a plain hyphen as well as its em-dash made `-5` parse as `5`, so
+  a typed negative would have silently exported at positive scale instead of
+  being refused. A comma decimal (`2,5`) is accepted, since that is what a
+  European keyboard produces; zero, negatives and non-numbers are refused rather
+  than coerced.
+
+
 - **Export FBX from the clip preview.** The preview could play a Skyrim animation
   but not get it out of the editor. There is now an **Export FBX** button beside
   *Show in graph*: it writes the previewed clip as a binary FBX — the project's

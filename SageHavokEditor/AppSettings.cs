@@ -94,6 +94,23 @@ namespace SageHavokEditor
             set => Set("PreviewDefaultAxis", value);
         }
 
+        /// <summary>
+        /// Multiplier applied to translations on FBX export, remembered between
+        /// sessions. 1 writes Havok units unchanged; Blender reads the file as
+        /// centimetres and divides by 100, so 100 makes one Havok unit one
+        /// Blender unit. Stored invariant so a comma-decimal locale can't write
+        /// a value it then fails to read back.
+        /// </summary>
+        public static double FbxExportScale
+        {
+            get => double.TryParse(Get("FbxExportScale", "1"),
+                       System.Globalization.NumberStyles.Float,
+                       System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0
+                   ? v : 1.0;
+            set => Set("FbxExportScale",
+                       value.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         /// <summary>Whether the clip preview starts playing automatically when opened.</summary>
         public static bool PreviewAutoplay
         {

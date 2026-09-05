@@ -60,6 +60,23 @@ namespace SageHavokEditor.UI
             Padding = new Thickness(6, 0, 6, 0),
             ToolTip = "Export this clip as an FBX: the skeleton, plus every frame baked as a key"
         };
+
+        /// <summary>
+        /// Translation multiplier for the FBX export. Editable, so the presets are
+        /// a starting point rather than the only answers — nothing in a .hkx says
+        /// what a Havok unit is worth, so this is a judgement the file can't make.
+        /// </summary>
+        private readonly ComboBox _fbxScale = new()
+        {
+            IsEditable = true,
+            Width = 156,
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            ToolTip = "Multiplies translations on FBX export.\n" +
+                      "Blender reads the file as centimetres and divides by 100, so 1 puts a bone " +
+                      "at Havok 100 one Blender unit from the origin, and 100 keeps it at 100.\n" +
+                      "Type any number; the choice is remembered."
+        };
         private readonly TextBlock _time = new() { VerticalAlignment = VerticalAlignment.Center, MinWidth = 90, FontSize = 11, Foreground = Brushes.Gainsboro };
         private readonly TextBlock _status = new() { Foreground = Brushes.Gainsboro, Margin = new Thickness(6), FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly Canvas _tickOverlay = new() { IsHitTestVisible = true, Height = 24 };
@@ -134,6 +151,7 @@ namespace SageHavokEditor.UI
             DockPanel.SetDock(_time, Dock.Left);
             DockPanel.SetDock(_graphBtn, Dock.Right);
             DockPanel.SetDock(_fbxBtn, Dock.Right);
+            DockPanel.SetDock(_fbxScale, Dock.Right);
             DockPanel.SetDock(_viewBtn, Dock.Right);
             DockPanel.SetDock(_listBtn, Dock.Right);
             controls.Children.Add(_play);
@@ -141,6 +159,7 @@ namespace SageHavokEditor.UI
             controls.Children.Add(_time);
             controls.Children.Add(_graphBtn);
             controls.Children.Add(_fbxBtn);
+            controls.Children.Add(_fbxScale);
             controls.Children.Add(_viewBtn);
             controls.Children.Add(_listBtn);
             controls.Children.Add(_scrubArea);
@@ -177,6 +196,13 @@ namespace SageHavokEditor.UI
             _scrubArea.MouseRightButtonUp += OnTimelineRightClick;
             _addBtn.Click += (_, __) => { if (_clip != null) _ = AddAnnotationFlow(CurrentTime()); };
             _fbxBtn.Click += (_, __) => ExportFbxFlow();
+
+            foreach (var preset in Core.Animation.FbxScaleOption.Presets) _fbxScale.Items.Add(preset);
+            _fbxScale.Text = Core.Animation.FbxScaleOption.Format(AppSettings.FbxExportScale);
+            // Remember on commit, not per keystroke — half-typed numbers aren't choices.
+            _fbxScale.LostFocus += (_, __) => PersistFbxScale();
+            _fbxScale.SelectionChanged += (_, __) => Dispatcher.BeginInvoke(
+                new Action(PersistFbxScale), DispatcherPriority.Background);
             // Double-click: on an annotation/trigger tick → edit it, anywhere else on
             // the timeline → add an annotation at that spot. Preview-tunneling fires
             // before the slider can react, so OriginalSource is the actual hit element.
@@ -644,6 +670,16 @@ namespace SageHavokEditor.UI
 
         // ── FBX export ──────────────────────────────────────────────────────────
 
+        /// <summary>Keep a valid choice; snap a nonsense one back to what is stored.</summary>
+        private void PersistFbxScale()
+        {
+            if (Core.Animation.FbxScaleOption.TryParse(_fbxScale.Text, out var v))
+                AppSettings.FbxExportScale = v;
+            else
+                _fbxScale.Text = Core.Animation.FbxScaleOption.Format(AppSettings.FbxExportScale);
+        }
+
+
         /// <summary>
         /// Write the previewed clip out as a binary FBX: the skeleton as a bone
         /// hierarchy, and every frame of every bone baked as a key.
@@ -658,6 +694,17 @@ namespace SageHavokEditor.UI
         {
             if (_clip == null || _skeleton == null) return;
             Stop();
+
+            if (!Core.Animation.FbxScaleOption.TryParse(_fbxScale.Text, out var scale))
+            {
+                MessageBox.Show(Window.GetWindow(this),
+                    "The export scale needs to be a positive number." + Environment.NewLine +
+                    Environment.NewLine + "Got: " + _fbxScale.Text,
+                    "Export FBX", MessageBoxButton.OK, MessageBoxImage.Warning);
+                _fbxScale.Focus();
+                return;
+            }
+            AppSettings.FbxExportScale = scale;
 
             var baseName = string.IsNullOrEmpty(AnimationPath)
                 ? "animation"
@@ -676,6 +723,7 @@ namespace SageHavokEditor.UI
                 var tree = Core.Animation.FbxAnimationScene.Build(_skeleton, _clip,
                     new Core.Animation.FbxExportOptions
                     {
+                        TranslationScale = (float)scale,
                         FrameDuration = _clip.FrameDuration > 0 ? _clip.FrameDuration : 1.0 / 30.0,
                         TakeName = baseName
                     });
@@ -691,7 +739,8 @@ namespace SageHavokEditor.UI
 
             double fps = _clip.FrameDuration > 0 ? 1.0 / _clip.FrameDuration : 30.0;
             _status.Text = $"Exported {_skeleton.BoneNames.Length} bones x {_clip.NumFrames} frames " +
-                           $"at {fps:0.##} fps to {System.IO.Path.GetFileName(dlg.FileName)}";
+                           $"at {fps:0.##} fps, scale {scale:0.###}, " +
+                           $"to {System.IO.Path.GetFileName(dlg.FileName)}";
         }
 
         // ── hkanno text import/export ───────────────────────────────────────────
