@@ -479,6 +479,7 @@ namespace SageHavokEditor
             GraphView.TransitionFlagsChangedFromGraph -= OnTransitionFlagsChangedFromGraph;
             GraphView.ShowAnimationRequested -= OnShowAnimationRequested;
             GraphView.OpenBehaviorReferenceRequested -= OnOpenBehaviorReferenceRequested;
+            GraphView.CompareBehaviorReferenceEventsRequested -= OnCompareBehaviorReferenceEvents;
             GraphView.TransitionDeletedFromGraph += OnTransitionDeletedFromGraph;
             GraphView.NodeRenamedOnGraph += OnNodeRenamedOnGraph;
             GraphView.NodeAddedToGraph += OnNodeAddedToGraph;
@@ -488,6 +489,7 @@ namespace SageHavokEditor
             GraphView.TransitionFlagsChangedFromGraph += OnTransitionFlagsChangedFromGraph;
             GraphView.ShowAnimationRequested += OnShowAnimationRequested;
             GraphView.OpenBehaviorReferenceRequested += OnOpenBehaviorReferenceRequested;
+            GraphView.CompareBehaviorReferenceEventsRequested += OnCompareBehaviorReferenceEvents;
             GraphView.GraphEditPerformed -= OnGraphEditPerformed;
             GraphView.GraphEditPerformed += OnGraphEditPerformed;
 

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using SageHavokEditor.Core.Services;
 using SageHavokEditor.Core.Validation;
 using SageHavokEditor.Models;
 using SageHavokEditor.UI;
@@ -32,6 +33,11 @@ internal static class Program
 {
     private static int _failed;
     private static string _shotDir;
+    private static string _projectRoot;
+    /// <summary>Run one phase instead of all of them: report, gate, baseline, refusal, reference, compare.</summary>
+    private static string _only;
+
+    private static bool Phase(string name) => _only == null || _only == name;
 
     private static void Check(string what, bool ok, string detail = null)
     {
@@ -50,6 +56,10 @@ internal static class Program
         var path = args[0];
         var shotIdx = Array.IndexOf(args, "--shot");
         if (shotIdx >= 0 && shotIdx + 1 < args.Length) _shotDir = args[shotIdx + 1];
+        var projIdx = Array.IndexOf(args, "--project");
+        if (projIdx >= 0 && projIdx + 1 < args.Length) _projectRoot = args[projIdx + 1];
+        var onlyIdx = Array.IndexOf(args, "--only");
+        if (onlyIdx >= 0 && onlyIdx + 1 < args.Length) _only = args[onlyIdx + 1];
 
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Resources.MergedDictionaries.Add(new ResourceDictionary
@@ -80,11 +90,12 @@ internal static class Program
             // back out to the eventNames count (vanilla dragonbehavior ships 486
             // names against 482 infos), so one desync error is repaired on the way in.
 
-            ReportPath(mw, report);
-            GatePath(report);
-            BaselinePath(mw, manager);
-            RefusalPath(report);
-            BehaviorReferencePath(mw, manager);
+            if (Phase("report")) ReportPath(mw, report);
+            if (Phase("gate")) GatePath(report);
+            if (Phase("baseline")) BaselinePath(mw, manager);
+            if (Phase("refusal")) RefusalPath(report);
+            if (Phase("reference")) BehaviorReferencePath(mw, manager);
+            if (Phase("compare")) CompareEventsPath(mw, manager, path);
         }
         catch (Exception ex)
         {
@@ -317,6 +328,47 @@ internal static class Program
             foreach (var c in oldChildren) generator.Children.Add(c);
             generator.Value = oldValue;
         }
+    }
+
+    // -- Comparing events across a reference ----------------------------------
+    // The dialog that replaced the event-alignment warning. Its subject is the
+    // file itself: pointed at its own folder, a graph's own event table compares
+    // against itself, which renders every column and proves the layout without
+    // needing a second file. The numbers that matter came from the console
+    // harness against vanilla 0_master, whose 2400-node graph keeps this window's
+    // render thread too busy to lay a second window out in reasonable time.
+    private static void CompareEventsPath(SageHavokEditor.MainWindow mw,
+        SageHavokEditor.Core.HavokManager manager, string path)
+    {
+        Console.WriteLine("comparing events across a reference:");
+
+        var index = new BehaviorReferenceIndex(new[] { Path.GetDirectoryName(Path.GetFullPath(path)) });
+        var target = index.Lookup(Path.GetFileNameWithoutExtension(path) + ".hkx");
+        Check("the referenced file resolves and reads", target.Readable,
+            target.Path ?? "(not found)");
+        if (!target.Readable) return;
+
+        var dlg = new BehaviorReferenceEventsDialog(manager, Path.GetFileName(path), target);
+        dlg.Show();
+        dlg.UpdateLayout();
+
+        var list = (ListView)dlg.FindName("EventsList");
+        int all = list.Items.Count;
+        Console.WriteLine($"  {((TextBlock)dlg.FindName("StatusText")).Text}");
+        Check("lists the union of both event tables", all > 0, all.ToString());
+        Check("a graph compared with itself has nothing that can't cross",
+            ((TextBlock)dlg.FindName("HeadlineText")).Text.Contains("0 are used on one side"),
+            ((TextBlock)dlg.FindName("HeadlineText")).Text);
+
+        ((CheckBox)dlg.FindName("UnsharedOnlyCheck")).IsChecked = true;
+        dlg.UpdateLayout();
+        Check("and the can't-cross filter is therefore empty",
+            list.Items.Count == 0, list.Items.Count.ToString());
+
+        ((CheckBox)dlg.FindName("UnsharedOnlyCheck")).IsChecked = false;
+        dlg.UpdateLayout();
+        Shoot(dlg, "reference-events");
+        dlg.Close();
     }
 
     /// <summary>
