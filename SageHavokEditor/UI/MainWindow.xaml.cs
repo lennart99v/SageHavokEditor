@@ -905,6 +905,7 @@ namespace SageHavokEditor
                 _sourcePlatform = HkxPlatform.Unknown;
                 Stats.PlatformLabel = string.Empty;
 
+                RebuildBehaviorReferenceIndex();
                 SnapshotStructuralBaseline();
                 AddRecentFile(folderPath);
 
@@ -3996,10 +3997,75 @@ namespace SageHavokEditor
         /// <summary>
         /// The pre-save pass, run over the loaded graph and — when a character
         /// file is open — its animation list, which is what lets the doctor tell
-        /// a clip naming an unregistered animation from one that is fine.
+        /// a clip naming an unregistered animation from one that is fine, plus the
+        /// behaviour-reference index, which lets it chase a reference to disk.
         /// </summary>
         private GraphDoctorReport RunGraphDoctor() =>
-            new GraphDoctor(manager, Workspace?.Character?.AnimationNames).Run();
+            new GraphDoctor(manager, Workspace?.Character?.AnimationNames, _behaviorRefs).Run();
+
+        /// <summary>
+        /// Resolves and reads the files this graph references. Rebuilt per load
+        /// because it caches both, and because the folders a <c>behaviorName</c>
+        /// is relative to are the ones the open file sits in.
+        /// </summary>
+        private BehaviorReferenceIndex? _behaviorRefs;
+
+        /// <summary>
+        /// A <c>behaviorName</c> is written relative to the character project's
+        /// root — the parent of the folder holding the character file, the same
+        /// anchor <c>behaviorFilename</c> uses. The others are fallbacks for the
+        /// files people actually have open: a behaviour opened on its own, with no
+        /// character or project beside it, still resolves a sibling reference.
+        /// </summary>
+        private void RebuildBehaviorReferenceIndex()
+        {
+            string? Parent(string? path) =>
+                string.IsNullOrEmpty(path) ? null : Path.GetDirectoryName(path);
+
+            var characterDir = Parent(Workspace?.CharacterFile?.OriginalPath);
+            var behaviorDir = Parent(Workspace?.BehaviorFile?.OriginalPath);
+
+            _behaviorRefs = new BehaviorReferenceIndex(new[]
+            {
+                Parent(characterDir),                                  // the project root
+                Parent(Parent(Workspace?.ProjectFile?.OriginalPath)),  // ditto, from the project file
+                Parent(behaviorDir),
+                characterDir,
+                behaviorDir,
+                Parent(Workspace?.ProjectFile?.OriginalPath),
+            });
+        }
+
+        /// <summary>
+        /// Follow a behaviour reference into the file it names. This is the one
+        /// node in a graph whose subject is somewhere else, and until now the path
+        /// was a string you had to go and find yourself.
+        /// </summary>
+        private async void OnOpenBehaviorReferenceRequested(string behaviorName)
+        {
+            if (_behaviorRefs == null) return;
+
+            var target = _behaviorRefs.Lookup(behaviorName);
+            if (!target.Resolved)
+            {
+                // Naming the folders that were searched is the whole message: the
+                // path is relative to something the file never states, so "not
+                // found" on its own tells the user nothing they can act on.
+                var tried = target.Tried.Count == 0
+                    ? "No project folder is open to resolve it against."
+                    : "Looked in:\n" + string.Join("\n", target.Tried.Distinct().Take(8));
+
+                MessageBox.Show(
+                    $"Couldn't find '{behaviorName}'.\n\n{tried}\n\n" +
+                    "The path is relative to the character project's root folder. If the file " +
+                    "only exists inside a mod manager's virtual file system, open it directly instead.",
+                    "Behavior reference", MessageBoxButton.OK, MessageBoxImage.Information);
+                StatusText.Text = $"✗ Behavior reference not found: {behaviorName}";
+                return;
+            }
+
+            await LoadFileAsync(target.Path!);
+        }
 
         /// <summary>
         /// The structural errors the file already had when it was opened. A save

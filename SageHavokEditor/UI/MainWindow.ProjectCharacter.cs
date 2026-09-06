@@ -82,6 +82,7 @@ namespace SageHavokEditor
             // Wire graph events (delete transition, inline rename) for undo support
             WireGraphEvents();
 
+            RebuildBehaviorReferenceIndex();
             SnapshotStructuralBaseline();
         }
 
@@ -477,6 +478,7 @@ namespace SageHavokEditor
             GraphView.NavigateToEventRequested -= NavigateToEvent;
             GraphView.TransitionFlagsChangedFromGraph -= OnTransitionFlagsChangedFromGraph;
             GraphView.ShowAnimationRequested -= OnShowAnimationRequested;
+            GraphView.OpenBehaviorReferenceRequested -= OnOpenBehaviorReferenceRequested;
             GraphView.TransitionDeletedFromGraph += OnTransitionDeletedFromGraph;
             GraphView.NodeRenamedOnGraph += OnNodeRenamedOnGraph;
             GraphView.NodeAddedToGraph += OnNodeAddedToGraph;
@@ -485,6 +487,7 @@ namespace SageHavokEditor
             GraphView.NavigateToEventRequested += NavigateToEvent;
             GraphView.TransitionFlagsChangedFromGraph += OnTransitionFlagsChangedFromGraph;
             GraphView.ShowAnimationRequested += OnShowAnimationRequested;
+            GraphView.OpenBehaviorReferenceRequested += OnOpenBehaviorReferenceRequested;
             GraphView.GraphEditPerformed -= OnGraphEditPerformed;
             GraphView.GraphEditPerformed += OnGraphEditPerformed;
 

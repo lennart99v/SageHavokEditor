@@ -104,15 +104,23 @@ namespace SageHavokEditor.Core.Validation
     {
         private readonly HavokManager _manager;
         private readonly List<string> _projectAnimations;
+        private readonly Services.BehaviorReferenceIndex? _references;
 
         /// <param name="projectAnimations">
         /// The character's <c>animationNames</c>, when a character file is loaded.
         /// Empty skips the clip-registration check rather than reporting every clip.
         /// </param>
-        public GraphDoctor(HavokManager manager, IEnumerable<string>? projectAnimations = null)
+        /// <param name="references">
+        /// Chases <c>behaviorName</c> paths to disk. Null skips both behaviour-
+        /// reference checks — with no project on disk to search, "the file isn't
+        /// there" would be a statement about the caller, not about the graph.
+        /// </param>
+        public GraphDoctor(HavokManager manager, IEnumerable<string>? projectAnimations = null,
+            Services.BehaviorReferenceIndex? references = null)
         {
             _manager = manager;
             _projectAnimations = projectAnimations?.ToList() ?? new List<string>();
+            _references = references;
         }
 
         public GraphDoctorReport Run()
@@ -126,6 +134,7 @@ namespace SageHavokEditor.Core.Validation
             issues.AddRange(IndicesOutOfRange());
             issues.AddRange(UnregisteredAnimations());
             issues.AddRange(UnreachableStates());
+            issues.AddRange(BehaviorReferences());
 
             var pruned = PrunedOnSave(issues);
             issues.AddRange(pruned);
@@ -394,6 +403,105 @@ namespace SageHavokEditor.Core.Validation
                                   "(an XML save keeps it). Wire it into its parent to keep it.",
                 })
                 .ToList();
+        }
+
+        /// <summary>
+        /// The two ways a behaviour reference goes wrong, both silent.
+        ///
+        /// It is the bridge node of every Nemesis/Pandora-style patch: a state's
+        /// generator points at an <c>hkbBehaviorReferenceGenerator</c>, whose
+        /// <c>behaviorName</c> is a path to a separate file pulled in at runtime.
+        /// A path that resolves to nothing produces no error anywhere — the state
+        /// is entered and nothing plays. And because the two graphs link by event
+        /// *name*, each keeping its own table, an event the referenced graph uses
+        /// that this file has never heard of cannot cross between them.
+        ///
+        /// Both are warnings, and the second is a lead rather than a verdict: a
+        /// child graph's internal events legitimately appear only in its own
+        /// table. What makes it worth saying is that the opposite mistake —
+        /// expecting an event to cross when it can't — looks in-game exactly like
+        /// everything working, right up until the animation doesn't play.
+        /// </summary>
+        private IEnumerable<ValidationIssue> BehaviorReferences()
+        {
+            if (_references == null) yield break;
+
+            var stringData = _manager.ObjectMap.Values
+                .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+            var ownEvents = new HashSet<string>(
+                stringData?.Params.FirstOrDefault(p => p.Name == "eventNames")?.Strings
+                    ?? new List<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var node in _manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbBehaviorReferenceGenerator"))
+            {
+                var behaviorName = (Get(node, "behaviorName") ?? "").Trim();
+                if (behaviorName.Length == 0)
+                {
+                    yield return new ValidationIssue
+                    {
+                        Severity = "Warning",
+                        Category = ValidationIssue.CategoryBehaviorReference,
+                        Cause = "the reference was created before its target path was known",
+                        ObjectId = node.Id,
+                        ObjectClass = node.ClassName,
+                        ObjectName = Name(node),
+                        Description = "behaviorName is empty — this reference pulls in nothing, "
+                                    + "so the state using it plays nothing",
+                    };
+                    continue;
+                }
+
+                var target = _references.Lookup(behaviorName);
+
+                if (!target.Resolved)
+                {
+                    yield return new ValidationIssue
+                    {
+                        Severity = "Warning",
+                        Category = ValidationIssue.CategoryBehaviorReference,
+                        Cause = "the file hasn't been created yet, the path is relative to a different "
+                              + "folder, or it exists only inside a mod manager's virtual file system",
+                        ObjectId = node.Id,
+                        ObjectClass = node.ClassName,
+                        ObjectName = Name(node),
+                        Description = $"behaviorName '{behaviorName}' wasn't found under the project — "
+                                    + "the reference resolves by path at runtime, and one that resolves "
+                                    + "to nothing is a state that plays nothing, with no error",
+                    };
+                    continue;
+                }
+
+                if (!target.Readable) continue;   // found but unreadable: not this pass's business
+
+                var cannotCross = target.UsedEventNames
+                    .Where(e => !ownEvents.Contains(e))
+                    .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (cannotCross.Count == 0) continue;
+
+                // One row per reference, never one per event: a referenced graph
+                // has as many events as it likes and most of them are its own
+                // business. The count is the signal, the names are the lead.
+                var sample = string.Join(", ", cannotCross.Take(6));
+                if (cannotCross.Count > 6) sample += $", … ({cannotCross.Count - 6} more)";
+
+                yield return new ValidationIssue
+                {
+                    Severity = "Warning",
+                    Category = ValidationIssue.CategoryBehaviorReferenceEvents,
+                    Cause = "an event shared between two graphs has to be in both tables; one the "
+                          + "referenced graph only uses internally is fine as it is",
+                    ObjectId = node.Id,
+                    ObjectClass = node.ClassName,
+                    ObjectName = Name(node),
+                    Description = $"{System.IO.Path.GetFileName(target.Path)} uses {cannotCross.Count} event "
+                                + $"name{(cannotCross.Count == 1 ? "" : "s")} this file's eventNames doesn't "
+                                + $"have ({sample}) — the two graphs link by name, so those can't cross "
+                                + "the reference",
+                };
+            }
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
