@@ -475,8 +475,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **The refusal is relative to what the file arrived with**, which is the one
   place this diverges from Cassie's design and can't not. Her compiler owns its
   output; an editor opens files it didn't write, and vanilla `dragonbehavior`
-  ships 12 structural errors — a duplicate `stateId`, two impossible
-  `startStateId`s and nine transitions to states that don't exist — so refusing
+  ships 11 structural errors — two impossible `startStateId`s and nine
+  transitions to states that don't exist, measured against the SE install's own
+  copy (1502 objects) — so refusing
   on all of them would make Bethesda's own files unsaveable. Each load takes a
   fingerprint of the structural errors already present (`category|objectId|
   subject`), and only findings outside that set refuse a save. Everything else is
@@ -577,9 +578,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opens the object, and the gate's two buttons return the DialogResult the save
   path branches on.
 
-  On the dragonbehavior sample (1510 objects) every new check is silent except
+  On a 1510-object dragonbehavior working copy every new check is silent except
   the two that aren't meant to be: 3 objects the `.hkx` save drops, and 15 states
-  nothing enters — 7 of which sit in machines the existing `toStateId` /
+  nothing enters (the SE install's own 1502-object copy drops none, and reports
+  the same 15) — 7 of which sit in machines the existing `toStateId` /
   `startStateId` checks already flag, the file having a state numbered 32 where
   three transitions target 3. The same checks come back clean on a 1518-object
   modded dragon behaviour but for one state, and silent on character, project,
