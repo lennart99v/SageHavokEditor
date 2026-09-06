@@ -232,8 +232,8 @@ restated. What is new:
   same shape the licence rule above already forces. The two constraints agree.
 - **Measured rather than assumed, both at `f5ddbaa`:** there is **no `SCHEMA.yaml` and no version key
   anywhere in the 186-descriptor tree**, so the stamp is design-only and nothing yet exists to copy
-  into a manifest; and **`merge:` appears in 3 of those 186 files** (`compose`, on a state machine's
-  `states` and `transitions`), so the per-field merge policy has barely started landing. Expect churn.
+  into a manifest; and **`merge:` appears in 2 of those 186 descriptors** (`compose`, on a state machine's
+  `states` and `transitions`), so the per-field merge policy has barely started landing. Expect churn. Recounted 2026-09-06 after this section said three: the third hit is the `Havok/README.md` line documenting the tag, and that same README is why the "187 descriptors" quoted elsewhere here is 186 plus it.
 - **Bone weights moved our way.** She found weights still being assigned in bone *index* order and
   changed it in the RC1 branch. `AttachBoneWeights` here already resolves each weight by bone *name*
   into the animation skeleton's order, so RC1 aligns with this editor rather than breaking it.
@@ -258,6 +258,88 @@ of adding a check for it.
 
 
 - [ ] **Open the load order and edit as deltas — the Creation Kit model.** Her suggestion, and the largest thing in this section: point the editor at the user's load order, compose the bundles with the schema's own merge semantics, present the *merged* graph as one project, and write every change as a delta into a new or active `.hky` — the CK's active-plugin model, applied to behaviours. It is the right end state and it is not a bolt-on: it needs a composed document model (today one file is one packfile), an active-bundle concept with per-object provenance ("who introduced this node, who overrode it, am I about to override or author"), and a decision about whether it converges with the Nemesis snapshot exporter or stands beside it as a second, separate delta mechanism. Worth sequencing behind the four import fixes and the oracle, both of which it depends on, and worth prototyping read-only first: compose a two-bundle load order and *show* the merged graph with provenance, before anything writes.
+
+### Swept 2026-09-06 — the load-order opener, and what the schema actually carries
+
+Prompted by Cassie describing the Scene Editor's load-order-aware project opener in conversation —
+it "stores an hky document in memory after the load order gets resolved and then the project is
+then layered on top of it," with the open question of hoisting that mechanism into a shared library
+both tools could run. Checked against the repo, **still at `f5ddbaa`**: nothing above has moved, so
+the conversation is ahead of the code and everything here is a reading of what exists today.
+
+- **`.hky` is a general container, not a behaviour format.** This section has described it
+  throughout as a packed behaviour source tree. It is not: the Scene Editor's *projects* are `.hky`
+  archives too, discriminated by a `cinematics/manifest.yaml` at the archive root
+  (`ProjectIO::ScanForProjects`), sitting beside behaviour bundles' `meshes/actors/…/<graph>.hkx/`
+  in the same container. That is what her "ignore anything in an `.hky` that does not start at the
+  `meshes` root" rule above exists for — we recorded the rule without knowing what it excluded.
+
+- **The opener is two mechanisms, and neither is a merged behaviour graph.** `LoadOrderDocument`
+  is the **ESM** load order — `plugins.txt` plus implicit masters through `sctesm::Database`,
+  answering winning-record-only `NPC_` / `CELL` / `WRLD` queries and placed refs. `HkyDocument`
+  (`include/internal/hky-utils`) is the "hky document" she remembered, and its own header calls it
+  "the in-memory, resolved BR HKY load order, the NifDocument of the HKY world" — but it answers
+  **exactly one query, `ResolveSkeleton`**, taking the first bundle that carries the unit, and the
+  header says bone-add layer merge across bundles "is a later addition". There is no composed
+  behaviour document upstream to borrow. The sequencing is also the reverse of the description:
+  `OpenProject` loads the project *first*, then sets `loadOrderPending` and the ESM order builds
+  off-thread behind `loadOrderReady`. Nothing is layered onto a resolved base.
+
+- **The cb migration did break it, and the break is one string.** `Resolver` and the two
+  animation-data servers read `Data\community_behaviors\plugins\`; `HkyDocument`,
+  `ProjectIO::ScanForProjects`, `MainLayout` and True Cinematics' orchestrator all still read
+  `Data\behavior_relay\plugins\`. The editor scans a directory the runtime no longer fills. Two
+  smaller drifts alongside it: `HkyDocument` accepts packed `.hky` *files* only, where `Resolver`
+  also accepts an unpacked author dev tree, and it ignores `loadorder.txt` entirely — stable-sorting
+  `skyrim` first and otherwise taking directory order. Hers to fix, ours to tell her.
+
+- **The mechanism worth sharing is `PlanLoadOrder`, and it is not in the editor.** It is in
+  `Community Behaviors/src/Resolver.cpp`: a topological sort of the **master DAG** rather than a
+  flat `loadorder.txt` priority. Every non-Skyrim bundle carries an implicit `skyrim` master edge,
+  so the vanilla corpus pins first however a mod is ordered; `loadorder.txt` survives only as the
+  **peer tie-break** between bundles with no dependency (unlisted sorts earliest); a bundle whose
+  *declared* master is absent is dropped, propagated to fixpoint, because its overrides would bind
+  to nothing; and a master cycle warns and degrades to loadorder order rather than vanishing.
+  Roughly 160 lines with no game dependency. Those rules are an **algorithm**, which travels under
+  the rule above where a static C++23 library linking `havok-core` does not: a vcpkg dependency
+  would mean a C ABI shim and P/Invoke out of WPF, against a repo whose `LICENSE` still reads
+  all-rights-reserved-provisional whatever the plan is. Staying in sync by agreeing those rules
+  costs less than staying in sync by linkage, and it is the trade this section already made for
+  the formats.
+
+- **"Once merge semantics live entirely in the schema" is a plan, not the state.** The decision is
+  still in code: `havok::merge::decideParam` (`BashMerge.h`) derives the policy from
+  `(isArray, changerCount, guarded)` — 0 changers `Keep`, scalar `LastWriter`, an array one mod
+  changed `ReplaceArray`, an array two or more changed `UnionArray`, a guarded array two or more
+  changed `GuardError`. A schema tag wins where one exists, and there are two, both `compose`
+  (`hkbStateMachine.states`, `hkbStateMachineTransitionInfoArray.transitions`); everything else
+  falls back to hardcoded name sets in `YamlBehaviorLoader.cpp` — `children` / `generators` guarded,
+  `states` / `transitions` compose — behind a `g_mergeStrict` flag that disables the fallback so a
+  byte-diff gate catches a tag that never landed. Her `Havok/README.md` annotates the policy list
+  "(Added as the merge layer lands.)", so this is on schedule rather than off it; the correction is
+  to us, for having read the design as the implementation.
+
+- **Two merge rules of hers we would have got wrong, both learned in-game.** `compose` is
+  element-wise over the base prefix — a slot any mod edited is replaced, last changer in load order
+  wins, base slots nobody touched stay, each mod's tail appends. Plain union instead *keeps* the
+  stale base slot a mod meant to replace, which is what cost her attack-commitment and shield-drop
+  bugs on the combat states. And `modifiers` is **deliberately not guarded**: an `hkbModifierList`
+  holds node-id refs and nothing stores a positional index into it, so only execution order matters
+  and two mods injecting into one list (TK Dodge and DMCO into `PlayerBowModList`) union safely —
+  where the old guard threw and A-posed the dodge. The guarded set is exactly the arrays a *separate*
+  field indexes into: `children` (`indexOfSyncMasterChild`) and `generators`
+  (`selectedGeneratorIndex`). Both rules matter here the moment we compose a load order, and the
+  second is a `HavokValidator` insight on its own — "positional array" is not the hazard, "positional
+  array something else indexes into" is.
+
+  **Scoped by the 2026-09-06 sweep above, which found no upstream composer to lean on.** Ordering is
+  `PlanLoadOrder`'s rules — master DAG topo sort, implicit `skyrim` edge, `loadorder.txt` as the peer
+  tie-break only, drop a bundle whose declared master is absent (to fixpoint), warn and degrade on a
+  cycle — reimplemented from the algorithm, on the same terms as the tagfile oracle item. Merging is
+  `decideParam` plus the two rules above, read from her `merge:` tags where they exist and from the
+  name-set fallback where they don't, which today means nearly everywhere. And the bundle root to
+  scan is `Data\community_behaviors\plugins\`, not the `behavior_relay` path her own editor still
+  points at.
 
 ## Save / IO
 
