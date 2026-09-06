@@ -29,6 +29,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An exported unit did not link, because a blender's children were written as
+  references.** They are a pointer array in Havok and a list of mappings in the
+  source — `children:` then `- generator: 59` / `weight: 5` — and
+  `hkbBlenderGeneratorChild` has no file anywhere in the vanilla bundle, 0 across
+  all 513 units. Written as references to files of their own, the importer had no
+  path for them: `children` is read as an object list, a list of bare ids matched
+  nothing, and the member was dropped — cutting every blender off from its
+  children and taking most of the graph out of the root's reach. Vanilla
+  `dragonbehavior` went from 1502 objects reachable to 47, and the `.hkx` written
+  from the exported source to 36 KB. Now 1477 of 1501 and 344 KB against an
+  original of 370, with 213 of 213 clip generators and every event and variable.
+
+  Two harness checks came out of chasing it, both for things that hid it. Reach
+  is measured on both sides rather than assumed. And a slot that should hold a
+  reference is checked for holding a leftover name, because an unresolved name is
+  left as the name — so the value holds no `#ref` at all, and "every `#ref`
+  resolves" passes on a graph that reaches nothing.
+
 - **Three ways an exported unit had the wrong shape, all the same ambiguity.** The
   data cannot tell a container of one from a single thing, and only a declaration
   can. A one-element pointer array was written as a scalar — vanilla

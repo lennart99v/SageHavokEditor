@@ -82,6 +82,26 @@ namespace SageHavokEditor.Core
                 ["hkbStringEventPayload"] = new("data", true),
             };
 
+        // ── Classes her format writes inline as a list item ───────────────────────
+        // A blender's children are a pointer array in Havok, and a list of mappings in
+        // the source: `children:` then `- generator: 59` / `weight: 5`. None of these
+        // classes has a file anywhere in Skyrim.hky. Writing them as refs to files of
+        // their own produced a unit the importer had no path for — `children` is read as
+        // an object list, so a list of bare ids matched nothing and the member was
+        // dropped, which cut every blender off from its children and took most of the
+        // graph out of the root's reach.
+        private static readonly HashSet<string> InlineElement =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                "hkbBlenderGeneratorChild",
+                // hkbBoneWeightArray belongs here too — her format writes it as
+                // `boneWeights: named: { <bone>: <weight> }`, keyed by bone name, and
+                // it has no file either. It is left as a node file for now because
+                // that shape is not a struct list: rebuilding it on import needs the
+                // character project's skeleton to turn names back into an order, and
+                // writing it the generic way lost all 25 of the dragon's outright.
+            };
+
         // The graph and its three data objects are the header, not nodes.
         private static readonly HashSet<string> HeaderClasses =
             new(StringComparer.OrdinalIgnoreCase)
@@ -206,7 +226,9 @@ namespace SageHavokEditor.Core
         }
 
         private bool IsNodeFile(HkObject o) =>
-            !HeaderClasses.Contains(o.ClassName) && !Flattened.Contains(o.ClassName);
+            !HeaderClasses.Contains(o.ClassName)
+            && !Flattened.Contains(o.ClassName)
+            && !InlineElement.Contains(o.ClassName);
 
         private string FolderFor(string className)
         {
@@ -341,6 +363,16 @@ namespace SageHavokEditor.Core
 
             if (refs.Count > 0)
             {
+                // Elements her format spells out in place rather than pointing at.
+                var targets = refs.Select(r => _byId.TryGetValue(r, out var t) ? t : null)
+                                  .Where(t => t != null).ToList();
+                if (targets.Count > 0 && targets.All(t => InlineElement.Contains(t!.ClassName)))
+                {
+                    sb.Append(open).Append(p.Name).Append(":").Append(Lf);
+                    EmitStructList(sb, targets!, pad + "  ", targets[0]!.ClassName);
+                    return;
+                }
+
                 var mapped = refs.Select(LocalOf).Where(x => x != null).ToList();
                 if (mapped.Count == 0) return;
 
@@ -488,6 +520,9 @@ namespace SageHavokEditor.Core
                 foreach (var ip in item.Params)
                 {
                     if (string.IsNullOrEmpty(ip.Name)) continue;
+                    // An element written in place has no id and no class line of its
+                    // own; the member it sits under says what it is.
+                    if (ip.Name == "id" && InlineElement.Contains(item.ClassName)) continue;
                     if (!seenKeys.Add(ip.Name)) continue;
 
                     var dot = ip.Name.IndexOf('.');

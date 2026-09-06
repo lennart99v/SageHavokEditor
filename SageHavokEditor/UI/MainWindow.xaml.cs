@@ -2829,22 +2829,23 @@ namespace SageHavokEditor
                 return;
             }
 
-            // A graph loaded from a packfile still does not export faithfully, and
-            // this says so before anything is written. The shape faults are fixed — the
-            // unit converts now — but most of it ends up unreachable from the root, and
-            // an .hkx save drops whatever the root cannot reach. Measured on vanilla
-            // dragonbehavior: 1454 of 1501 objects, 36 KB written where the original
-            // is 370. A unit opened from YAML source and written back is fine.
+            // What is left on the packfile path is narrow enough to name. The graph
+            // links and converts now; the bone weight arrays are the exception, because
+            // the source writes them keyed by bone name and rebuilding that needs the
+            // character project's skeleton. Measured on vanilla dragonbehavior: 1477 of
+            // 1501 objects reachable, converts at 344 KB against an original of 370.
             if (_sourceWasHkx)
             {
                 var go = MessageBox.Show(
-                    "This graph was loaded from a packfile, and export from a packfile is not " +
-                    "finished yet.\n\nThe unit holds every object, name, event and variable, " +
-                    "and it converts — but most of the graph ends up unreachable from the root, " +
-                    "and anything the root cannot reach is dropped when it is turned back into " +
-                    "an .hkx. On vanilla dragonbehavior that is 1454 of 1501 objects.\n\n" +
-                    "Exporting a behaviour folder that was opened from YAML source does work.\n\n" +
-                    "Write it anyway?",
+                    "This graph was loaded from a packfile, and one thing does not survive " +
+                    "the trip yet.\n\nEverything else does: the graph links up, every event " +
+                    "and variable comes back, and the unit converts. But a bone weight array " +
+                    "— what a blend uses to weight one part of the body against another — is " +
+                    "written keyed by bone name in this format, and rebuilding that needs the " +
+                    "character project's skeleton, so those come out unattached and would be " +
+                    "dropped. On vanilla dragonbehavior that is 24 of 1501 objects.\n\n" +
+                    "Exporting a behaviour folder that was opened from YAML source loses " +
+                    "nothing.\n\nWrite it anyway?",
                     "Export .hky source", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
                 if (go != MessageBoxResult.OK) return;
             }

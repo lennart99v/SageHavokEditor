@@ -11,6 +11,7 @@ using System.Globalization;
 using HKX2;
 using SageHavokEditor.Core;
 using SageHavokEditor.Models;
+using SageHavokEditor.Core.Services;
 
 if (args.Length < 1)
 {
@@ -133,6 +134,76 @@ Check(lost.Count == 0 && gained.Count == 0, "no node name is lost or invented",
       lost.Count + gained.Count == 0
           ? $"{n1.Count} named objects"
           : $"-{lost.Count} +{gained.Count}: {string.Join(", ", lost.Take(3).Concat(gained.Take(3)))}");
+
+// A name that will not resolve is left as the name, so the value ends up holding
+// no #ref at all — which is why "every #ref resolves" can pass on a graph whose
+// root reaches almost nothing. This asks the opposite question: is there a slot
+// that should hold a reference and holds a bare word instead?
+static List<string> Unresolved(HavokManager m)
+{
+    var bad = new List<string>();
+    foreach (var o in m.ObjectMap.Values)
+    foreach (var p in o.Params)
+    {
+        var info = HavokTypeCatalog.Lookup(o.ClassName ?? "", p.Name ?? "");
+        if (info?.ElementClassName == null) continue;
+        var v = p.Value ?? "";
+        // "-1" is Havok's "none" in a slot that also takes a reference, not a name
+        // that failed to resolve.
+        if (v.Length == 0 || v == "null" || v == "-1") continue;
+        foreach (var tok in v.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            if (!tok.StartsWith("#"))
+            { bad.Add($"{o.ClassName}.{p.Name} = '{tok}'"); break; }
+    }
+    return bad;
+}
+
+// Reachability, measured on both sides. The .hkx save keeps only what the root
+// can reach, so a graph that holds every object and reaches none of them writes
+// a file with almost nothing in it.
+static (int Count, string Root) Reachable(HavokManager m)
+{
+    var top = m.ObjectMap.Values.FirstOrDefault(o => o.ClassName == "hkRootLevelContainer");
+    if (top == null) return (0, "no hkRootLevelContainer");
+    var seen = new HashSet<string>();
+    var stack = new Stack<HkObject>();
+    stack.Push(top);
+    while (stack.Count > 0)
+    {
+        var o = stack.Pop();
+        if (string.IsNullOrEmpty(o.Id) || !seen.Add(o.Id)) continue;
+        foreach (var (_, refId) in HkRefWalkShim(o))
+            if (m.ObjectMap.TryGetValue(refId, out var t)) stack.Push(t);
+    }
+    return (seen.Count, top.Id);
+}
+
+static IEnumerable<(string, string)> HkRefWalkShim(HkObject obj)
+{
+    foreach (var p in Params(obj))
+        foreach (var tok in (p.Value ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            if (tok.StartsWith("#")) yield return (p.Name, tok);
+
+    static IEnumerable<HkParam> Params(HkObject o)
+    {
+        foreach (var p in o.Params)
+        {
+            yield return p;
+            foreach (var c in p.Children)
+                if (string.IsNullOrEmpty(c.Id))
+                    foreach (var sp in Params(c)) yield return sp;
+        }
+    }
+}
+
+var r1 = Reachable(m1);
+var r2 = Reachable(m2);
+Check(r2.Count >= r1.Count, "the root still reaches as much of the graph as it did",
+      $"{r1.Count} of {m1.ObjectMap.Count} -> {r2.Count} of {m2.ObjectMap.Count}");
+
+var stuck = Unresolved(m2);
+Check(stuck.Count == 0, "every reference slot holds a #ref, not a leftover name",
+      stuck.Count == 0 ? "" : $"{stuck.Count}: " + string.Join("; ", stuck.Take(4)));
 
 Console.WriteLine();
 Console.WriteLine(fail == 0 ? "all checks passed" : $"{fail} check(s) failed");
