@@ -2829,26 +2829,20 @@ namespace SageHavokEditor
                 return;
             }
 
-            // A graph loaded from a packfile does not export faithfully yet, and this
-            // says so before anything is written rather than after. Measured on vanilla
-            // dragonbehavior: the unit re-imports with the right objects and every name,
-            // but numeric arrays come out space-separated instead of as lists, and the
-            // .hkx conversion stops on the first one. A unit opened from YAML source and
-            // written back does convert.
-            // A graph loaded from a packfile does not export faithfully yet, and this
-            // says so before anything is written rather than after. Measured on vanilla
-            // dragonbehavior: the unit re-imports with the right objects and every name,
-            // but a numeric array comes out space-separated instead of as a list, and the
-            // .hkx conversion stops on the first one. A unit opened from YAML source and
-            // written back does convert.
+            // A graph loaded from a packfile still does not export faithfully, and
+            // this says so before anything is written. The shape faults are fixed — the
+            // unit converts now — but most of it ends up unreachable from the root, and
+            // an .hkx save drops whatever the root cannot reach. Measured on vanilla
+            // dragonbehavior: 1454 of 1501 objects, 36 KB written where the original
+            // is 370. A unit opened from YAML source and written back is fine.
             if (_sourceWasHkx)
             {
                 var go = MessageBox.Show(
                     "This graph was loaded from a packfile, and export from a packfile is not " +
-                    "faithful yet.\n\nThe unit will hold the right objects, names, events " +
-                    "and variables, but a numeric array (bone indices, for one) is written the " +
-                    "way the editor holds it rather than as a list, and the Community Behaviors " +
-                    "compiler will not read it back. Measured on vanilla dragonbehavior.\n\n" +
+                    "finished yet.\n\nThe unit holds every object, name, event and variable, " +
+                    "and it converts — but most of the graph ends up unreachable from the root, " +
+                    "and anything the root cannot reach is dropped when it is turned back into " +
+                    "an .hkx. On vanilla dragonbehavior that is 1454 of 1501 objects.\n\n" +
                     "Exporting a behaviour folder that was opened from YAML source does work.\n\n" +
                     "Write it anyway?",
                     "Export .hky source", MessageBoxButton.OKCancel, MessageBoxImage.Warning);

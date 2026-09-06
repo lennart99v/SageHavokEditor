@@ -29,15 +29,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A one-element array was exported as a scalar.** The data cannot tell an array
-  of one from a single pointer — vanilla `ML_FullyRagdoll` holds exactly one
-  modifier, `numelements="1"` — so `modifiers: 1016` read back as a scalar and the
-  conversion died with `numelemnets is not vaild number`. Array-ness is asked of
-  the class now, which is the same reason `HavokArrayKinds` exists. Found by
-  teaching `tools/hkx-hky-export` to take a packfile as well as a source folder;
-  nothing had exercised the path an edit on a real `.hkx` actually takes.
+- **Three ways an exported unit had the wrong shape, all the same ambiguity.** The
+  data cannot tell a container of one from a single thing, and only a declaration
+  can. A one-element pointer array was written as a scalar — vanilla
+  `ML_FullyRagdoll` holds exactly one modifier at `numelements="1"` — so
+  `modifiers: 1016` read back as a scalar and the conversion died with
+  `numelemnets is not vaild number`. A numeric array was written space-separated
+  the way `HkParam` holds it, because `HkArrayKind` only tells inline-struct from
+  pointer arrays and a numeric `hkArray` is `None`. And a single nested struct was
+  written as a list, so a transition's `triggerInterval` opened a sequence where
+  the source has a mapping.
 
-### Fixed
+  `numelements` settles all three: it is written only for an array, so its presence
+  is the declaration — and it stays right for the empty and one-element cases,
+  which is exactly where counting the values gets it wrong. Vanilla
+  `dragonbehavior` exported from a packfile now converts. Found by teaching
+  `tools/hkx-hky-export` to take a packfile as well as a source folder; nothing had
+  exercised the path an edit on a real `.hkx` actually takes.
 
 - **A state's enter and exit notify events were dropped on YAML import.** The
   importer built an object's params from its scalars, its string lists and a

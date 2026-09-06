@@ -375,13 +375,48 @@ namespace SageHavokEditor.Core
 
             if (p.Children != null && p.Children.Count > 0)
             {
+                var elementClass = HavokTypeCatalog.Lookup(owner.ClassName, p.Name)?.ElementClassName;
+
+                // A single nested struct is not an array of one, and from a packfile
+                // both arrive as Children with one element. numelements is what tells
+                // them apart. Written as a list, a transition's triggerInterval opened
+                // a list where the source has a mapping, and the keys after it were
+                // read as part of it — which is how a state lost its generator and
+                // took everything under it out of the graph.
+                if (!IsCountedArray(p) && p.Children.Count == 1)
+                {
+                    sb.Append(open).Append(p.Name).Append(":").Append(Lf);
+                    EmitStructMap(sb, p.Children[0], pad + "  ", elementClass);
+                    return;
+                }
+
                 sb.Append(open).Append(p.Name).Append(":").Append(Lf);
-                EmitStructList(sb, p.Children, pad + "  ",
-                    HavokTypeCatalog.Lookup(owner.ClassName, p.Name)?.ElementClassName);
+                EmitStructList(sb, p.Children, pad + "  ", elementClass);
                 return;
             }
 
             var value = p.Value ?? "";
+
+            // An array of numbers is held as one space-separated string, and the
+            // class cannot tell us it is an array: HkArrayKind only distinguishes
+            // inline-struct from pointer arrays, and a numeric hkArray is None. The
+            // file says so itself though — every array carries numelements — and
+            // that is the declaration to trust. Written as a scalar it came back as
+            // one, with no count, and the conversion stopped on m_boneIndices.
+            if (IsCountedArray(p))
+            {
+                var items = value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                if (items.Length == 0)
+                {
+                    sb.Append(open).Append(p.Name).Append(": []").Append(Lf);
+                    return;
+                }
+                sb.Append(open).Append(p.Name).Append(":").Append(Lf);
+                foreach (var item in items)
+                    sb.Append(pad).Append("  - ").Append(item).Append(Lf);
+                return;
+            }
+
             if (value.Length == 0 || value == "null") return;
 
             sb.Append(open).Append(p.Name).Append(": ").Append(value).Append(Lf);
@@ -415,6 +450,21 @@ namespace SageHavokEditor.Core
             var text = payload.Value ?? "";
             if (text.Length == 0) return;
             sb.Append(open).Append(key).Append(": ").Append(Quote(text)).Append(Lf);
+        }
+
+        /// <summary>One nested struct as a mapping, not a list item.</summary>
+        private void EmitStructMap(StringBuilder sb, HkObject item, string pad, string? elementClass)
+        {
+            var owner = string.IsNullOrEmpty(item.ClassName) && elementClass != null
+                ? new HkObject { ClassName = elementClass, Params = item.Params }
+                : item;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ip in item.Params)
+            {
+                if (string.IsNullOrEmpty(ip.Name) || !seen.Add(ip.Name)) continue;
+                Emit(sb, owner, ip, "", pad);
+            }
         }
 
         /// <summary>
@@ -501,6 +551,17 @@ namespace SageHavokEditor.Core
         private List<string> _variableNames = new();
 
         // ── Small helpers ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Whether this param is an array the file counted. `numelements` is only
+        /// written for an array, so its presence is the declaration — and it holds
+        /// for a one-element and an empty array too, which is exactly where
+        /// counting the values would get it wrong.
+        /// </summary>
+        private static bool IsCountedArray(HkParam p) =>
+            !string.IsNullOrEmpty(p.NumElements)
+            && int.TryParse(p.NumElements, NumberStyles.Integer,
+                            CultureInfo.InvariantCulture, out _);
 
         private string? LocalOf(string refId) =>
             _localId.TryGetValue(refId, out var n)
