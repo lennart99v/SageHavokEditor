@@ -80,6 +80,8 @@ internal static class Program
 
             ReportPath(mw, report);
             GatePath(report);
+            BaselinePath(mw, manager);
+            RefusalPath(report);
         }
         catch (Exception ex)
         {
@@ -152,11 +154,93 @@ internal static class Program
             rest.Any(i => i.IsError) || report.PrunedCount > 0,
             $"{rest.Count(i => i.IsError)} errors, {report.PrunedCount} pruned");
 
-        Check("Save anyway means save", Decide("BtnSaveAnyway", gateReport, shoot: true) == true);
+        Check("Save anyway means save", Decide("BtnSaveAnyway", gateReport, shoot: "presave-gate") == true);
         Check("Cancel save means stop", Decide("BtnCancelSave", gateReport) == false);
         // Closing the window with the X is a cancel too — a dismissed warning must
         // never be read as consent to write the file.
         Check("closing the window means stop", Decide(null, gateReport) != true);
+    }
+
+    // -- The load-time baseline ----------------------------------------------
+    // The refusal is baseline-relative, so a load that forgets to take one would
+    // quietly disarm it — or, if the field defaulted the other way, refuse every
+    // save of a vanilla file. Neither shows up anywhere except here.
+    private static void BaselinePath(SageHavokEditor.MainWindow mw, SageHavokEditor.Core.HavokManager manager)
+    {
+        Console.WriteLine("the load-time structural baseline:");
+
+        var baseline = (HashSet<string>)Member(mw, "_structuralBaseline");
+        Check("loading the file took one", baseline != null);
+        if (baseline == null) return;
+
+        var report = (GraphDoctorReport)Invoke(mw, "RunGraphDoctor");
+        Check("it holds exactly the structural errors the file arrived with",
+            baseline.SetEquals(report.StructuralFingerprints()),
+            $"{baseline.Count} vs {report.StructuralErrors.Count}");
+        Check("so an untouched file has nothing newly broken to refuse over",
+            report.StructuralErrors.All(i => baseline.Contains(i.Fingerprint)));
+
+        // Break a generator the way the property editor would, and check the save
+        // path's own expression now sees exactly one thing to refuse over.
+        var state = manager.ObjectMap.Values.First(o =>
+            o.ClassName == "hkbStateMachineStateInfo"
+            && (o.Params.FirstOrDefault(p => p.Name == "generator")?.Value ?? "").StartsWith("#"));
+        var param = state.Params.First(p => p.Name == "generator");
+        var oldValue = param.Value;
+        var oldChildren = param.Children.ToList();
+        param.Children.Clear();
+        param.Value = "null";
+        try
+        {
+            var after = (GraphDoctorReport)Invoke(mw, "RunGraphDoctor");
+            var newlyBroken = after.StructuralErrors
+                .Where(i => !baseline.Contains(i.Fingerprint)).ToList();
+            Check("nulling a generator is one newly broken thing",
+                newlyBroken.Count == 1 && newlyBroken[0].ObjectId == state.Id,
+                string.Join("; ", newlyBroken.Select(i => i.Fingerprint)));
+            if (newlyBroken.Count > 0)
+                Console.WriteLine($"  → {after.RefusalLine(newlyBroken[0])}");
+        }
+        finally
+        {
+            param.Children.Clear();
+            foreach (var c in oldChildren) param.Children.Add(c);
+            param.Value = oldValue;
+        }
+    }
+
+    // -- The refusal ----------------------------------------------------------
+    private static void RefusalPath(GraphDoctorReport report)
+    {
+        Console.WriteLine("the refusal:");
+
+        // Whatever this file's own structural errors are, the refusal shows the
+        // ones the save would have been refused over — here, all of them.
+        var refused = new GraphDoctorReport
+        {
+            Issues = report.StructuralErrors,
+            GraphName = report.GraphName,
+        };
+        Check("this file has structural errors to refuse over", refused.Issues.Count > 0);
+
+        var dlg = new ValidationDialog(refused, ValidationDialogMode.SaveRefused, "dragonbehavior.hkx",
+            $"This graph contradicts itself in {refused.Issues.Count} places that the file didn't when " +
+            "you opened it, so it was not written as SE HKX. Havok would accept it and say nothing.");
+        dlg.Show();
+        dlg.UpdateLayout();
+        Shoot(dlg, "save-refused");
+
+        Check("titled as a refusal, naming the file",
+            dlg.Title == "Save refused — dragonbehavior.hkx", dlg.Title);
+        // The whole point of this mode: there is no way to overrule it from here.
+        Check("offers no way to save anyway",
+            ((Button)dlg.FindName("BtnSaveAnyway")).Visibility != Visibility.Visible
+            && ((Button)dlg.FindName("BtnCancelSave")).Visibility != Visibility.Visible
+            && ((Button)dlg.FindName("BtnCloseReport")).Visibility == Visibility.Visible);
+        Check("every row it lists names a likely cause",
+            List(dlg).Items.Cast<ValidationIssue>().All(i => i.HasCause));
+
+        dlg.Close();
     }
 
     /// <summary>
@@ -164,9 +248,9 @@ internal static class Program
     /// <paramref name="button"/> is null) and returns the DialogResult the save
     /// path would branch on.
     /// </summary>
-    private static bool? Decide(string button, GraphDoctorReport report, bool shoot = false)
+    private static bool? Decide(string button, GraphDoctorReport report, string shoot = null)
     {
-        var dlg = new ValidationDialog(report, "dragonbehavior.hkx");
+        var dlg = new ValidationDialog(report, ValidationDialogMode.PreSaveDecision, "dragonbehavior.hkx");
         var driver = new DispatcherTimer(DispatcherPriority.Normal)
         {
             Interval = TimeSpan.FromMilliseconds(50)
@@ -176,7 +260,7 @@ internal static class Program
             if (!dlg.IsVisible) return;
             driver.Stop();
             dlg.UpdateLayout();
-            if (shoot)
+            if (shoot != null)
             {
                 Check("the gate is titled for the file being saved",
                     dlg.Title == "Graph doctor — before saving dragonbehavior.hkx", dlg.Title);
@@ -186,7 +270,7 @@ internal static class Program
                     && ((Button)dlg.FindName("BtnCloseReport")).Visibility == Visibility.Collapsed);
                 Check("Cancel is the default, so Enter doesn't write the file",
                     ((Button)dlg.FindName("BtnCancelSave")).IsDefault);
-                Shoot(dlg, "presave-gate");
+                Shoot(dlg, shoot);
             }
             if (button == null) dlg.Close();
             else ((Button)dlg.FindName(button)).RaiseEvent(

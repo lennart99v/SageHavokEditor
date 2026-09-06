@@ -81,6 +81,8 @@ namespace SageHavokEditor
 
             // Wire graph events (delete transition, inline rename) for undo support
             WireGraphEvents();
+
+            SnapshotStructuralBaseline();
         }
 
         // ── Project UI ────────────────────────────────────────────────────────

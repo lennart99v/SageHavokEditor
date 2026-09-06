@@ -170,11 +170,27 @@
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" Margin="5,0"/>
 
-                        <!-- Description -->
-                        <TextBlock Grid.Column="3" Text="{Binding Description}"
-                                   Foreground="{DynamicResource TextPrimaryBrush}"
-                                   FontSize="11" TextWrapping="Wrap"
-                                   VerticalAlignment="Center" Margin="5,0"/>
+                        <!-- Description, and under it the likely cause when the
+                             check has one to offer -->
+                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="5,0">
+                            <TextBlock Text="{Binding Description}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="11" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding Cause}" FontSize="10" FontStyle="Italic"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,2,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasCause}" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>

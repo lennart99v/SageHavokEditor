@@ -8,6 +8,17 @@ using SageHavokEditor.Core.Validation;
 
 namespace SageHavokEditor.UI.Dialogs
 {
+    /// <summary>What the dialog is being opened for.</summary>
+    public enum ValidationDialogMode
+    {
+        /// <summary>🔎 Validate: a read-out, dismissed with Close.</summary>
+        Report,
+        /// <summary>Before a save that is allowed: Save anyway / Cancel save.</summary>
+        PreSaveDecision,
+        /// <summary>After a save was refused: the reasons, and no way to overrule them.</summary>
+        SaveRefused,
+    }
+
     public partial class ValidationDialog : Window
     {
         private readonly List<ValidationIssue> _allIssues;
@@ -17,12 +28,12 @@ namespace SageHavokEditor.UI.Dialogs
         public int ErrorCount => _allIssues.Count(i => i.IsError);
         public int WarningCount => _allIssues.Count(i => i.IsWarning);
 
-        /// <param name="preSaveFileName">
-        /// Set to run as the pre-save gate for that file: the dialog goes modal
-        /// and its Close button becomes a choice, with <c>DialogResult</c> true
-        /// meaning "save anyway". Null shows the same report as a plain read-out.
-        /// </param>
-        public ValidationDialog(GraphDoctorReport report, string? preSaveFileName = null)
+        /// <param name="mode">Which of the dialog's three jobs this instance is doing.</param>
+        /// <param name="fileName">The file being saved, for the two save-time modes.</param>
+        /// <param name="headline">Overrides the report's own headline — the refusal says why.</param>
+        public ValidationDialog(GraphDoctorReport report,
+            ValidationDialogMode mode = ValidationDialogMode.Report,
+            string? fileName = null, string? headline = null)
         {
             InitializeComponent();
             _allIssues = report.Issues;
@@ -30,19 +41,29 @@ namespace SageHavokEditor.UI.Dialogs
 
             ErrorCountText.Text = ErrorCount.ToString();
             WarningCountText.Text = WarningCount.ToString();
-            HeadlineText.Text = report.Headline;
+            HeadlineText.Text = headline ?? report.Headline;
 
-            if (preSaveFileName != null)
+            switch (mode)
             {
-                Title = $"Graph doctor — before saving {preSaveFileName}";
-                BtnCloseReport.Visibility = Visibility.Collapsed;
-                BtnSaveAnyway.Visibility = Visibility.Visible;
-                BtnCancelSave.Visibility = Visibility.Visible;
-                // Nothing here refuses the save — the editor can't know whether an
-                // unreachable state is a mistake or a work in progress — so the
-                // safe-by-default button is the one that stops and lets you look.
-                BtnCancelSave.IsDefault = true;
-                SelectHint.Text = "Click an issue to select the object in the editor";
+                case ValidationDialogMode.PreSaveDecision:
+                    Title = $"Graph doctor — before saving {fileName}";
+                    BtnCloseReport.Visibility = Visibility.Collapsed;
+                    BtnSaveAnyway.Visibility = Visibility.Visible;
+                    BtnCancelSave.Visibility = Visibility.Visible;
+                    // Nothing in this mode refuses the save — the editor can't know
+                    // whether an unreachable state is a mistake or a work in
+                    // progress — so the safe-by-default button is the one that
+                    // stops and lets you look.
+                    BtnCancelSave.IsDefault = true;
+                    SelectHint.Text = "Click an issue to select the object in the editor";
+                    break;
+
+                case ValidationDialogMode.SaveRefused:
+                    // No decision to offer: these findings mean the graph
+                    // contradicts itself, and the file is not written.
+                    Title = $"Save refused — {fileName}";
+                    SelectHint.Text = "Click an issue to select the object in the editor";
+                    break;
             }
 
             // Don't call ApplyFilter here - use Loaded event instead
