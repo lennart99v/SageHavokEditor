@@ -154,6 +154,30 @@ The operating rule does not change yet, and the reason is narrower than it was. 
 - [ ] **Export `.hky` source from the editor.** Read-only interop is half a bridge: an edit made here can't go back. A bundle is `<Mod>.hky/` — a `manifest.json` declaring identity and masters by bare stem (`Skyrim` implicit for every other bundle) over graph units stored at their real serve path, `meshes/actors/…/<graph>.hkx/`, each holding `behavior.yaml` plus one file per node under `clips/ states/ generators/ modifiers/ transitions/ selectors/ references/ tagging/ data/`, with Havok field names verbatim, `variableBindingSet` and transition arrays flattened inline into their owner, and both index and name written for every symbol reference (`variableIndex: 12` beside `variable: 'turnSpeedMult'`). Nodes we *add* are keyed by name and the compiler mints their ids — confirmed below, and it is the easy half. Anything that *overrides* vanilla must carry her base's ids, which come from the tagfile `#NNNN` oracle, so that item is a prerequisite rather than a parallel one. Emit from her class descriptors rather than a hard-coded field list per class; behaviour classes are migrated, the rest are still moving. Which, with her rule that an exporter never emits a class or field absent from the schema tree it read, scopes the first version to **behaviour graph units only** — say so in the UI rather than letting someone discover it.
 
   Three things settled since this was written (see *Answered 2026-09-07*). Read the schema tree from the user's own SCT checkout **at run time** and stamp the `schema_version` it carries into every manifest written, copied never computed; through `1.0.0-rc.1` the gate is **exact match or refuse**, not a SemVer range, and refusing is the whole point — an exporter written against a stale field walk emits bytes that bind to the wrong node with no error, which is this domain's signature failure. Skip anything in a bundle that does not start at the `meshes` root. And there is no `SCHEMA.yaml` in the tree yet, so the first cut has nothing to stamp: read the version if it is there, refuse to export if it is not, rather than inventing a default.
+
+  **Started.** `Core/YamlBehaviorExporter.cs` writes a loaded graph out as an id-keyed unit, and
+  `tools/hkx-hky-export` is the gate: import a real unit, export it, import the result, compare. On
+  `chickenbehavior` that is 239 objects out and 239 back, 32 classes each with the same count, 125 of
+  125 events and 47 of 47 variables in order, and no node name lost or invented; `harebehavior` and
+  `bearbehavior` the same, `mothbehavior` 12 for 12.
+
+  The folder map is measured rather than inferred — every node file in all 513 units of `Skyrim.hky`
+  read and grouped by its own `class:` — and it caught two of the importer's folder defaults being
+  wrong: `selectors` is `hkbManualSelectorGenerator`, not `BSiStateTaggingGenerator`, and
+  `transitions` holds `hkbBlendingTransitionEffect`, while `hkbStateMachineTransitionInfoArray` never
+  appears as a file at all. Those defaults only apply to a file with no `class:` key, which is why
+  nothing had noticed.
+
+  **What it does not do yet, in the order worth fixing.** A round trip through *our* importer is not
+  the same as matching her bytes, and three differences are known. `triggerInterval` comes back with
+  its members bare where `initiateInterval` keeps its prefix — the parser keeps a list item's first
+  nested map flat, deliberately ("fine for a transition and useless for a bone weight"), so the two
+  halves of the same struct are stored differently and only one can be rebuilt; that is an importer
+  asymmetry the round trip found, and it needs settling before the output is faithful. A transition
+  writes `eventId` twice. `enterNotifyEvents` is not emitted at all. Beyond that: no `manifest.json`
+  and no `schema_version`, deliberately, since there is nothing upstream to stamp yet; and no UI, so
+  none of this is reachable from the app.
+
 ### Division of labour — what crosses, and what doesn't
 
 The two projects are halves of one pipeline that happen to share a data model: Community Behaviors owns **compile → merge → serve**, this editor owns **see → edit → validate → preview**. Her behaviour graph panel is still a literal `"Behavior Editor — not yet implemented"` ImGui stub at `f5ddbaa`, 354 commits in — the authoring GUI is the half she isn't building, and it is the half this is. So the collaboration has a shape without either project absorbing the other, and while her licence is provisional (see above) what crosses is **formats, findings and data — never code, in either direction**.
