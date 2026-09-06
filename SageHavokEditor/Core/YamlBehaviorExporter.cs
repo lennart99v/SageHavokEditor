@@ -94,12 +94,7 @@ namespace SageHavokEditor.Core
             new(StringComparer.OrdinalIgnoreCase)
             {
                 "hkbBlenderGeneratorChild",
-                // hkbBoneWeightArray belongs here too — her format writes it as
-                // `boneWeights: named: { <bone>: <weight> }`, keyed by bone name, and
-                // it has no file either. It is left as a node file for now because
-                // that shape is not a struct list: rebuilding it on import needs the
-                // character project's skeleton to turn names back into an order, and
-                // writing it the generic way lost all 25 of the dragon's outright.
+                "hkbBoneWeightArray",
             };
 
         // The graph and its three data objects are the header, not nodes.
@@ -366,6 +361,23 @@ namespace SageHavokEditor.Core
                 // Elements her format spells out in place rather than pointing at.
                 var targets = refs.Select(r => _byId.TryGetValue(r, out var t) ? t : null)
                                   .Where(t => t != null).ToList();
+
+                // A bone weight array is written as a count and the weights in the
+                // skeleton's own order — positional, so it needs no skeleton at either
+                // end. The name-keyed form the importer also accepts appears nowhere
+                // in the current bundle.
+                if (targets.Count == 1 && targets[0]!.ClassName
+                        .Equals("hkbBoneWeightArray", StringComparison.OrdinalIgnoreCase))
+                {
+                    var wp = targets[0]!.Params.FirstOrDefault(x => x.Name == "boneWeights");
+                    var vals = (wp?.Value ?? "").Split((char[]?)null,
+                                   StringSplitOptions.RemoveEmptyEntries);
+                    sb.Append(open).Append(p.Name).Append(":").Append(Lf);
+                    sb.Append(pad).Append("  count: ").Append(vals.Length).Append(Lf);
+                    sb.Append(pad).Append("  values: '").Append(string.Join(" ", vals))
+                      .Append("'").Append(Lf);
+                    return;
+                }
                 if (targets.Count > 0 && targets.All(t => InlineElement.Contains(t!.ClassName)))
                 {
                     sb.Append(open).Append(p.Name).Append(":").Append(Lf);

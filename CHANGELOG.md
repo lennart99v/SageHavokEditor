@@ -29,6 +29,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every bone weight was dropped when opening a Community Behaviors source
+  folder.** A blend uses them to weight one part of the body against another, and
+  the importer read them only in a name-keyed form — `boneWeights: named:` with a
+  weight per bone — which needs the character project's skeleton to turn names back
+  into an order, and which appears in **none of the 513 units** of the current
+  vanilla bundle. What that bundle actually writes is positional: `count: 71` and
+  `values: '1 1 0 …'` in the skeleton's own order, needing no skeleton at all. It
+  was read by nothing, so it went in as an empty array or not at all.
+
+  `chickenbehavior` comes in at 249 objects where it was 243, `dragonbehavior` at
+  1512 where it was 1488, and neither reports an unbuilt weight map any more. The
+  name-keyed path is kept: it is the direction the schema is moving, and the two
+  forms are told apart by which keys are present rather than by a version.
+
+  Found while making the same weights survive an export, which needs both halves
+  to agree — the export now writes the positional form in place on the blender
+  child, rather than as a file of its own that the format has no folder for.
+
 - **An exported unit did not link, because a blender's children were written as
   references.** They are a pointer array in Havok and a list of mappings in the
   source — `children:` then `- generator: 59` / `weight: 5` — and
