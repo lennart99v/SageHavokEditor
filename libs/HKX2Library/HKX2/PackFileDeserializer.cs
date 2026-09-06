@@ -209,7 +209,11 @@ namespace HKX2
             br.StepIn(f.Dst);
             var ret = br.ReadASCII();
             br.StepOut();
-            return ret.Trim();
+            // Verbatim: a Havok string is the bytes between the pointer and its
+            // NUL, padding included. Vanilla magicbehavior ships a variable
+            // named " iState_NPCSneaking" beside a plain "iState_NPCSneaking",
+            // and trimming here collapsed the two -- variables bind by name.
+            return ret;
         }
 
         public List<string> ReadStringPointerArray(BinaryReaderEx br)
