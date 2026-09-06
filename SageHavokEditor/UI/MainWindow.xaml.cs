@@ -2784,7 +2784,128 @@ namespace SageHavokEditor
 
         private void BtnGroupedSummary_Click(object sender, RoutedEventArgs e) { /* Placeholder for your summary logic */ }
 
+        // Export offers two unrelated things, so it asks which — the same shape as
+        // Load. The summary is a report about the file; the .hky export is the file
+        // itself, written back into the source format it can be edited in.
         private void BtnExport_Click(object sender, RoutedEventArgs e)
+        {
+            var menu = new ContextMenu();
+
+            var summary = new MenuItem { Header = "📄 Export summary (CSV)…" };
+            summary.Click += (_, __) => ExportSummary();
+
+            var hky = new MenuItem { Header = "📦 Export .hky behaviour source…" };
+            hky.Click += (_, __) => ExportHkyUnit();
+
+            menu.Items.Add(summary);
+            menu.Items.Add(hky);
+            menu.PlacementTarget = sender as UIElement;
+            menu.IsOpen = true;
+        }
+
+        /// <summary>
+        /// Writes the loaded graph as a Community Behaviors unit. Only a behaviour
+        /// graph can go: her schema has the behaviour classes migrated and the rest
+        /// still moving, and an exporter must not emit a class the schema it read
+        /// does not describe. Saying so here beats letting someone find out.
+        /// </summary>
+        private void ExportHkyUnit()
+        {
+            if (manager?.ObjectMap == null || manager.ObjectMap.Count == 0)
+            {
+                MessageBox.Show("No file loaded.");
+                return;
+            }
+
+            if (!manager.ObjectMap.Values.Any(o => o.ClassName == "hkbBehaviorGraph"))
+            {
+                MessageBox.Show(
+                    "Only a behaviour graph can be exported as .hky source, and this file has no " +
+                    "hkbBehaviorGraph.\n\nCharacter, project and skeleton files are not part of the " +
+                    "format yet: Community Behaviors' schema has its behaviour classes migrated and " +
+                    "the rest still moving, and writing a class the schema doesn't describe would " +
+                    "produce source its compiler can't read.",
+                    "Export .hky source", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // A graph loaded from a packfile does not export faithfully yet, and this
+            // says so before anything is written rather than after. Measured on vanilla
+            // dragonbehavior: the unit re-imports with the right objects and every name,
+            // but numeric arrays come out space-separated instead of as lists, and the
+            // .hkx conversion stops on the first one. A unit opened from YAML source and
+            // written back does convert.
+            // A graph loaded from a packfile does not export faithfully yet, and this
+            // says so before anything is written rather than after. Measured on vanilla
+            // dragonbehavior: the unit re-imports with the right objects and every name,
+            // but a numeric array comes out space-separated instead of as a list, and the
+            // .hkx conversion stops on the first one. A unit opened from YAML source and
+            // written back does convert.
+            if (_sourceWasHkx)
+            {
+                var go = MessageBox.Show(
+                    "This graph was loaded from a packfile, and export from a packfile is not " +
+                    "faithful yet.\n\nThe unit will hold the right objects, names, events " +
+                    "and variables, but a numeric array (bone indices, for one) is written the " +
+                    "way the editor holds it rather than as a list, and the Community Behaviors " +
+                    "compiler will not read it back. Measured on vanilla dragonbehavior.\n\n" +
+                    "Exporting a behaviour folder that was opened from YAML source does work.\n\n" +
+                    "Write it anyway?",
+                    "Export .hky source", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                if (go != MessageBoxResult.OK) return;
+            }
+
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Navigate to the folder the unit should be written into, then click Save",
+                FileName = "navigate_to_folder_then_click_save",
+                Filter = "Any|*.*",
+                CheckFileExists = false,
+                CheckPathExists = false
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            // A unit lives at its real serve path and is named for the graph it holds,
+            // folder-and-all: meshes/actors/…/behaviors/<graph>.hkx/.
+            var parent = Path.GetDirectoryName(dlg.FileName)!;
+            var stem = Path.GetFileNameWithoutExtension(
+                _originalHkxPath ?? Stats.FileName ?? "behavior");
+            var unitFolder = Path.Combine(parent, stem + ".hkx");
+
+            if (Directory.Exists(unitFolder) &&
+                Directory.EnumerateFileSystemEntries(unitFolder).Any())
+            {
+                var go = MessageBox.Show(
+                    unitFolder + "\n\nalready exists and is not empty. Files with the same names " +
+                    "will be overwritten; anything else in there is left alone.\n\nWrite the unit here?",
+                    "Export .hky source", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                if (go != MessageBoxResult.OK) return;
+            }
+
+            try
+            {
+                var result = new YamlBehaviorExporter().Export(manager, unitFolder);
+
+                StatusText.Text = $"✓ Exported {result.Nodes} nodes to {Path.GetFileName(unitFolder)}";
+                MessageBox.Show(
+                    $"Wrote {result.Nodes} node files and {result.Sidecars} data files to\n\n" +
+                    unitFolder + "\n\n" +
+                    $"{result.Flattened} objects were folded into the node that owns them, which is " +
+                    "how the format stores them — transition arrays, binding sets, clip trigger " +
+                    "lists and notify events have no file of their own.\n\n" +
+                    "The bundle carries no schema_version, because Community Behaviors has not " +
+                    "published one yet. Its compiler treats a bundle without one as unversioned " +
+                    "and will say so.",
+                    "Export .hky source", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Export failed:\n\n" + ex.Message,
+                    "Export .hky source", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExportSummary()
         {
             if (manager.ObjectMap == null || manager.ObjectMap.Count == 0)
             {

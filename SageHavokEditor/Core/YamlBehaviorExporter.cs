@@ -343,7 +343,17 @@ namespace SageHavokEditor.Core
             {
                 var mapped = refs.Select(LocalOf).Where(x => x != null).ToList();
                 if (mapped.Count == 0) return;
-                if (refs.Count == 1)
+
+                // One reference is not the same as a one-element array, and the data
+                // cannot tell them apart — vanilla dragonbehavior's ML_FullyRagdoll
+                // holds exactly one modifier, and writing `modifiers: 1016` instead of
+                // a list made the re-import read an array member as a scalar and emit
+                // it with no numelements at all. Only the class knows, the same reason
+                // HavokArrayKinds exists.
+                var declared = HavokTypeCatalog.Lookup(owner.ClassName, p.Name);
+                var isArray = declared != null && declared.ArrayKind != HkArrayKind.None;
+
+                if (refs.Count == 1 && !isArray)
                 {
                     sb.Append(open).Append(p.Name).Append(": ").Append(mapped[0]).Append(Lf);
                 }

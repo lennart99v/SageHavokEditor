@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Export a behaviour as Community Behaviors `.hky` source.** 📤 Export now asks
+  which — the CSV summary it always wrote, or the graph itself, written back into
+  the YAML source format it can be edited and shared in. Pick a folder and the
+  unit is written at `<graph>.hkx/`, one file per node under `clips/ states/
+  generators/ modifiers/ transitions/ selectors/ data/`.
+
+  It refuses a file with no `hkbBehaviorGraph` and says why: only the behaviour
+  classes have moved to her schema, and an exporter must not emit a class the
+  schema it read does not describe.
+
+  **A graph loaded from a packfile warns before writing, because that path is not
+  faithful yet.** Vanilla `dragonbehavior` comes back with 1501 of 1502 objects,
+  483 of 483 events, 153 of 153 variables and all 845 names — but will not
+  convert, because a numeric array is written the way `HkParam` holds it,
+  space-separated, rather than as a list. A unit opened from YAML source and
+  written back does convert. Saying so before writing beats letting someone find
+  a unit that looks right and is not.
+
+### Fixed
+
+- **A one-element array was exported as a scalar.** The data cannot tell an array
+  of one from a single pointer — vanilla `ML_FullyRagdoll` holds exactly one
+  modifier, `numelements="1"` — so `modifiers: 1016` read back as a scalar and the
+  conversion died with `numelemnets is not vaild number`. Array-ness is asked of
+  the class now, which is the same reason `HavokArrayKinds` exists. Found by
+  teaching `tools/hkx-hky-export` to take a packfile as well as a source folder;
+  nothing had exercised the path an edit on a real `.hkx` actually takes.
+
 ### Fixed
 
 - **A state's enter and exit notify events were dropped on YAML import.** The

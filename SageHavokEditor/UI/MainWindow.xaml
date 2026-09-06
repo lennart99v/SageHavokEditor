@@ -124,7 +124,8 @@
                     <Button x:Name="BtnRedo" Content="↪" Click="BtnRedo_Click"
                             IsEnabled="False" ToolTip="Redo (Ctrl+Y)" Margin="0,0,8,0"/>
                     <Button Content="📤 Export" Click="BtnExport_Click"
-                            ToolTip="Export CSV (Ctrl+E)" Margin="0,0,5,0"/>
+                            ToolTip="Export a summary, or this behaviour as .hky source"
+                            Margin="0,0,5,0"/>
                     <Button Content="🔎 Validate" Click="BtnValidate_Click" Margin="0,0,5,0"/>
                     <Button Content="🔭 Search All" Click="BtnGlobalSearch_Click"
                             ToolTip="Search everything — events, states, clips, variables, objects (Ctrl+G). Supports prefixes: event:  state:  clip:  var:  obj:"

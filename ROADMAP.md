@@ -170,7 +170,13 @@ The operating rule does not change yet, and the reason is narrower than it was. 
 
   **Faithful to her bytes, with one exception that carries no meaning.** A state exported from here now diffs against the same state in `Skyrim.hky` down to the unit-local ids (`generator: 5` against `generator: 3`), which are assigned per unit and say nothing. Getting there closed two importer bugs the round trip found and nothing else would have: a list item's first nested map was stored flat while the rest kept their path, so a transition's `triggerInterval` and `initiateInterval` were held two different ways and only one could be rebuilt; and `enterNotifyEvents` / `exitNotifyEvents` were never read at all.
 
-  Still open: no `manifest.json` and no `schema_version`, deliberately, since there is nothing upstream to stamp yet; and no UI, so none of this is reachable from the app.
+  **Reachable from the app, and honest about where it is not.** 📤 Export now offers *Export .hky behaviour source…* beside the CSV summary, picks a folder, and writes the unit at `<graph>.hkx/`. It refuses outright on a file with no `hkbBehaviorGraph`, saying why: her schema has the behaviour classes migrated and the rest still moving, and an exporter must not emit a class the schema it read does not describe.
+
+  **Exporting a graph loaded from a packfile is not faithful yet, and the UI says so before writing.** The harness now takes a packfile as well as a source folder, which is what exposed this — nothing had exercised the path that matters most, an edit made on a real `.hkx` going home. Vanilla `dragonbehavior` exports 979 nodes and 41 data files and re-imports with 1501 of 1502 objects, 483 of 483 events, 153 of 153 variables and all 845 names, but it will not convert: a numeric array (`boneIndices`) is written space-separated the way `HkParam` holds it rather than as a list, so `numelements` is missing on the way back. Reachability is also poor on that path (1454 of 1501 unreachable) where a YAML-origin unit re-imports, converts at 50 KB and leaves 24 of 243 unreachable. Both are the next thing to fix.
+
+  One class of bug is already closed by this: a **one-element array was written as a scalar**, because the data cannot tell an array of one from a single pointer — vanilla `ML_FullyRagdoll` holds exactly one modifier. Array-ness is asked of the class now, the same reason `HavokArrayKinds` exists.
+
+  Still open besides those: no `manifest.json` and no `schema_version`, deliberately, since there is nothing upstream to stamp yet.
 
 ### Division of labour — what crosses, and what doesn't
 

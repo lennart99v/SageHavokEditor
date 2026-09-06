@@ -8,6 +8,7 @@
 //   dotnet run --project tools/hkx-hky-export -- <unit.hkx folder> [-o <outdir>]
 
 using System.Globalization;
+using HKX2;
 using SageHavokEditor.Core;
 using SageHavokEditor.Models;
 
@@ -32,10 +33,26 @@ void Check(bool ok, string what, string detail = "")
 Console.WriteLine($"== {Path.GetFileName(source)} ==");
 
 // ── 1. in ────────────────────────────────────────────────────────────────────
+// A folder is YAML source; a file is a graph the editor loaded from a packfile.
+// The second is the case that matters most — an edit made on a real .hkx going
+// home — and it was the one nothing exercised, which is how a one-element array
+// written as a scalar got out.
+var fromPackfile = File.Exists(source);
+
 var m1 = new HavokManager();
-var imp1 = new YamlBehaviorImporter();
-imp1.Import(source, m1);
-Console.WriteLine($"  imported {m1.ObjectMap.Count} objects");
+if (fromPackfile)
+{
+    var ser = new System.Xml.Serialization.XmlSerializer(typeof(HkPackfile));
+    using var fs = new FileStream(source, FileMode.Open, FileAccess.Read);
+    var pf = (HkPackfile?)ser.Deserialize(fs) ?? throw new InvalidDataException(source);
+    m1.BuildGraph(pf);
+}
+else
+{
+    new YamlBehaviorImporter().Import(source, m1);
+}
+Console.WriteLine($"  loaded {m1.ObjectMap.Count} objects"
+                  + (fromPackfile ? "  (from a packfile)" : "  (from YAML source)"));
 
 // ── 2. out ───────────────────────────────────────────────────────────────────
 if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
