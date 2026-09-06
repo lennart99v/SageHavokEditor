@@ -62,9 +62,23 @@ namespace SageHavokEditor.Core
             };
 
         private int _nextId = 1;
-        private readonly Dictionary<string, HkObject> _nameToObject =
+        // Every object a name can mean, not the first one seen. Havok node names
+        // are not unique, and this source tree makes that worse by keying files on
+        // them: mt_behavior has 656 names used by two files in different folders,
+        // AltarIdle_Enter being both a state and the clip it plays. Which one a
+        // reference means is decided by the slot it sits in — see ResolveNameToId.
+        private readonly Dictionary<string, List<HkObject>> _byName =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly List<HkObject> _allObjects = new();
+
+        // Name lists waiting to be resolved, kept as a list rather than joined into
+        // the param's text. A Havok object name may contain a space — 141 of them
+        // in mt_behavior, "Paired OffsetBoundStandingCut" among them — and a
+        // space-joined name list can't be taken apart again: 110 of that unit's
+        // 1234 list entries came back as two tokens that resolved to two wrong
+        // objects, or to none. Ids never contain a space, so the joined form is
+        // safe once the names are gone.
+        private readonly Dictionary<HkParam, List<string>> _pendingRefLists = new();
 
         // behavior.yaml's packfile: section. Havok's own header, carried through
         // rather than assumed: a unit from another Havok version says so here, and
@@ -80,7 +94,8 @@ namespace SageHavokEditor.Core
                 throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
 
             _nextId = 1;
-            _nameToObject.Clear();
+            _byName.Clear();
+            _pendingRefLists.Clear();
             _allObjects.Clear();
 
             _classVersion = "";
@@ -636,14 +651,11 @@ namespace SageHavokEditor.Core
                 // Register the hkbBehaviorGraphData under the filename so
                 // "data: graphdata" in behavior.yaml resolves correctly.
                 var graphData = FindOrCreateGraphData();
-                if (!_nameToObject.ContainsKey(fileName))
-                    _nameToObject[fileName] = graphData;
+                AddName(fileName, graphData);
 
                 // Also register string data under filename_strings in case needed
                 var strData = FindOrCreateStringData();
-                var strKey = fileName + "_strings";
-                if (!_nameToObject.ContainsKey(strKey))
-                    _nameToObject[strKey] = strData;
+                AddName(fileName + "_strings", strData);
 
                 // If the file ALSO has regular object fields (unusual but possible),
                 // fall through to create a normal object below.
@@ -694,12 +706,13 @@ namespace SageHavokEditor.Core
                 // Remove any scalar version already added above
                 obj.Params.RemoveAll(p => p.Name == refField);
 
-                obj.Params.Add(new HkParam
+                var listParam = new HkParam
                 {
                     Name = refField,
-                    Value = string.Join(" ", listItems),   // resolved to IDs in Pass 2
                     NumElements = listItems.Count.ToString()
-                });
+                };
+                _pendingRefLists[listParam] = listItems;   // resolved to ids in Pass 2
+                obj.Params.Add(listParam);
             }
 
 
@@ -837,8 +850,7 @@ namespace SageHavokEditor.Core
 
             // Also register under filename so e.g. "data: graphdata" resolves
             // even when the object has a different internal name param
-            if (objectName != fileName && !_nameToObject.ContainsKey(fileName))
-                _nameToObject[fileName] = obj;
+            if (objectName != fileName) AddName(fileName, obj);
         }
 
 
@@ -847,7 +859,7 @@ namespace SageHavokEditor.Core
         private void ResolveAllReferences()
         {
             foreach (var obj in _allObjects)
-                ResolveParams(obj.Params);
+                ResolveParams(obj.Params, obj.ClassName);
         }
         private void ResolveVariableBindings()
         {
@@ -1089,31 +1101,65 @@ namespace SageHavokEditor.Core
             }
         }
 
-        private void ResolveParams(List<HkParam> paramList)
+        /// <summary>
+        /// Names → ids, carrying the owning class down so each reference knows what
+        /// it is allowed to point at. The class is what disambiguates a name two
+        /// objects share: hkbStateMachine.states is declared over
+        /// hkbStateMachineStateInfo and hkbStateMachineStateInfo.generator over
+        /// hkbGenerator, so "AltarIdle_Enter" means the state in one and the clip in
+        /// the other. Inline children carry their own declared class down with them.
+        /// </summary>
+        private void ResolveParams(List<HkParam> paramList, string? ownerClass)
         {
             if (paramList == null) return;
             foreach (var param in paramList)
             {
-                if (SingleRefFields.Contains(param.Name))
-                    param.Value = ResolveNameToId(param.Value);
+                var info = HavokTypeCatalog.Lookup(ownerClass ?? "", param.Name);
+                var expected = info?.ElementClassName;
+
+                if (_pendingRefLists.TryGetValue(param, out var names))
+                {
+                    param.Value = string.Join(" ",
+                        names.Select(n => ResolveNameToId(n, expected)));
+                    _pendingRefLists.Remove(param);
+                }
+                else if (SingleRefFields.Contains(param.Name))
+                    param.Value = ResolveNameToId(param.Value, expected);
                 else if (MultiRefFields.Contains(param.Name) && !string.IsNullOrEmpty(param.Value))
                 {
                     var parts = param.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    param.Value = string.Join(" ", parts.Select(ResolveNameToId));
+                    param.Value = string.Join(" ", parts.Select(t => ResolveNameToId(t, expected)));
                 }
 
                 if (param.Children != null)
                     foreach (var child in param.Children)
-                        ResolveParams(child.Params);
+                        ResolveParams(child.Params,
+                            string.IsNullOrEmpty(child.ClassName) ? expected : child.ClassName);
             }
         }
 
-        private string ResolveNameToId(string? value)
+        /// <summary>
+        /// The object a name means in a slot declared over
+        /// <paramref name="expectedClass"/>. A candidate of exactly that class wins,
+        /// then one deriving from it, then — when the class is unknown, or nothing
+        /// fits, which is not a case to invent an answer for — the first registered,
+        /// which is what this did for every reference before.
+        /// </summary>
+        private string ResolveNameToId(string? value, string? expectedClass)
         {
             if (string.IsNullOrEmpty(value) || value == "null") return value ?? "";
             if (value.StartsWith("#")) return value;
-            if (_nameToObject.TryGetValue(value, out var obj)) return obj.Id;
-            return value;
+            if (!_byName.TryGetValue(value, out var candidates) || candidates.Count == 0)
+                return value;
+            if (candidates.Count == 1 || string.IsNullOrEmpty(expectedClass))
+                return candidates[0].Id;
+
+            var exact = candidates.FirstOrDefault(o => o.ClassName == expectedClass);
+            if (exact != null) return exact.Id;
+
+            var derived = candidates.FirstOrDefault(
+                o => HavokTypeCatalog.IsKindOf(o.ClassName, expectedClass));
+            return (derived ?? candidates[0]).Id;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1121,13 +1167,22 @@ namespace SageHavokEditor.Core
         private void RegisterObject(HkObject obj, string name)
         {
             _allObjects.Add(obj);
-            if (!string.IsNullOrEmpty(name) && !_nameToObject.ContainsKey(name))
-                _nameToObject[name] = obj;
+            AddName(name, obj);
+            AddName(obj.Params?.FirstOrDefault(p => p.Name == "name")?.Value, obj);
+        }
 
-            var nameParam = obj.Params?.FirstOrDefault(p => p.Name == "name");
-            if (nameParam != null && !string.IsNullOrEmpty(nameParam.Value)
-                && !_nameToObject.ContainsKey(nameParam.Value))
-                _nameToObject[nameParam.Value] = obj;
+        /// <summary>
+        /// Records one more thing a name can mean. Registration order is kept,
+        /// because it is the tie-break when the declared class doesn't separate two
+        /// candidates — and it is what the old first-wins map resolved to, so a
+        /// reference the class can't decide lands exactly where it used to.
+        /// </summary>
+        private void AddName(string? name, HkObject obj)
+        {
+            if (string.IsNullOrEmpty(name)) return;
+            if (!_byName.TryGetValue(name, out var list))
+                _byName[name] = list = new List<HkObject>();
+            if (!list.Contains(obj)) list.Add(obj);
         }
 
         private string AllocId() => $"#{_nextId++:D4}";
@@ -1268,6 +1323,20 @@ namespace SageHavokEditor.Core
                             ref currentListIsObjects);
                     currentItem = null;
                     currentListField = null;
+                }
+                else if (currentListField != null)
+                {
+                    // Dedented all the way to a top-level key. The branch above
+                    // never sees this line, so without closing the list here the
+                    // item still being read was silently thrown away — and a
+                    // one-item list vanished entirely, which is what happened to
+                    // every state machine's wildcard transitions.
+                    if (currentItem != null)
+                        FlushItem(doc, currentListField, currentItem,
+                            ref currentListIsObjects);
+                    currentItem = null;
+                    currentListField = null;
+                    currentListIsObjects = false;
                 }
 
                 // ── Section continuation ──────────────────────────────────────────
