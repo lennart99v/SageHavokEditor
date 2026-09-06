@@ -205,6 +205,8 @@ namespace SageHavokEditor.UI
         public event Action<string>? ShowAnimationRequested;   // (stateObjectId) — open the state's clip animation + tags
         public event Action<string>? OpenBehaviorReferenceRequested; // (behaviorName) — open the referenced file
         public event Action<string>? CompareBehaviorReferenceEventsRequested; // (behaviorName) — event tables side by side
+        public event Action<string, string>? AnimationChosen; // (animationPath, what) — offer to register it
+        public event Action? BehaviorReferenceCreated;       // a bridge node was authored
         public event Action<HkObject, string, string>? TransitionFlagsChangedFromGraph; // (trChild, oldFlags, newFlags)
         /// <summary>A structural graph edit that should be recorded as a single undo step: (description, undo, redo).</summary>
         public event Action<string, Action, Action>? GraphEditPerformed;
@@ -1424,6 +1426,9 @@ namespace SageHavokEditor.UI
 
             WireGeneratorIntoState(node, stateObj, clip,
                 $"Add clip generator '{clipName}' to {node.Name}");
+
+            // The character file is the window's business, not the graph's.
+            AnimationChosen?.Invoke(animPath, $"Clip generator '{clipName}'");
         }
 
         /// <summary>
@@ -1460,6 +1465,10 @@ namespace SageHavokEditor.UI
 
             WireGeneratorIntoState(node, stateObj, gen,
                 $"Add behavior reference '{refName}' to {node.Name}");
+
+            // Whether this project has a first-person twin is a question about the
+            // file's location, which the window knows and the graph doesn't.
+            BehaviorReferenceCreated?.Invoke();
         }
 
         /// <summary>
