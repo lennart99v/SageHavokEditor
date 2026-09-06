@@ -1,4 +1,4 @@
-﻿// ── Add this to MainWindow.cs ─────────────────────────────────────────────────
+// ── Add this to MainWindow.cs ─────────────────────────────────────────────────
 // This is a partial class addition — put it in MainWindow.ProjectCharacter.cs
 // or append to the bottom of MainWindow.cs inside the class body.
 
@@ -40,8 +40,6 @@ namespace SageHavokEditor
                 : file.Platform.DisplayName();
 
             // Run the full existing pipeline
-            _validator = new SageHavokEditor.Core.Validation.HavokValidator(manager);
-
             var builder = new BehaviorTreeBuilder(manager);
             ObjectTree.ItemsSource = new List<BehaviorNodeData>
                 { builder.BuildTree("") };
