@@ -56,6 +56,7 @@ namespace SageHavokEditor.Core
                 "hkbClipTriggerArray",
                 "hkbStringEventPayload",
                 "hkbExpressionCondition",
+                "hkbStateMachineEventPropertyArray",
             };
 
         // ── How a flattened object folds into its owner ───────────────────────────
@@ -64,14 +65,21 @@ namespace SageHavokEditor.Core
         // transitions:, a clip's triggers:, a binding set's bindings:); a scalar one
         // takes the owner's param name, so an hkbExpressionCondition reached through
         // `condition` is written as condition: 'x == 1'.
-        private static readonly Dictionary<string, string> FlattenPayload =
+        // Which member folds in, and whose name the result takes. A state machine's
+        // wildcardTransitions and a binding set both get written under the payload's
+        // name (transitions:, bindings:), while enterNotifyEvents keeps the owner's —
+        // so the choice is per class, not a rule.
+        private readonly record struct Fold(string Member, bool UseOwnerName);
+
+        private static readonly Dictionary<string, Fold> FlattenPayload =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                ["hkbStateMachineTransitionInfoArray"] = "transitions",
-                ["hkbVariableBindingSet"] = "bindings",
-                ["hkbClipTriggerArray"] = "triggers",
-                ["hkbExpressionCondition"] = "expression",
-                ["hkbStringEventPayload"] = "data",
+                ["hkbStateMachineTransitionInfoArray"] = new("transitions", false),
+                ["hkbVariableBindingSet"] = new("bindings", false),
+                ["hkbClipTriggerArray"] = new("triggers", false),
+                ["hkbStateMachineEventPropertyArray"] = new("events", true),
+                ["hkbExpressionCondition"] = new("expression", true),
+                ["hkbStringEventPayload"] = new("data", true),
             };
 
         // The graph and its three data objects are the header, not nodes.
@@ -297,11 +305,16 @@ namespace SageHavokEditor.Core
             var name = Scalar(o, "name");
             if (!string.IsNullOrEmpty(name)) sb.Append("name: ").Append(Quote(name)).Append(Lf);
 
+            // One key per object. A transition arrives holding both the eventId the
+            // source wrote and the one resolution produced, and writing both would
+            // emit the pair twice — valid YAML whose second copy silently wins.
+            var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in o.Params)
             {
                 // `id` and `name` are the header, already written. The source's own
                 // id is not carried over: ours is unit-local and reassigned.
                 if (string.IsNullOrEmpty(p.Name) || p.Name == "name" || p.Name == "id") continue;
+                if (!written.Add(p.Name)) continue;
                 Emit(sb, o, p, "", "");
             }
             return sb.ToString();
@@ -375,24 +388,23 @@ namespace SageHavokEditor.Core
 
         private void Flatten(StringBuilder sb, HkParam p, HkObject target, string open, string pad)
         {
-            if (!FlattenPayload.TryGetValue(target.ClassName, out var payloadName)) return;
-            var payload = target.Params.FirstOrDefault(x => x.Name == payloadName);
+            if (!FlattenPayload.TryGetValue(target.ClassName, out var fold)) return;
+            var payload = target.Params.FirstOrDefault(x => x.Name == fold.Member);
             if (payload == null) return;
+
+            var key = fold.UseOwnerName ? p.Name : fold.Member;
 
             if (payload.Children != null && payload.Children.Count > 0)
             {
-                // An array payload keeps its own name, which is why a state machine's
-                // wildcardTransitions and a state's transitions both land on
-                // `transitions:` — exactly what the source writes.
-                sb.Append(open).Append(payloadName).Append(":").Append(Lf);
+                sb.Append(open).Append(key).Append(":").Append(Lf);
                 EmitStructList(sb, payload.Children, pad + "  ",
-                    HavokTypeCatalog.Lookup(target.ClassName, payloadName)?.ElementClassName);
+                    HavokTypeCatalog.Lookup(target.ClassName, fold.Member)?.ElementClassName);
                 return;
             }
 
             var text = payload.Value ?? "";
             if (text.Length == 0) return;
-            sb.Append(open).Append(p.Name).Append(": ").Append(Quote(text)).Append(Lf);
+            sb.Append(open).Append(key).Append(": ").Append(Quote(text)).Append(Lf);
         }
 
         /// <summary>
@@ -411,10 +423,12 @@ namespace SageHavokEditor.Core
 
                 var wrote = false;
                 string lastGroup = "";
+                var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var ip in item.Params)
                 {
                     if (string.IsNullOrEmpty(ip.Name)) continue;
+                    if (!seenKeys.Add(ip.Name)) continue;
 
                     var dot = ip.Name.IndexOf('.');
                     if (dot > 0)

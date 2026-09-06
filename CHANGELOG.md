@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A state's enter and exit notify events were dropped on YAML import.** The
+  importer built an object's params from its scalars, its string lists and a
+  hard-coded set of object lists — `transitions`, `children`, `bindings`. A
+  list of maps under any other key matched none of those and was read by nothing,
+  so `enterNotifyEvents` and `exitNotifyEvents` never arrived: **2,234 of the
+  files** in the current vanilla source bundle carry one. These are the events a
+  state fires when it is entered or left, so the symptom is a state that should
+  signal and silently does not.
+
+  Reading them is only the first third. The member is a *pointer* to an
+  `hkbStateMachineEventPropertyArray`, so an inline list sits in a pointer slot —
+  the same fault the clip triggers had, where HKX2 reads the run-together element
+  text as a reference symbol. And the two source generations write the event
+  differently: the name-keyed corpus as `event: AddRagdollToWorld`, the id-keyed
+  one as `id: 83`, with a `payload` that is text where Havok wants an
+  `hkbStringEventPayload`. Missing that last part broke `0_master`'s conversion
+  outright (`Reference symbol 'Camera3rd [Cam3]' not found`), which is what the
+  regression run is for. Recovered: `0_master` 2199 objects to 2341,
+  `mt_behavior` 4478 to 5279, `dragonbehavior` 1404 to 1454, all still converting.
+
+- **A list item's first nested map was stored flat, and the rest were not.** The
+  parser keeps a nested mapping under its dotted path, but the call that read a
+  list item's opening `- key: value` passed no nesting context, so that one key
+  could not open a level. In a transition that meant `triggerInterval`'s members
+  landed bare while `initiateInterval`'s kept their path — two halves of one
+  struct, held two different ways, and only the second could be written back out.
+  The key sits two columns right of the dash, and that is the depth a sibling has
+  to pop it at. Found by exporting a unit and diffing it against the one it came
+  from.
+
 - **A `graphdata.yaml` with no variables built a second, empty graph data object
   and orphaned the real one.** The importer treats a file of bare `variables:` /
   `events:` lists as the graph's data rather than as an object, and then checks
