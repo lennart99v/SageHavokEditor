@@ -32,6 +32,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A YAML behaviour folder now imports with the root scaffold an `.hkx` is read
+  through.** Nothing in a Behavior Relay source tree describes it, because it
+  isn't behaviour: an `.hkx` is one `hkRootLevelContainer` whose `namedVariants`
+  name the graph, and every reader starts there. Without it a saved XML declared
+  `toplevelobject="#0050"` — an id that happens to exist, being whichever object
+  the importer numbered fiftieth — and HKX2's deserializer died on the header
+  before reaching any content. Saving to XML worked; saving to `.hkx` was broken
+  for every YAML folder, independently of anything else in the import.
+
+  The import now builds the container, points its variant at the
+  `hkbBehaviorGraph`, and carries `behavior.yaml`'s `packfile:` header
+  (`classversion`, `contentsversion`) through instead of assuming Skyrim SE's.
+  It also goes through `HavokManager.BuildGraph` rather than filling `ObjectMap`
+  directly — which is what resolves single `#refs` into the `Children` cache the
+  way an XML load does, and attaches the declared-type metadata behind the
+  property editor's numeric boxes, enum dropdowns and event pickers. An imported
+  file had none of that before, so every field in Object Data was a bare
+  TextBox.
+
+  New `tools/hkx-yaml-import` measures a real unit end to end. On vanilla
+  `0_master` (1177 source files → 1431 objects) the header is now right and the
+  conversion gets past it — and then stops on the next thing, which is the point
+  of running it: the harness prints the deserializer's first complaint per unit,
+  so each remaining fix moves a line that is on the record rather than
+  rediscovered. **Three different stopping points across three units**, which
+  corrects this roadmap's "nothing else about the import is structurally wrong":
+  `m_triggers` on `0_master`, `m_condition` on `mt_behavior` (a
+  `condition: isInFurniture == 0` string where an `hkbExpressionCondition`
+  object belongs), and `m_children` on `dragonbehavior` (a blender's inline
+  child structs in a slot that wants `#id`s).
+
+  Also settled: the "mashed scalar" this roadmap describes for dropped triggers
+  (`-0.00899999961truefalsefalseclipEndnull`) is not what the importer builds —
+  it builds the right nested shape, in the wrong slot. The mash is HKX2's
+  deserializer reading an inline array's run-together element text as a
+  reference symbol, which is what it does to any inline array sitting where a
+  pointer belongs.
+
+
 - **＋ Add element now appears on arrays that are empty in the file.** The
   affordance used to need an inline element already present to notice, so an
   array Havok shipped at `numelements="0"` — `hkbBehaviorGraphData`'s

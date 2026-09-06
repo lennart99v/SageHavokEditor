@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-yaml-import</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The editor's own importer and model, not a copy: this measures the code
+         behind 📂 Open YAML behavior folder…, and the save it feeds. -->
+    <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\HavokManager.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\YamlBehaviorImporter.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HavokArrayKinds.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
+    <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
+  </ItemGroup>
+
+</Project>
