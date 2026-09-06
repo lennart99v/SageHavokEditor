@@ -13,6 +13,7 @@
          exercises the same code the graph's "Duplicate state…" runs. -->
     <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\HavokManager.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HavokArrayKinds.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\StateDuplicator.cs" />
