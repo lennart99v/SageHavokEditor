@@ -1,6 +1,7 @@
 using System.Text;
 using SageHavokEditor.Core;
 using SageHavokEditor.Core.Services;
+using SageHavokEditor.Core.Skeletons;
 using SageHavokEditor.Core.Validation;
 using SageHavokEditor.Models;
 
@@ -34,6 +35,16 @@ void Check(string what, bool ok, string? detail = null)
     if (!ok) failed++;
 }
 void Note(string what, string detail) => Console.WriteLine($"  [open] {what}  ({detail})");
+
+string? skeletonPath = null;
+{
+    int at = Array.IndexOf(args, "--skeleton");
+    if (at >= 0)
+    {
+        if (at + 1 < args.Length) skeletonPath = args[at + 1];
+        args = args.Where((_, i) => i != at && i != at + 1).ToArray();
+    }
+}
 
 string? outDir = null;
 {
@@ -73,9 +84,21 @@ foreach (var folder in args)
         continue;
     }
 
+    // The project's own skeleton if the folder is laid out for it, else the one
+    // named on the command line — bone weights need an ordering and there is no
+    // guessing at it.
+    var skeleton = skeletonPath ?? HkxSkeletonReader.FindProjectSkeleton(folder);
+    IReadOnlyList<string> bones = Array.Empty<string>();
+    if (skeleton != null)
+    {
+        try { bones = HkxSkeletonReader.ReadBoneOrder(skeleton); }
+        catch (Exception ex) { Console.WriteLine($"  skeleton unreadable: {ex.Message}"); }
+    }
+
+    var importer = new YamlBehaviorImporter();
     var manager = new HavokManager();
     string name;
-    try { name = new YamlBehaviorImporter().Import(folder, manager); }
+    try { name = importer.Import(folder, manager, bones); }
     catch (Exception ex) { Check("imports without throwing", false, ex.Message); continue; }
 
     var objects = manager.ObjectMap.Values.ToList();
@@ -257,6 +280,51 @@ foreach (var folder in args)
             imported >= declaredMachines, $"{imported} of {declaredMachines}");
     }
 
+    // -- blender children and their bone weights -------------------------------
+    // The last thing standing between an import and a .hkx. A blender's children
+    // are written inline where Havok wants pointers, and each child's weights are
+    // written by bone name where the file indexes them by position — which is why
+    // this one needs the character project and none of the others did.
+    {
+        var inlineLeft = objects
+            .SelectMany(o => o.Params.Select(p => (o, p)))
+            .Where(x => x.p.Children.Any(c => string.IsNullOrEmpty(c.Id))
+                        && x.p.TypeInfo?.ArrayKind == HkArrayKind.Pointer)
+            .ToList();
+        Check("no inline list is left sitting in a pointer array",
+            inlineLeft.Count == 0,
+            inlineLeft.Count == 0 ? null
+                : string.Join("; ", inlineLeft.Take(3).Select(x => $"{x.o.ClassName}.{x.p.Name}")));
+
+        var declaredWeights = Directory
+            .EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories)
+            .SelectMany(File.ReadLines)
+            .Count(l => l.Trim() == "named:");
+        var built = objects.Count(o => o.ClassName == "hkbBoneWeightArray");
+
+        if (bones.Count == 0)
+        {
+            Note("bone weights need the character project's skeleton",
+                $"{declaredWeights} weight maps in the source, "
+                + $"{importer.UnbuiltBoneWeights} not built — pass --skeleton");
+        }
+        else
+        {
+            Check("every bone-weight map became an hkbBoneWeightArray",
+                built >= declaredWeights && importer.UnbuiltBoneWeights == 0,
+                $"{declaredWeights} in the source, {built} built, "
+                + $"{importer.UnbuiltBoneWeights} unbuilt");
+
+            var wrongLength = objects
+                .Where(o => o.ClassName == "hkbBoneWeightArray")
+                .Where(o => o.Params.FirstOrDefault(p => p.Name == "boneWeights")?.NumElements
+                            != bones.Count.ToString())
+                .ToList();
+            Check("and is as long as the skeleton has bones",
+                wrongLength.Count == 0, $"{bones.Count} bones, {wrongLength.Count} of the wrong length");
+        }
+    }
+
     // -- transition conditions ------------------------------------------------
     // A condition is written as the expression itself, where Havok wants a
     // pointer to an hkbCondition holding that text. Left as text HKX2 reads it
@@ -325,17 +393,58 @@ foreach (var folder in args)
     // The same question an .hkx save asks: can the root reach this object. An
     // import that wires a new object up wrongly shows here as a jump in the
     // count, so it is worth having on the record next to the object total.
+    var prunedIds = new HashSet<string>();
     {
         var report = new GraphDoctor(manager, new List<string>()).Run();
+        foreach (var issue in report.Issues
+                     .Where(i => i.Category == ValidationIssue.CategoryPruned))
+            prunedIds.Add(issue.ObjectId);
+
         var byClass = report.Issues
             .Where(i => i.Category == ValidationIssue.CategoryPruned)
             .GroupBy(i => i.ObjectClass)
             .OrderByDescending(g => g.Count())
             .Select(g => $"{g.Key} x{g.Count()}")
             .Take(5);
+        // The graph doctor, on an imported file. It is the same pass the editor
+        // runs before every save, and it is the check that catches an import which
+        // produced objects rather than meaning: an element built from a source item
+        // that wasn't one comes out as a node with a null generator, which is a
+        // T-pose in-game and nothing anywhere else notices.
+        var errors = report.Issues.Where(i => i.IsError).ToList();
+        Check("the imported graph has nothing the doctor calls an error",
+            errors.Count == 0,
+            errors.Count == 0 ? null
+                : string.Join("; ", errors.GroupBy(i => i.Category)
+                    .Select(g => $"{g.Key} x{g.Count()}"))
+                  + $" — e.g. {errors[0].ObjectClass} {errors[0].ObjectName}");
+
         Note("objects the root can't reach, which an .hkx save would drop",
-            $"{report.PrunedCount} of {objects.Count} — {string.Join(", ", byClass)}");
+            $"{report.PrunedCount} of {objects.Count}"
+            + (report.PrunedCount == 0 ? "" : $" — {string.Join(", ", byClass)}"));
     }
+
+    // -- references the source can't satisfy -----------------------------------
+    // A slot still holding a name after resolution means no object of the right
+    // class carries it. That is now left alone rather than pointed at whatever
+    // else shares the name, so it reaches the conversion as a named failure
+    // instead of a cast error — and it is worth counting, because it is the one
+    // remaining reason a unit doesn't convert, and the reason is in the source.
+    var unsatisfied = new List<string>();
+    foreach (var obj in objects)
+        foreach (var prm in obj.Params)
+        {
+            if (prm.TypeInfo?.ElementClassName == null) continue;
+            foreach (var tok in (prm.Value ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                if (!tok.StartsWith("#", StringComparison.Ordinal) && tok != "null")
+                    unsatisfied.Add($"{obj.ClassName}.{prm.Name} → {tok}");
+        }
+    if (unsatisfied.Count > 0)
+        Note("references naming an object the source doesn't contain",
+            $"{unsatisfied.Count} — {string.Join("; ", unsatisfied.Distinct().Take(3))}");
+    if (importer.SynthesisedFromClassName > 0)
+        Console.WriteLine($"          -> {importer.SynthesisedFromClassName} object(s) built from "
+                          + "a reference that named a class rather than a file");
 
     // -- the end-to-end question --------------------------------------------
     var stem = Path.GetFileNameWithoutExtension(folder.TrimEnd('\\', '/'));
@@ -356,11 +465,48 @@ foreach (var folder in args)
     }
     catch (Exception ex)
     {
-        // Worth reading rather than counting. The deserializer reports the first
-        // param it can't make sense of, so this line is the front of the queue:
-        // each fix moves it, and a "reference symbol" made of run-together values
-        // is an inline array sitting in a slot that wants a #ref.
-        Note("the conversion still stops", $"{ex.GetType().Name}: {Trim(ex.Message, 160)}");
+        // A unit whose source is missing objects cannot convert and that is not
+        // this importer's failure, so it is reported rather than failed. Anything
+        // else is: the deserializer names the first param it can't read, and that
+        // line is the front of the queue.
+        var message = $"{ex.GetType().Name}: {Trim(ex.Message, 160)}";
+        if (unsatisfied.Count > 0)
+            Note("the conversion stops on a reference the source never defines", message);
+        else
+            Check("and converts to .hkx", false, message);
+    }
+
+    // The only claim worth making at the end: the binary holds what the source
+    // said. Reading the .hkx back through HKX2 is the one check that can't be
+    // satisfied by a well-formed file full of nothing — 0_master converted for a
+    // while with no event names at all, because the string data was built and
+    // never attached, and every structural check passed on it.
+    if (File.Exists(hkxPath))
+    {
+        var reloaded = LoadPackfile(hkxPath);
+        var stringData = reloaded.ObjectMap.Values
+            .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+        var events = stringData?.Params.FirstOrDefault(p => p.Name == "eventNames")?.Strings.Count ?? 0;
+        var vars = stringData?.Params.FirstOrDefault(p => p.Name == "variableNames")?.Strings.Count ?? 0;
+
+        var sourceStrings = objects.FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
+        var wantEvents = sourceStrings?.Params
+            .FirstOrDefault(p => p.Name == "eventNames")?.Strings.Count ?? 0;
+        var wantVars = sourceStrings?.Params
+            .FirstOrDefault(p => p.Name == "variableNames")?.Strings.Count ?? 0;
+
+        Check("the binary reads back with the events and variables the source declared",
+            events == wantEvents && vars == wantVars && wantEvents > 0,
+            $"{events} of {wantEvents} events, {vars} of {wantVars} variables");
+
+        // Against the clips the root can reach, not every clip in the import: a
+        // clip nothing references is dropped by the save because that is what the
+        // save is for, and mt_behavior's source contains seven of them.
+        var clipsBack = reloaded.ObjectMap.Values.Count(o => o.ClassName == "hkbClipGenerator");
+        var wantClips = objects.Count(o => o.ClassName == "hkbClipGenerator"
+                                           && !prunedIds.Contains(o.Id));
+        Check("and with every clip generator the root can reach", clipsBack == wantClips,
+            $"{clipsBack} of {wantClips}");
     }
     if (outDir == null) { TryDelete(xmlPath); TryDelete(hkxPath); }
 }
@@ -383,6 +529,25 @@ static IEnumerable<string> Refs(HkParam p)
 
 static string Trim(string s, int n) =>
     s.Length <= n ? s : s.Substring(0, n) + "…";
+
+/// <summary>Reads a .hkx back through HKX2 into the editor's own model.</summary>
+static HavokManager LoadPackfile(string path)
+{
+    using var fs = File.OpenRead(path);
+    var des = new HKX2.PackFileDeserializer();
+    var root = (HKX2.hkRootLevelContainer)des.Deserialize(new HKX2.BinaryReaderEx(fs));
+
+    using var ms = new MemoryStream();
+    new HKX2.XmlSerializer().Serialize(root, des._header, ms);
+    ms.Position = 0;
+
+    var packfile = (HkPackfile?)new System.Xml.Serialization.XmlSerializer(typeof(HkPackfile))
+        .Deserialize(ms) ?? throw new InvalidDataException(path);
+
+    var manager = new HavokManager();
+    manager.BuildGraph(packfile);
+    return manager;
+}
 
 static void TryDelete(string path)
 {

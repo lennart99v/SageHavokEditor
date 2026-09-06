@@ -863,10 +863,25 @@ namespace SageHavokEditor
 
             try
             {
+                // Bone weights are written by name in the source and indexed by
+                // position in the file, so they need the project's animation
+                // skeleton — <project>/character assets/skeleton.hkx, next door to
+                // the behaviors folder. Nothing else in the import needs it, and
+                // without it the graph still loads: the weight maps are counted and
+                // reported instead of being guessed at.
+                var skeletonPath = HkxSkeletonReader.FindProjectSkeleton(folderPath);
+                IReadOnlyList<string> bones = Array.Empty<string>();
+                string? skeletonError = null;
+                if (skeletonPath != null)
+                {
+                    try { bones = HkxSkeletonReader.ReadBoneOrder(skeletonPath); }
+                    catch (Exception ex) { skeletonError = ex.Message; }
+                }
+
                 string behaviorName = await Task.Run(() =>
                 {
                     manager = new HavokManager();
-                    return _yamlImporter.Import(folderPath, manager);
+                    return _yamlImporter.Import(folderPath, manager, bones);
                 });
 
                 Stats.FileName = behaviorName;
@@ -900,6 +915,8 @@ namespace SageHavokEditor
                 var builder = new BehaviorTreeBuilder(manager);
                 ObjectTree.ItemsSource = new List<BehaviorNodeData> { builder.BuildTree("") };
 
+                _yamlSkeletonNote = YamlSkeletonNote(skeletonPath, skeletonError, bones.Count);
+
                 _sourceWasHkx = false;
                 _originalHkxPath = null;
                 _sourcePlatform = HkxPlatform.Unknown;
@@ -911,7 +928,9 @@ namespace SageHavokEditor
 
                 StatusText.Text = $"✓ YAML loaded: {behaviorName}  " +
                                   $"({manager.ObjectMap.Count} objects, " +
-                                  $"{VariableList.Count} vars, {EventList.Count} events)";
+                                  $"{VariableList.Count} vars, {EventList.Count} events)"
+                                  + (_yamlSkeletonNote.Length == 0
+                                      ? "" : "   " + _yamlSkeletonNote);
             }
             catch (Exception ex)
             {
@@ -1951,6 +1970,31 @@ namespace SageHavokEditor
         /// Returns true if the given path is a Pandora/YAML behavior folder.
         /// A YAML folder has a behavior.yaml file OR contains YAML subdirectories.
         /// </summary>
+        /// <summary>
+        /// What to say about the skeleton after a YAML import. Nothing at all when
+        /// it was found and nothing needed it — the common case shouldn't cost a
+        /// line — and otherwise the specific thing that is now missing from the
+        /// graph, because a bone-weight map that wasn't built is a blend that covers
+        /// the whole body instead of an arm, and nothing downstream will say so.
+        /// </summary>
+        private string YamlSkeletonNote(string? skeletonPath, string? error, int boneCount)
+        {
+            int unbuilt = _yamlImporter.UnbuiltBoneWeights;
+            if (unbuilt == 0) return "";
+
+            var reason = error != null
+                ? $"{System.IO.Path.GetFileName(skeletonPath)} could not be read ({error})"
+                : skeletonPath == null
+                    ? "no skeleton.hkx was found in this project's character assets folder"
+                    : $"{System.IO.Path.GetFileName(skeletonPath)} holds no skeleton";
+
+            return $"⚠ {unbuilt} bone-weight map{(unbuilt == 1 ? "" : "s")} could not be built — "
+                   + $"{reason}. Those blends will cover the whole skeleton.";
+        }
+
+        /// <summary>Set by the last YAML import; empty when there is nothing to say.</summary>
+        private string _yamlSkeletonNote = "";
+
         private static bool IsYamlBehaviorFolder(string path)
         {
             if (!Directory.Exists(path)) return false;
