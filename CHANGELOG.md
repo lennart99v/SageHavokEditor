@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `graphdata.yaml` with no variables built a second, empty graph data object
+  and orphaned the real one.** The importer treats a file of bare `variables:` /
+  `events:` lists as the graph's data rather than as an object, and then checks
+  whether it also carries fields of its own before building an object from it too.
+  That check asked whether any key other than `class` was present — but YAML writes
+  an empty list inline (`variables: []`) and the parser records that as a scalar,
+  so a unit with events and no variables looked like it had a field of its own.
+  It fell through and built the duplicate the check exists to prevent: an empty
+  `hkbBehaviorGraphData`, with the real one — holding every event and variable name
+  — left reachable by nothing, for an `.hkx` save to drop. The check now excludes
+  the list keys themselves.
+
+  Found by sweeping Community Behaviors' `Skyrim.hky`: 265 of its 513 behaviour
+  units each orphaned exactly one `hkbBehaviorGraphData`, which is every unit
+  whose graph declares events but no variables. `mothbehavior` went from 13
+  objects with 1 unreachable to 12 with none.
+
 - **`data/` sidecars stayed loose on an id-keyed YAML source tree, and an `.hkx`
   save then dropped them.** A sidecar is attached by finding the one member of its
   owner declared to point at exactly its class and still empty. "Still empty" was

@@ -1139,7 +1139,17 @@ namespace SageHavokEditor.Core
                 // class alone was wrong: data/ defaults every classless file to
                 // hkbBehaviorGraphData, so graphdata.yaml built the variable objects
                 // and then a second, empty hkbBehaviorGraphData on top of them.
-                if (!doc.Scalars.Keys.Any(k => !k.Equals("class", StringComparison.OrdinalIgnoreCase)))
+                //
+                // "Beyond the lists" has to exclude the list keys themselves. YAML
+                // writes an empty list inline (variables: []) and the parser records
+                // that as a scalar, so a graphdata.yaml carrying events but no
+                // variables looked like it had a field of its own — and built the
+                // duplicate this test exists to prevent, leaving the real graph data
+                // orphaned for an .hkx save to drop.
+                if (!doc.Scalars.Keys.Any(k =>
+                        !k.Equals("class", StringComparison.OrdinalIgnoreCase)
+                        && !k.Equals("variables", StringComparison.OrdinalIgnoreCase)
+                        && !k.Equals("events", StringComparison.OrdinalIgnoreCase)))
                     return;
                 if (string.IsNullOrEmpty(className)) return;
             }
