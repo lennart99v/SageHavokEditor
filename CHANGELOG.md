@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A YAML import never attached the `data/` sidecars, so the expressions were
+  gone.** An expression list, a bone-index list and an event-range list each live
+  in their own file under `data/`, and nothing in the source references them: the
+  owner writes the member as `null` and the only link is the filename. Left
+  unattached they are unreachable from the root, which means the `.hkx` save
+  drops them and the modifier evaluates nothing — **41 objects in vanilla
+  `dragonbehavior`**, 17 in `0_master`. A dragon's acceleration, deceleration and
+  every look-at expression, silently absent.
+
+  The member is deliberately *not* read out of the filename. `_expressions`
+  happens to match `hkbEvaluateExpressionModifier.expressions`, but `_ranges`
+  stands for `eventRanges` and `_boneIndex` for `bones` on one class and
+  `keyframedBonesList` on another — the suffix is a note about what the file is,
+  not a member name. So the owner is the longest object name that prefixes the
+  stem, and the member is whichever of that owner's members is declared to point
+  at exactly this file's class and is still `null`. For every class involved that
+  is precisely one. Where it is more than one, or none, the file is left
+  unattached rather than linked hopefully: a wrong link here is silent, and an
+  unreferenced object at least shows up in the doctor's pruning report.
+
+  Also fixed on the way: YAML writes an empty array as `[]`, and left as that
+  text the param went out with no `numelements` at all and stopped the conversion
+  on `numelemnets is not vaild number` — HKX2's own spelling. Seven sites across
+  the vanilla corpus, all array members.
+
+  Objects the root can't reach: `dragonbehavior` 63 → 25, `0_master` 151 → 137.
+  The dragon unit now loads with 27 findings where it had 83 two changes ago, and
+  none of them are errors.
+
+
 - **A clean file was reporting itself in the colour of a problem.** Both badges
   at the top of the validation report are styled to turn green at zero through a
   `DataTrigger`, and neither could ever fire: nothing set the dialog's
