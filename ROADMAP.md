@@ -99,9 +99,9 @@ Two of her facts stay load-bearing for us. **Havok node names are not unique** �
 
 Her merge work adds one check to the four in **Validation** above: reachability GC protects *hard* pointers (an unreferenced object is simply never written by the serializer), but `toStateId`, event/variable name bindings and `animationBindingIndex` are **soft refs** — a graph that orphans a state while a surviving transition still carries its `toStateId` writes fine and fails at runtime. Judge it on the final graph, after every edit is applied.
 
-**Licensing caveat, re-checked 2026-09-05 at `f5ddbaa` — unchanged.** `LICENSE` is still "Copyright (c) 2026 Cassieandstuff. All rights reserved. PROVISIONAL — the project license is not yet finalized," and `README.md` says the same. Nothing there is reusable here until that changes, and this editor is GPL-3.0.
+**Licensing, settled 2026-09-07 by Cassie directly, and this section previously had it backwards.** The plan is **GPL-3.0**, with a possible exception covering Nexus publishing rights; the all-rights-reserved `LICENSE` applies to the monorepo, not to where the behaviour work is heading. What stood here before argued the opposite at length — that `sct-esm` being "first-party clean-room (no GPL) by design" meant the compiler sat on the GPL-free side of a line she was deliberately holding, so her code into this GPL-3.0 editor was the direction her own notes steered away from. That reasoning is dead; do not resurrect it from git history.
 
-And don't read "to be finalized" as "GPL eventually." Her `LICENSE` records the considerations for whoever finalizes it, and they point the other way: the SCT *editor* links `nifly` (GPL-3.0) via FetchContent and is constrained by it, but **the SKSE plugins deliberately don't depend on nifly**, and `sct-esm` is called out as "first-party clean-room (no GPL) by design." The behaviour compiler sits on the GPL-free side of that line, which is exactly the side we'd want to borrow from. So the direction that matters to us — her code into this GPL-3.0 editor — is the one her own notes are steering away from. Ask rather than assume; formats and findings travel freely either way, and that is what this section is built on.
+The operating rule does not change yet, and the reason is narrower than it was. A message is not a licence file: until the repository's `LICENSE` actually says GPL-3.0, formats, findings, docs and measurements travel freely in both directions and code travels in neither. The difference is that this is now a wait with an end, not a standing incompatibility — so anything blocked purely on licensing is worth *listing* rather than designing around.
 
 - [x] **`triggers:` is dropped on YAML import.** `YamlBehaviorImporter` has no case for a clip's inline trigger list, so the mapping collapses into a single mashed scalar (`-0.00899999961truefalsefalseclipEndnull`) instead of an `hkbClipTriggerArray`. It hits **202 of 289 clips** in vanilla `0_master` (31 of 36 in `chickenbehavior`), and it is what fails the conversion to `.hkx`. Needs the array plus its inline `hkbClipTrigger` elements built, with `event: 'clipEnd'` resolved to an `eventId` the way transition events already are — the clip preview's trigger editing knows the shape.
 
@@ -151,7 +151,9 @@ And don't read "to be finalized" as "GPL eventually." Her `LICENSE` records the 
 
   **It needed the wildcard-transition fix first, and the ordering is the part worth keeping.** A state machine's `transitions:` means its *wildcard* transitions, a differently named member (`wildcardTransitions`) that the source never writes — so they stayed inline in a member Havok doesn't have and were dropped whole: 116 machines in `mt_behavior`, 17 in `dragonbehavior`, 11 in `0_master`, which is every transition that fires from any state. And the condition pass has to run *after* those lists are wrapped: until the array object exists the transitions are inline children of a slot declared over `hkbStateMachineTransitionInfoArray`, so the class walk carries the wrong class down and `hkbStateMachineTransitionInfo.condition` is invisible. The first version of the fix ran before the wrap and changed nothing at all.
 
-- [ ] **Export `.hky` source from the editor.** Read-only interop is half a bridge: an edit made here can't go back. A bundle is `<Mod>.hky/` — a `manifest.json` declaring identity and masters by bare stem (`Skyrim` implicit for every other bundle) over graph units stored at their real serve path, `meshes/actors/…/<graph>.hkx/`, each holding `behavior.yaml` plus one file per node under `clips/ states/ generators/ modifiers/ transitions/ selectors/ references/ tagging/ data/`, with Havok field names verbatim, `variableBindingSet` and transition arrays flattened inline into their owner, and both index and name written for every symbol reference (`variableIndex: 12` beside `variable: 'turnSpeedMult'`). Nodes we *add* are keyed by name and the compiler mints their ids — confirmed below, and it is the easy half. Anything that *overrides* vanilla must carry her base's ids, which come from the tagfile `#NNNN` oracle, so that item is a prerequisite rather than a parallel one. Emit from her class descriptors rather than a hard-coded field list per class; behaviour classes are migrated, the rest are still moving.
+- [ ] **Export `.hky` source from the editor.** Read-only interop is half a bridge: an edit made here can't go back. A bundle is `<Mod>.hky/` — a `manifest.json` declaring identity and masters by bare stem (`Skyrim` implicit for every other bundle) over graph units stored at their real serve path, `meshes/actors/…/<graph>.hkx/`, each holding `behavior.yaml` plus one file per node under `clips/ states/ generators/ modifiers/ transitions/ selectors/ references/ tagging/ data/`, with Havok field names verbatim, `variableBindingSet` and transition arrays flattened inline into their owner, and both index and name written for every symbol reference (`variableIndex: 12` beside `variable: 'turnSpeedMult'`). Nodes we *add* are keyed by name and the compiler mints their ids — confirmed below, and it is the easy half. Anything that *overrides* vanilla must carry her base's ids, which come from the tagfile `#NNNN` oracle, so that item is a prerequisite rather than a parallel one. Emit from her class descriptors rather than a hard-coded field list per class; behaviour classes are migrated, the rest are still moving. Which, with her rule that an exporter never emits a class or field absent from the schema tree it read, scopes the first version to **behaviour graph units only** — say so in the UI rather than letting someone discover it.
+
+  Three things settled since this was written (see *Answered 2026-09-07*). Read the schema tree from the user's own SCT checkout **at run time** and stamp the `schema_version` it carries into every manifest written, copied never computed; through `1.0.0-rc.1` the gate is **exact match or refuse**, not a SemVer range, and refusing is the whole point — an exporter written against a stale field walk emits bytes that bind to the wrong node with no error, which is this domain's signature failure. Skip anything in a bundle that does not start at the `meshes` root. And there is no `SCHEMA.yaml` in the tree yet, so the first cut has nothing to stamp: read the version if it is there, refuse to export if it is not, rather than inventing a default.
 ### Division of labour — what crosses, and what doesn't
 
 The two projects are halves of one pipeline that happen to share a data model: Community Behaviors owns **compile → merge → serve**, this editor owns **see → edit → validate → preview**. Her behaviour graph panel is still a literal `"Behavior Editor — not yet implemented"` ImGui stub at `f5ddbaa`, 354 commits in — the authoring GUI is the half she isn't building, and it is the half this is. So the collaboration has a shape without either project absorbing the other, and while her licence is provisional (see above) what crosses is **formats, findings and data — never code, in either direction**.
@@ -179,6 +181,47 @@ Four questions this section had open are now settled, from Cassie in conversatio
 - **Merge semantics are moving into the same schema** — each class declares how it merges onto itself on a node collision (the `merge:` field policies). A tool that produces deltas therefore gets its conflict rules from the same data it gets its layout from, rather than reimplementing a merge engine.
 
 **One practical licence consequence.** Her descriptors are the natural input for all of this, and they live in an all-rights-reserved repo. So read them from the user's own SCT checkout or from a bundle at runtime — do not vendor a copy into this GPL-3.0 tree while her licence is provisional. Same rule as her code: use the format, don't ship her files.
+
+### Answered 2026-09-07 — schema versioning, bundle shape, animations
+
+A second pass over Community Behaviors at `f5ddbaa`, with the answers above re-confirmed rather than
+restated. What is new:
+
+- **Write the current bundle shape, not `_vanilla`.** The id-keyed form under a `manifest.json` is
+  the target. And a rule we did not have: **ignore anything in an `.hky` that does not start at the
+  `meshes` root** — a scene/cutscene folder is coming, and the compiler skips it by not caring about
+  it. Our reader should skip it deliberately rather than by luck.
+- **The schema is versioned from `1.0.0-rc.1`, and through RC the gate is strict: exact match or
+  refuse.** Her draft `schemaversionstamp.md` describes a SemVer range table — that is the *post-RC*
+  rule, and implementing it now would be wrong. So an exporter reads the schema tree at run time from
+  the user's own checkout and refuses anything that is not exactly the version it read, which is the
+  same shape the licence rule above already forces. The two constraints agree.
+- **Measured rather than assumed, both at `f5ddbaa`:** there is **no `SCHEMA.yaml` and no version key
+  anywhere in the 186-descriptor tree**, so the stamp is design-only and nothing yet exists to copy
+  into a manifest; and **`merge:` appears in 3 of those 186 files** (`compose`, on a state machine's
+  `states` and `transitions`), so the per-field merge policy has barely started landing. Expect churn.
+- **Bone weights moved our way.** She found weights still being assigned in bone *index* order and
+  changed it in the RC1 branch. `AttachBoneWeights` here already resolves each weight by bone *name*
+  into the animation skeleton's order, so RC1 aligns with this editor rather than breaking it.
+- **Native animations name their bones and stop there** — no index when exporting into an `.hky`,
+  resolution done in the compiler; the `index.yaml` beside the decompiled vanilla skeletons is a
+  compatibility layer for existing precompiled animations that a native one never touches. A native
+  animation is a single file and may carry an inline motion data section, compiled into the
+  `asdsf`/`adsf` cache.
+
+Two implications worth stating because neither is written down upstream. Her exporter rule "never
+emit a class or field absent from the schema tree you read", together with "behaviours are migrated,
+the rest are still moving", **scopes a first exporter to behaviour graph units** — which is the slice
+to build anyway, but it is an implication rather than a stated limit. And the `digest:` her draft
+marks optional is worth more to us than to her: reading a checkout we do not control, it is the only
+way to notice a tree carrying local edits that no longer matches the version it claims.
+
+**Offered back, still open:** the `pad32` / `size32` column (`tools/hkx-layout-gen`, below), and on
+her `asdsf`/`adsf` question — she is considering one blob per clip binding, and the answer from this
+side is yes, co-locate it. "Registered in one place, defined in another" is the exact shape of the
+trap the animation-registration item exists to catch; merging them removes the class of bug instead
+of adding a check for it.
+
 
 - [ ] **Open the load order and edit as deltas — the Creation Kit model.** Her suggestion, and the largest thing in this section: point the editor at the user's load order, compose the bundles with the schema's own merge semantics, present the *merged* graph as one project, and write every change as a delta into a new or active `.hky` — the CK's active-plugin model, applied to behaviours. It is the right end state and it is not a bolt-on: it needs a composed document model (today one file is one packfile), an active-bundle concept with per-object provenance ("who introduced this node, who overrode it, am I about to override or author"), and a decision about whether it converges with the Nemesis snapshot exporter or stands beside it as a second, separate delta mechanism. Worth sequencing behind the four import fixes and the oracle, both of which it depends on, and worth prototyping read-only first: compose a two-bundle load order and *show* the merged graph with provenance, before anything writes.
 
