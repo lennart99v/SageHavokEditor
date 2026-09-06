@@ -1,4 +1,4 @@
-Unreleased:
+0.7.0 Features:
 
 - A YAML behavior folder can now be saved as a .hkx the game will load. That was the point of all the import work, and this is the last piece of it: vanilla 0_master comes in as 2310 objects with nothing left dangling, converts, and reads back with all 1217 of its events, all 230 variables and all 289 clips. Open the folder, edit, save — the round trip works.
 
