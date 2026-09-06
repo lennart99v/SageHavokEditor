@@ -37,6 +37,13 @@ namespace SageHavokEditor.UI.Dialogs
         {
             InitializeComponent();
             _allIssues = report.Issues;
+
+            // Both badges turn green at zero through a DataTrigger on ErrorCount /
+            // WarningCount, and neither could ever fire: nothing set a DataContext,
+            // so the bindings resolved to nothing and the styles kept their setter
+            // defaults. A clean file has been showing a purple "0 Errors" since the
+            // dialog was written.
+            DataContext = this;
             IssueList.ItemsSource = _filtered;
 
             ErrorCountText.Text = ErrorCount.ToString();

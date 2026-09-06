@@ -37,8 +37,31 @@ namespace SageHavokEditor.Core.Services
         /// <summary>The loaded graph, when the file was readable. Cached with the rest.</summary>
         public HavokManager? Manager { get; init; }
 
+        /// <summary>
+        /// The file's write time when it was read, so a cached entry can tell
+        /// whether it still describes the file on disk.
+        /// </summary>
+        public DateTime LastWriteUtc { get; init; }
+
         public bool Resolved => Path != null;
         public bool Readable => Path != null && Error == null;
+
+        /// <summary>
+        /// True when this entry can no longer be trusted: the file has been
+        /// written since, or it was never found and might exist by now. Both
+        /// happen in the ordinary way of working — the referenced graph is
+        /// usually the one being edited in the other window, and a reference is
+        /// often authored before the file it names exists.
+        /// </summary>
+        public bool Stale
+        {
+            get
+            {
+                if (Path == null) return true;   // retry: it may have been created since
+                try { return File.GetLastWriteTimeUtc(Path) != LastWriteUtc; }
+                catch { return true; }
+            }
+        }
     }
 
     /// <summary>
@@ -52,9 +75,12 @@ namespace SageHavokEditor.Core.Services
     /// that state. So does a reference whose events don't line up, since the two
     /// graphs link by event *name* and each keeps its own table.
     ///
-    /// Reads are cached for the life of the index, which is rebuilt whenever a
-    /// file is loaded. A referenced file edited elsewhere mid-session is therefore
-    /// read as it was — the alternative is stat-ing every reference on every save.
+    /// Reads are cached, and a cached entry is dropped when the file's write time
+    /// moves — the referenced graph is usually the one being edited in the other
+    /// window, so a session-long cache would answer with a file that no longer
+    /// exists in that form. An unresolved entry is always retried, because
+    /// authoring the reference before the file it names is the normal order of
+    /// doing this. A stat per reference is what that costs.
     /// </summary>
     public sealed class BehaviorReferenceIndex
     {
@@ -89,7 +115,7 @@ namespace SageHavokEditor.Core.Services
         public ReferencedBehavior Lookup(string behaviorName)
         {
             var key = (behaviorName ?? "").Trim();
-            if (_cache.TryGetValue(key, out var cached)) return cached;
+            if (_cache.TryGetValue(key, out var cached) && !cached.Stale) return cached;
 
             var result = Read(key);
             _cache[key] = result;
@@ -119,6 +145,7 @@ namespace SageHavokEditor.Core.Services
                     EventNames = names,
                     UsedEventNames = UsedEvents(manager, names),
                     Manager = manager,
+                    LastWriteUtc = WriteTime(path),
                 };
             }
             catch (Exception ex)
@@ -129,8 +156,15 @@ namespace SageHavokEditor.Core.Services
                     Path = path,
                     Tried = tried,
                     Error = ex.Message,
+                    LastWriteUtc = WriteTime(path),
                 };
             }
+        }
+
+        private static DateTime WriteTime(string path)
+        {
+            try { return File.GetLastWriteTimeUtc(path); }
+            catch { return DateTime.MinValue; }
         }
 
         /// <summary>
