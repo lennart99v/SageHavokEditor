@@ -220,12 +220,16 @@ namespace SageHavokEditor.UI.Dialogs
                 "• References (#0123, shown blue) jump with ↗ or Ctrl+Click. Editing a reference by " +
                 "typing re-resolves it properly — including setting it to null.\n" +
                 "• Ref arrays (like a machine's states) edit as space-separated #ids; the numelements " +
-                "count is maintained automatically. The states param also has the ✏ Edit States dialog.\n" +
+                "count is maintained automatically, and they never offer ＋ Add element. The states " +
+                "param also has the ✏ Edit States dialog.\n" +
                 "• Arrays of nested elements (event property arrays, transition arrays, notify events, " +
                 "binding sets…) have a ＋ Add element button and a per-element ✕. New elements are " +
-                "created with vanilla defaults. Both are undoable. An array that is empty when the " +
-                "file loads can't offer ＋ yet — add the first element by hand in XML, or start from " +
-                "a file that has one.\n" +
+                "created with vanilla defaults. Both are undoable, and the numelements count moves " +
+                "with them.\n" +
+                "• An array that is empty when the file loads offers ＋ too. Which kind of array it " +
+                "is comes from Havok's class definitions rather than from the file, so an empty " +
+                "characterPropertyInfos, eyeBones or rigid-body properties list can be filled in " +
+                "here instead of by hand in XML.\n" +
                 "• Every edit lands on the normal undo stack (Ctrl+Z).");
 
             AddSection("tab_variables", "Variables Tab",

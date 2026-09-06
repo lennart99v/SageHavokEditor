@@ -41,6 +41,22 @@ namespace SageHavokEditor.Models
     }
 
     /// <summary>
+    /// How an array param holds its elements. Not derivable from the declared type
+    /// — HKX2 spells both kinds IList&lt;T&gt; — and not derivable from the data
+    /// once the array is empty, which is why it is read out of HKX2's own XML
+    /// writer; see HavokArrayKinds.
+    /// </summary>
+    public enum HkArrayKind
+    {
+        /// <summary>Not an array (or a class HKX2 doesn't serialize).</summary>
+        None = 0,
+        /// <summary>Elements are nested hkobjects written in place.</summary>
+        InlineStruct,
+        /// <summary>Elements are #id references to other top-level objects.</summary>
+        Pointer,
+    }
+
+    /// <summary>
     /// Declared Havok type of a param, sourced from the HKX2 class definitions
     /// (see HavokTypeCatalog). One shared instance per (class, param) — never
     /// mutate after construction.
@@ -53,6 +69,8 @@ namespace SageHavokEditor.Models
         public HkParamSemantic Semantic { get; init; }
         /// <summary>Class of inline child hkobjects (struct members / struct arrays).</summary>
         public string? ElementClassName { get; init; }
+        /// <summary>For array params, whether elements are inline structs or #id refs.</summary>
+        public HkArrayKind ArrayKind { get; init; }
         public long Min { get; init; } = long.MinValue;
         public long Max { get; init; } = long.MaxValue;
 
@@ -325,11 +343,12 @@ namespace SageHavokEditor.Models
 
         /// <summary>
         /// True for array params whose elements are inline (anonymous) hkobjects,
-        /// e.g. hkbStateMachineEventPropertyArray.events. Sticky: set at load by
-        /// HavokTypeCatalog.Annotate and maintained by the add/remove element
-        /// handlers, so the "+ Add element" affordance survives deleting the last
-        /// element (an empty array's element shape is otherwise indistinguishable
-        /// from a ref array's).
+        /// e.g. hkbStateMachineEventPropertyArray.events. Set at load by
+        /// HavokTypeCatalog.Annotate — from the declared array kind where HKX2
+        /// knows the class, and otherwise from the shape of what loaded — and kept
+        /// sticky by the add/remove element handlers, so the "+ Add element"
+        /// affordance survives deleting the last element for a class HKX2 has no
+        /// definition for.
         /// </summary>
         [XmlIgnore]
         public bool IsInlineStructArray { get; set; }
