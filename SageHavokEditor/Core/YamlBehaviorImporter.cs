@@ -509,10 +509,18 @@ namespace SageHavokEditor.Core
         // member is not read out of the name at all. The owner is the longest
         // object name that prefixes the stem, and the member is whichever of its
         // members is declared to point at exactly this file's class and is still
-        // null — which for every class involved here is precisely one. Where it is
+        // empty — which for every class involved here is precisely one. Where it is
         // more than one, or none, the file is left unattached rather than guessed
         // at: a wrong link here is silent, and an unreferenced object at least
         // shows up in the doctor's pruning report.
+        //
+        // "Still empty" has to be asked of the class, not of the params the file
+        // happened to write. The name-keyed corpus writes the member as null, so it
+        // is there to be filled; the id-keyed one omits it entirely. Looking only at
+        // params present left 4 of chickenbehavior's 5 sidecars unattached — and
+        // unattached here means unreachable, which an .hkx save drops without a
+        // word. So the candidates come from the declared members and a missing one
+        // counts as open, to be added.
 
         private void AttachDataSidecars()
         {
@@ -522,19 +530,30 @@ namespace SageHavokEditor.Core
 
                 foreach (var owner in OwnerCandidates(stem, sidecar))
                 {
-                    var slots = owner.Params
-                        .Where(param =>
+                    if (string.IsNullOrEmpty(owner.ClassName)) break;
+
+                    var slots = HavokTypeCatalog.ParamsOf(owner.ClassName)
+                        .Where(member => member.Value.ArrayKind == HkArrayKind.None
+                                         && member.Value.ElementClassName == sidecar.ClassName)
+                        .Select(member => member.Key)
+                        .Where(name =>
                         {
-                            var info = HavokTypeCatalog.Lookup(owner.ClassName, param.Name);
-                            return info != null
-                                   && info.ArrayKind == HkArrayKind.None
-                                   && info.ElementClassName == sidecar.ClassName
-                                   && (string.IsNullOrEmpty(param.Value) || param.Value == "null");
+                            var written = owner.Params.FirstOrDefault(p => p.Name == name);
+                            return written == null                       // omitted by the source
+                                   || string.IsNullOrEmpty(written.Value)
+                                   || written.Value == "null";
                         })
                         .ToList();
 
                     if (slots.Count != 1) break;   // ambiguous, or this owner has no room
-                    slots[0].Value = sidecar.Id;
+
+                    var slot = owner.Params.FirstOrDefault(p => p.Name == slots[0]);
+                    if (slot == null)
+                    {
+                        slot = new HkParam { Name = slots[0] };
+                        owner.Params.Add(slot);
+                    }
+                    slot.Value = sidecar.Id;
                     break;
                 }
             }

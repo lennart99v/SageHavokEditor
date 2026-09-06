@@ -5,6 +5,29 @@ All notable changes to Sage Havok Editor are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`data/` sidecars stayed loose on an id-keyed YAML source tree, and an `.hkx`
+  save then dropped them.** A sidecar is attached by finding the one member of its
+  owner declared to point at exactly its class and still empty. "Still empty" was
+  asked of the params the file had written, which works on the name-keyed corpus
+  because the owner writes the member as `null` — but the id-keyed generation omits
+  the member entirely, leaving nothing to match. The candidates now come from the
+  class through `HavokTypeCatalog.ParamsOf`, and a member the source never wrote
+  counts as open and is added. The conservative half is unchanged: exactly one
+  candidate or the file is left unattached, since a wrong link here is silent.
+
+  Found by pointing `tools/hkx-yaml-import` at Community Behaviors' current
+  `Skyrim.hky` rather than the `src_behavior/_vanilla` corpus every previous check
+  used — the roadmap's "already reads her units as-is" had only ever been measured
+  against the older name-keyed generation. On `chickenbehavior` 4 of 5 sidecars
+  were loose, and all 4 were unreachable from the root, which an `.hkx` save drops
+  without a word. Now 5 of 5, and nothing unreachable. The name-keyed corpus the
+  rule was built for is unchanged: `0_master` 17 of 17, `mt_behavior` 4 of 4,
+  `dragonbehavior` 41 of 41.
+
 ## [0.7.0] — 2026-09-06
 
 ### Added
