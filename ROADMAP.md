@@ -165,8 +165,15 @@ And don't read "to be finalized" as "GPL eventually." Her `LICENSE` records the 
   harness stays the way it is verified. The ASCII serialiser stayed behind in
   `tools/` — it is a debug view of a format Blender will not load.
 
-  Still open: scale tracks (the decoder skips them, so `Lcl Scaling` stays 1),
-  and a scale option on the export for anyone who wants real-world units.
+  **Export scale shipped** as an editable box beside the button, remembered
+  between sessions, with three presets measured against Blender rather than
+  guessed: `1` puts a 161-unit troll at 1.61 Blender units, `100` at 161.12,
+  `1.428` at 2.30 m. Parsing lives in `FbxScaleOption`, out of the view, so it
+  can be exercised without clicking — which immediately caught `-5` parsing as
+  `5`, because the preset text was being split on a plain hyphen as well as its
+  em-dash.
+
+  Still open: scale tracks (the decoder skips them, so `Lcl Scaling` stays 1).
 
 - [x] **Multi-block animations decode.** `numBlocks > 1` was refused outright, so
   no clip longer than ~256 frames would preview. `HavokSplineDecoder.DecodeBlocks`

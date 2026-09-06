@@ -459,11 +459,16 @@ namespace SageHavokEditor.UI.Dialogs
                 "• No mesh, no materials, no skin weights. This is an animation carrier: bring your " +
                 "own body mesh and attach it to the imported armature.\n\n" +
                 "Scale\n" +
-                "Translations are written in Havok units, unscaled. Blender reads the file as " +
-                "centimetres and divides by 100 on import, so a bone at Havok 100 arrives at 1.0 " +
-                "Blender unit. That keeps the export a faithful copy of the numbers in the file rather " +
-                "than a guess at what a Havok unit is worth in metres — scale it in your 3D package " +
-                "if you need real-world size.\n\n" +
+                "The box beside the button multiplies every translation, and remembers what you " +
+                "pick. Nothing inside a .hkx says what a Havok unit is worth, so this is a judgement " +
+                "the file cannot make for you. Blender reads the export as centimetres and divides " +
+                "by 100 on import, so the number lands as havok × scale ÷ 100 Blender units:\n" +
+                "• 1 — Havok units unchanged. A 161-unit-tall troll imports 1.61 Blender units tall.\n" +
+                "• 100 — one Havok unit becomes one Blender unit. The same troll is 161.12.\n" +
+                "• 1.428 — roughly real-world metres, on the usual estimate of about 1.43 cm " +
+                "per unit. The troll comes out 2.30 m, which is about right for a troll.\n" +
+                "The list is editable, so type any positive number if none of those suit. A value " +
+                "that is not a positive number is refused rather than quietly treated as 1.\n\n" +
                 "Things to know\n" +
                 "• Rotations are stored as Euler angles, because that is what FBX animates. The " +
                 "conversion picks, per frame, whichever of the two equivalent Euler spellings sits " +
