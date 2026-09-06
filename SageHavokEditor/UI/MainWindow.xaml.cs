@@ -2829,24 +2829,21 @@ namespace SageHavokEditor
                 return;
             }
 
-            // What is left on the packfile path is narrow enough to name. The graph
-            // links and converts now; the bone weight arrays are the exception, because
-            // the source writes them keyed by bone name and rebuilding that needs the
-            // character project's skeleton. Measured on vanilla dragonbehavior: 1477 of
-            // 1501 objects reachable, converts at 344 KB against an original of 370.
+            // What is left on the packfile path is two objects out of 1502 on vanilla
+            // dragonbehavior, so this is a note rather than a warning: the graph links,
+            // converts at 353 KB against an original of 370, and every event, variable
+            // and name comes back.
             if (_sourceWasHkx)
             {
                 var go = MessageBox.Show(
-                    "This graph was loaded from a packfile, and one thing does not survive " +
-                    "the trip yet.\n\nEverything else does: the graph links up, every event " +
-                    "and variable comes back, and the unit converts. But a bone weight array " +
-                    "— what a blend uses to weight one part of the body against another — is " +
-                    "written keyed by bone name in this format, and rebuilding that needs the " +
-                    "character project's skeleton, so those come out unattached and would be " +
-                    "dropped. On vanilla dragonbehavior that is 24 of 1501 objects.\n\n" +
+                    "This graph was loaded from a packfile rather than from YAML source, and " +
+                    "the export is not quite exact yet.\n\nOn vanilla dragonbehavior two " +
+                    "objects out of 1502 do not survive the trip — an event payload and one bone " +
+                    "weight list reached from an unusual place. Everything else does: the graph " +
+                    "links up, every event, variable and name comes back, and it converts.\n\n" +
                     "Exporting a behaviour folder that was opened from YAML source loses " +
-                    "nothing.\n\nWrite it anyway?",
-                    "Export .hky source", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                    "nothing.\n\nWrite it?",
+                    "Export .hky source", MessageBoxButton.OKCancel, MessageBoxImage.Information);
                 if (go != MessageBoxResult.OK) return;
             }
 

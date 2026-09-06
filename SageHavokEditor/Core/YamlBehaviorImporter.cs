@@ -311,6 +311,7 @@ namespace SageHavokEditor.Core
             // is a different thing from a child with no boneWeights at all, which is
             // a null pointer.
             var sawBoneWeights = false;
+            string? positionalWeights = null;
             var bindings = new SortedDictionary<string, List<HkParam>>(StringComparer.Ordinal);
 
             foreach (var p in source.Params)
@@ -324,6 +325,18 @@ namespace SageHavokEditor.Core
                     if (float.TryParse(p.Value, System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out var w))
                         weights[p.Name.Substring(prefix.Length)] = w;
+                    continue;
+                }
+                // The id-keyed generation writes the weights positionally instead:
+                // `boneWeights: count: 71 / values: '1 1 0 …'`. No name resolution
+                // and so no skeleton needed, which is why it can be built here
+                // rather than in AttachBoneWeights. The named form appears nowhere
+                // in the current bundle, and this one was read by nothing, so every
+                // bone weight in it was being dropped on import.
+                if (p.Name.Equals("boneWeights.values", StringComparison.OrdinalIgnoreCase))
+                {
+                    positionalWeights = p.Value ?? "";
+                    sawBoneWeights = true;
                     continue;
                 }
                 if (p.Name.StartsWith("boneWeights", StringComparison.OrdinalIgnoreCase))
@@ -355,7 +368,9 @@ namespace SageHavokEditor.Core
                     element.Params.Add(new HkParam { Name = p.Name, Value = p.Value });
             }
 
-            if (sawBoneWeights) AttachBoneWeights(element, elementClass, weights);
+            if (positionalWeights != null)
+                AttachPositionalBoneWeights(element, elementClass, positionalWeights);
+            else if (sawBoneWeights) AttachBoneWeights(element, elementClass, weights);
 
             if (bindings.Count > 0)
             {
@@ -385,6 +400,43 @@ namespace SageHavokEditor.Core
         /// body instead of an arm — wrong, but visibly wrong, where a guessed
         /// ordering would be wrong invisibly.
         /// </summary>
+        /// <summary>
+        /// Weights already in the skeleton's own order, straight from the source.
+        /// Nothing to resolve, so unlike the name-keyed form this needs no
+        /// skeleton and never reports an unbuilt map.
+        /// </summary>
+        private void AttachPositionalBoneWeights(HkObject element, string elementClass,
+            string values)
+        {
+            var slot = HavokTypeCatalog.ParamsOf(elementClass)
+                .Where(kv => kv.Value.ElementClassName == "hkbBoneWeightArray")
+                .Select(kv => kv.Key)
+                .FirstOrDefault();
+            if (slot == null) { UnbuiltBoneWeights++; return; }
+
+            var floats = values.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            var array = new HkObject
+            {
+                Id = AllocId(),
+                ClassName = "hkbBoneWeightArray",
+                Signature = "0xcd902b77",
+                Params = new List<HkParam>
+                {
+                    new HkParam
+                    {
+                        Name = "boneWeights",
+                        NumElements = floats.Length.ToString(),
+                        Value = string.Join(" ", floats)
+                    }
+                }
+            };
+            _allObjects.Add(array);
+
+            var param = element.Params.FirstOrDefault(x => x.Name == slot);
+            if (param == null) element.Params.Add(new HkParam { Name = slot, Value = array.Id });
+            else param.Value = array.Id;
+        }
+
         private void AttachBoneWeights(HkObject element, string elementClass,
             Dictionary<string, float> weights)
         {
