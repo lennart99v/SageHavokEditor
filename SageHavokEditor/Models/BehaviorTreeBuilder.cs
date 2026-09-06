@@ -24,7 +24,7 @@ namespace SageHavokEditor.UI
 
         public BehaviorNodeData BuildTree(string filter = "")
         {
-            var rootNode = new BehaviorNodeData { Name = "Behavior Graph", Type = NodeType.Root };
+            var rootNode = new BehaviorNodeData { Name = "Behavior Graph", Type = NodeType.Root, IsExpanded = true };
 
             // Top-level = state machines nothing else points at. References from
             // hkbBehaviorGraph don't count — its rootGenerator ref is what makes
@@ -43,7 +43,41 @@ namespace SageHavokEditor.UI
                 }
             }
 
+            if (string.IsNullOrWhiteSpace(filter)) ExpandWithinBudget(rootNode);
+
             return rootNode;
+        }
+
+        /// <summary>
+        /// How many nodes a freshly opened tree may show. Every visible node is a
+        /// realised WPF visual, and the TreeView doesn't virtualise (its item
+        /// template hosts children in a StackPanel, which measures with infinite
+        /// height), so "expand everything" means building one visual per node
+        /// before the window can paint: vanilla-sized behaviours run to thousands.
+        /// </summary>
+        private const int ExpansionBudget = 500;
+
+        /// <summary>
+        /// Opens the tree breadth-first until the budget is spent, so a small file
+        /// still comes up fully expanded the way it always did, and a large one
+        /// opens as far down as it can afford — the rest expands on click.
+        /// </summary>
+        private static void ExpandWithinBudget(BehaviorNodeData root)
+        {
+            root.IsExpanded = true;
+            var realised = 1 + root.Children.Count;
+
+            var queue = new Queue<BehaviorNodeData>(root.Children);
+            while (queue.Count > 0)
+            {
+                var node = queue.Dequeue();
+                if (node.Children.Count == 0) continue;
+                if (realised + node.Children.Count > ExpansionBudget) continue;
+
+                node.IsExpanded = true;
+                realised += node.Children.Count;
+                foreach (var child in node.Children) queue.Enqueue(child);
+            }
         }
 
         private bool ApplyFilter(BehaviorNodeData node, string filter)
@@ -68,6 +102,8 @@ namespace SageHavokEditor.UI
             }
 
             node.IsVisible = matches || childMatches;
+            // A match deeper in the tree is only findable if the path to it is open.
+            if (childMatches) node.IsExpanded = true;
             return node.IsVisible;
         }
 

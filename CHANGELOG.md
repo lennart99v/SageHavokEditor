@@ -132,6 +132,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Opening a behaviour no longer freezes the window for ten-plus seconds.** The
+  behaviour tree in the left panel expanded every node by default — a `TreeViewItem`
+  style with `IsExpanded="True"` — and WPF builds a visual for each visible node, so
+  opening a file realised the entire tree before the window could paint: **7,300
+  nodes** for the 1,518-object dragon behaviour used to test it. Measured with an
+  instrumented build, the loading itself was never the problem: parse, validate,
+  tree build, lookups, graph and snapshot were all done **81 ms** after the file was
+  read, and `LoadFileAsync` returned at 281 ms — but the UI thread then stayed busy
+  until **15.8 s**, which is the freeze people saw. A vanilla-sized behaviour is
+  several times bigger again.
+
+  The tree now opens breadth-first under a budget of 500 visible nodes: a small
+  behaviour still comes up fully expanded, exactly as before, and a large one opens
+  as far down as the budget allows with the rest expanding on click. `IsExpanded`
+  binds two-way to the node, so what you open stays open, and filtering expands the
+  path to every match — a deep hit is still revealed by typing its name. The same
+  file now settles at 2.1 s in a Debug build.
+
+  Virtualising the tree instead would have been the tidier fix and does not work
+  here: the item template hosts its children in a `StackPanel`, which measures with
+  infinite height, so a `VirtualizingStackPanel` under it realises everything anyway
+  — and forcing it on renders blank rows as soon as the tree is scrolled. Reworking
+  that template is a separate job.
+
 - **Every ComboBox bound to `IdNamePair` showed a class name until you opened
   it.** The dark theme's ComboBox template renders its closed selection box
   through the item's `ToString()`, and `IdNamePair` didn't override it — so the

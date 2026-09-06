@@ -267,7 +267,7 @@
                         <TreeView.Resources>
                             <Style TargetType="TreeViewItem">
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-                                <Setter Property="IsExpanded" Value="True"/>
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
                                 <Setter Property="Visibility"
             Value="{Binding IsVisible, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                 <Setter Property="Template">

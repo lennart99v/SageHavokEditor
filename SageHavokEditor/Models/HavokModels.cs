@@ -499,5 +499,10 @@ namespace SageHavokEditor.Models
         public HkObject? Object { get; set; }
         public List<BehaviorNodeData> Children { get; set; } = new();
         public bool IsVisible { get; set; } = true;
+        /// <summary>Drives TreeViewItem.IsExpanded (two-way). Only the root and
+        /// the machines under it start open: a behaviour file is thousands of
+        /// nodes deep, and expanding all of them up front realises every one of
+        /// them as a visual before the window can paint.</summary>
+        public bool IsExpanded { get; set; }
     }
 }
