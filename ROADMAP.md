@@ -168,15 +168,9 @@ The operating rule does not change yet, and the reason is narrower than it was. 
   appears as a file at all. Those defaults only apply to a file with no `class:` key, which is why
   nothing had noticed.
 
-  **What it does not do yet, in the order worth fixing.** A round trip through *our* importer is not
-  the same as matching her bytes, and three differences are known. `triggerInterval` comes back with
-  its members bare where `initiateInterval` keeps its prefix — the parser keeps a list item's first
-  nested map flat, deliberately ("fine for a transition and useless for a bone weight"), so the two
-  halves of the same struct are stored differently and only one can be rebuilt; that is an importer
-  asymmetry the round trip found, and it needs settling before the output is faithful. A transition
-  writes `eventId` twice. `enterNotifyEvents` is not emitted at all. Beyond that: no `manifest.json`
-  and no `schema_version`, deliberately, since there is nothing upstream to stamp yet; and no UI, so
-  none of this is reachable from the app.
+  **Faithful to her bytes, with one exception that carries no meaning.** A state exported from here now diffs against the same state in `Skyrim.hky` down to the unit-local ids (`generator: 5` against `generator: 3`), which are assigned per unit and say nothing. Getting there closed two importer bugs the round trip found and nothing else would have: a list item's first nested map was stored flat while the rest kept their path, so a transition's `triggerInterval` and `initiateInterval` were held two different ways and only one could be rebuilt; and `enterNotifyEvents` / `exitNotifyEvents` were never read at all.
+
+  Still open: no `manifest.json` and no `schema_version`, deliberately, since there is nothing upstream to stamp yet; and no UI, so none of this is reachable from the app.
 
 ### Division of labour — what crosses, and what doesn't
 

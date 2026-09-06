@@ -156,6 +156,7 @@ namespace SageHavokEditor.Core
             NormalizeEmptyArrays();       // boneIndices: [] → numelements="0"
             ResolveTransitionFields();    // event: Name → eventId: N, toState: Name → toStateId: N
             WireStateTransitions();       // wrap inline transition lists → TransitionInfoArray objects
+            WireNotifyEvents();           // wrap inline notify lists → EventPropertyArray objects
             WireExpressionConditions();   // condition: "x == 1" → hkbExpressionCondition
             // Both of the two above have to come after the wrapping: until the array
             // object exists, a state machine still has a `transitions` param, which
@@ -1210,7 +1211,15 @@ namespace SageHavokEditor.Core
             // ── Block 2: Convert YAML object lists → HkParam.Children ────────────────────
             // Handles the transitions array inside hkbStateMachineTransitionInfoArray.
             // Also handles children arrays in hkbBlenderGenerator etc.
-            var objectListFields = new[] { "transitions", "children", "bindings" };
+            // enterNotifyEvents / exitNotifyEvents are a list of maps like the
+            // rest, and were in none of the sets above, so nothing read them: the
+            // events a state fires on entry and exit were dropped on import, in
+            // 2,234 of the files in the current vanilla bundle.
+            var objectListFields = new[]
+            {
+                "transitions", "children", "bindings",
+                "enterNotifyEvents", "exitNotifyEvents",
+            };
 
             foreach (var listField in objectListFields)
             {
@@ -1566,6 +1575,90 @@ namespace SageHavokEditor.Core
                 WrapTransitionList(machine, "wildcardTransitions");
         }
 
+        // ── Notify events ─────────────────────────────────────────────────────────
+        // A state's enterNotifyEvents is a *pointer* to an
+        // hkbStateMachineEventPropertyArray holding the events, not an array on the
+        // state — the same shape as transitions, and the same trap: left inline it
+        // is an array sitting in a pointer slot, which HKX2 reads as a reference
+        // symbol. Wrapping is what makes an imported state fire on entry at all.
+        private void WireNotifyEvents()
+        {
+            var events = BuildEventIndex();
+            foreach (var owner in _allObjects.ToList())
+                foreach (var member in new[] { "enterNotifyEvents", "exitNotifyEvents" })
+                    WrapNotifyList(owner, member, events);
+        }
+
+        private void WrapNotifyList(HkObject owner, string member,
+                                    Dictionary<string, string> events)
+        {
+            var param = owner.Params.FirstOrDefault(p => p.Name == member);
+            if (param?.Children == null || param.Children.Count == 0) return;
+
+            // Each element is an hkbEventProperty: an id and a payload pointer.
+            // The two generations write the event differently — the name-keyed
+            // corpus as `event: AddRagdollToWorld`, the id-keyed one as `id: 83` —
+            // and a payload is text in a slot Havok wants a pointer in, which is
+            // the same fault the clip triggers had: left as text HKX2 reads it as a
+            // reference symbol and the conversion stops.
+            foreach (var element in param.Children)
+            {
+                var named = element.Params.FirstOrDefault(x => x.Name == "event");
+                if (named != null)
+                {
+                    element.Params.Remove(named);
+                    var id = events.TryGetValue(named.Value ?? "", out var idx) ? idx : "-1";
+                    if (!element.Params.Any(x => x.Name == "id"))
+                        element.Params.Insert(0, new HkParam { Name = "id", Value = id });
+                }
+
+                var payload = element.Params.FirstOrDefault(x => x.Name == "payload");
+                var text = payload?.Value ?? "";
+                if (payload != null && text.Length > 0 && text != "null"
+                    && !text.StartsWith("#", StringComparison.Ordinal))
+                {
+                    var payloadObj = new HkObject
+                    {
+                        Id = AllocId(),
+                        ClassName = "hkbStringEventPayload",
+                        Signature = "0xed7f9d0",
+                        Params = new List<HkParam> { new() { Name = "data", Value = text } }
+                    };
+                    _allObjects.Add(payloadObj);
+                    payload.Value = payloadObj.Id;
+                }
+                else if (payload == null)
+                {
+                    element.Params.Add(new HkParam { Name = "payload", Value = "null" });
+                }
+            }
+
+            var arrayObj = new HkObject
+            {
+                Id = AllocId(),
+                ClassName = "hkbStateMachineEventPropertyArray",
+                Signature = "0xb07b4388",
+                Params = new List<HkParam>
+                {
+                    new HkParam
+                    {
+                        Name = "events",
+                        Children = param.Children,
+                        NumElements = param.Children.Count.ToString()
+                    }
+                }
+            };
+            RegisterObject(arrayObj, owner.Params.FirstOrDefault(p => p.Name == "name")?.Value
+                                     + "_" + member);
+
+            // In place, not remove-and-append: the param's position is the order the
+            // source wrote it in, and a re-export that moves it is a diff against her
+            // file for no reason. Children first, since Value prefers them.
+            param.Children = new List<HkObject>();
+            param.NumElements = "";
+            param.Value = arrayObj.Id;
+        }
+
         /// <summary>
         /// Moves an owner's inline <c>transitions:</c> list into an
         /// hkbStateMachineTransitionInfoArray of its own and points
@@ -1897,7 +1990,15 @@ namespace SageHavokEditor.Core
                             // Object item: - key: value
                             currentItem = new Dictionary<string, string>(
                                 StringComparer.OrdinalIgnoreCase);
-                            ParseKv(rest, currentItem);
+                            // With nest, so a first key that opens a mapping opens a
+                            // level like any other key. Without it the item's first
+                            // nested map was the one map stored flat: a transition's
+                            // triggerInterval members landed bare while
+                            // initiateInterval's kept their path, so the two halves of
+                            // one struct were held two different ways. The key sits two
+                            // columns right of the dash, and that is the depth a
+                            // sibling has to pop it at.
+                            ParseKv(rest, currentItem, nest, indent + 2);
                             currentListIsObjects = true;
                         }
                         else
