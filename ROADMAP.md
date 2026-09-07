@@ -101,7 +101,7 @@ Her merge work adds one check to the four in **Validation** above: reachability 
 
 **Licensing, settled 2026-09-07 by Cassie directly, and this section previously had it backwards.** The plan is **GPL-3.0**, with a possible exception covering Nexus publishing rights; the all-rights-reserved `LICENSE` applies to the monorepo, not to where the behaviour work is heading. What stood here before argued the opposite at length — that `sct-esm` being "first-party clean-room (no GPL) by design" meant the compiler sat on the GPL-free side of a line she was deliberately holding, so her code into this GPL-3.0 editor was the direction her own notes steered away from. That reasoning is dead; do not resurrect it from git history.
 
-The operating rule does not change yet, and the reason is narrower than it was. A message is not a licence file: until the repository's `LICENSE` actually says GPL-3.0, formats, findings, docs and measurements travel freely in both directions and code travels in neither. The difference is that this is now a wait with an end, not a standing incompatibility — so anything blocked purely on licensing is worth *listing* rather than designing around.
+The operating rule does not change yet, and the reason is narrower than it was. A message is not a licence file: until the repository's `LICENSE` actually says GPL-3.0, formats, findings, docs and measurements travel freely in both directions and code travels in neither. **Re-read at the source on 2026-09-07, once the repository went public: it still reads all-rights-reserved, and it pre-empts exactly this reading by declaring that its terms supersede any SPDX identifier or GPL marker found elsewhere in the repo or its tooling** — see the 2026-09-07 sweep below. The difference is that this is now a wait with an end, not a standing incompatibility — so anything blocked purely on licensing is worth *listing* rather than designing around.
 
 - [x] **`triggers:` is dropped on YAML import.** `YamlBehaviorImporter` has no case for a clip's inline trigger list, so the mapping collapses into a single mashed scalar (`-0.00899999961truefalsefalseclipEndnull`) instead of an `hkbClipTriggerArray`. It hits **202 of 289 clips** in vanilla `0_master` (31 of 36 in `chickenbehavior`), and it is what fails the conversion to `.hkx`. Needs the array plus its inline `hkbClipTrigger` elements built, with `event: 'clipEnd'` resolved to an `eventId` the way transition events already are — the clip preview's trigger editing knows the shape.
 
@@ -214,7 +214,7 @@ Four questions this section had open are now settled, from Cassie in conversatio
 - **The `Havok/` schema is sufficient to write the YAML** — "the havok/ root directory should have everything it needs in order to write the actual yamls." So the exporter should be **driven by her descriptors** rather than hard-coding a field list per class: read `name`/`parent`/`fields` and emit. Behaviour classes are migrated already; other families are still moving over, so behaviour is the slice to build against.
 - **Merge semantics are moving into the same schema** — each class declares how it merges onto itself on a node collision (the `merge:` field policies). A tool that produces deltas therefore gets its conflict rules from the same data it gets its layout from, rather than reimplementing a merge engine.
 
-**One practical licence consequence.** Her descriptors are the natural input for all of this, and they live in an all-rights-reserved repo. So read them from the user's own SCT checkout or from a bundle at runtime — do not vendor a copy into this GPL-3.0 tree while her licence is provisional. Same rule as her code: use the format, don't ship her files.
+**One practical licence consequence.** Her descriptors are the natural input for all of this, and they live in an all-rights-reserved repo — public since 2026-09-07, which makes them readable by anyone but grants nothing. So read them from the user's own SCT checkout or from a bundle at runtime — do not vendor a copy into this GPL-3.0 tree while her licence is provisional. Same rule as her code: use the format, don't ship her files.
 
 ### Answered 2026-09-07 — schema versioning, bundle shape, animations
 
@@ -301,9 +301,11 @@ the conversation is ahead of the code and everything here is a reading of what e
   *declared* master is absent is dropped, propagated to fixpoint, because its overrides would bind
   to nothing; and a master cycle warns and degrades to loadorder order rather than vanishing.
   Roughly 160 lines with no game dependency. Those rules are an **algorithm**, which travels under
-  the rule above where a static C++23 library linking `havok-core` does not: a vcpkg dependency
-  would mean a C ABI shim and P/Invoke out of WPF, against a repo whose `LICENSE` still reads
-  all-rights-reserved-provisional whatever the plan is. Staying in sync by agreeing those rules
+  the rule above where a static C++23 library does not: a vcpkg dependency would mean a C ABI shim
+  and P/Invoke out of WPF, against a repo whose `LICENSE` still reads all-rights-reserved-provisional
+  whatever the plan is. (This said "a static C++23 library linking `havok-core`" — wrong, and
+  corrected in the 2026-09-07 sweep below, where the published `cb-resolve` port turns out to be
+  deliberately havok-core-free. The shim and the licence carry the call on their own.) Staying in sync by agreeing those rules
   costs less than staying in sync by linkage, and it is the trade this section already made for
   the formats.
 
@@ -340,6 +342,70 @@ the conversation is ahead of the code and everything here is a reading of what e
   name-set fallback where they don't, which today means nearly everywhere. And the bundle root to
   scan is `Data\community_behaviors\plugins\`, not the `behavior_relay` path her own editor still
   points at.
+
+### Swept 2026-09-07 — CB went public, and `cb-resolve` is a published port
+
+Prompted by Cassie announcing two repositories: `Community-Behaviors` made **public**, and
+[`CB-loader`](https://github.com/Cassieandstuff/CB-loader), "a thin port file repo for including the
+load order resolution mechanics from Community Behaviors." Read from the repositories, not from the
+messages, and they differ: "ports are live" in conversation, **"Status: scaffold (not yet usable)"** in
+the port's own README.
+
+- **The port is a vcpkg registry with one port, and it is scaffold.** `CB-loader` is ~5 KB:
+  `ports/cb-resolve/{portfile.cmake,vcpkg.json}` plus a README, and **no `versions/` database** — so
+  it is an overlay port today rather than a consumable registry (`vcpkg x-add-version cb-resolve` is
+  the missing step, named in its own README). The port pins CB **`v0.3.2`** through
+  `vcpkg_from_github` with a real SHA512, configures `-DCB_RESOLVE_ONLY=ON`, and exports
+  `cb::cb-resolve`. `FetchContent` against the tag works today without the registry at all.
+
+- **`cb-resolve` is havok-core-free, which corrects the `PlanLoadOrder` bullet above.** That bullet
+  called the linkage option "a static C++23 library linking `havok-core`". It is not:
+  `docs/consuming-cb-resolve.md` states that consuming CB as a subproject builds *only* that surface
+  and skips the SKSE plugin, the converter, CommonLibSSE **and havok-core** — load-order resolution
+  is deliberately havok-core-free. The public contract is `cb::resolve::` behind one header
+  (`<cb-resolve/CbResolve.h>`): `Archive` (read a packed `.hky`), `LoadOrder::LoadMerged →
+  ResolvedGraph` (the merge), `SchemaRegistry` (the merge classifier), `UnitSource`. So the surface
+  is narrower and cleaner than this section assumed, and the correction is to us.
+
+- **The call in that bullet stands anyway, on the two reasons that were never about `havok-core`.**
+  Consuming it requires **MSVC, C++23, `ryml` supplied by the consumer's toolchain, and a matching
+  static `/MT` triplet**; this is a C# WPF application, so it still means a C ABI shim and P/Invoke
+  across it. And the constraint recorded above is that `.hky` stays a supported format and **never a
+  dependency** — linking `cb-resolve` is precisely making it one, in a tool that has to keep working
+  end to end for someone who never installs a runtime compiler. Reimplementing `PlanLoadOrder`'s
+  rules from the algorithm remains the trade. What the port genuinely changes is the *sync* problem
+  it was traded against: there is now a tagged version and a written public contract to agree those
+  rules against, which is worth more here than the linkage would have been.
+
+- **Public is not a licence change, and the `LICENSE` file now says so in terms.** At HEAD it is
+  still `All rights reserved` — "No license or permission is granted to any person or entity to use,
+  copy, modify, merge, publish, distribute, sublicense, or sell any part of this repository", and
+  access "does NOT grant any of the rights above". The temporary notice confirms the GPL-3.0 +
+  linking-exception plan settled on 2026-09-07 above, and adds the part that decides cases like this
+  one: those terms "supersede any other license text, reference, notice, or SPDX identifier that may
+  appear anywhere else in this repository or its tooling (including any aspirational `GPL-3.0`
+  markers in build or packaging files)". So a GPL marker found in her build files grants nothing, and
+  neither does the repository being readable.
+
+- **Her own port says the same, unprompted.** `CB-loader`'s README: "Public ≠ open source… **do NOT
+  publish this registry for third-party consumption**… This port is for the copyright holder's own /
+  authorized use only," with `vcpkg.json` shipping `"license": null` and `vcpkg_install_copyright`
+  commented out until the flip. Both are to be set "when CB is released under GPL-3.0 (+ a linking
+  exception)". The operating rule above is therefore unchanged by any of this: formats, findings,
+  docs and measurements cross, code crosses in neither direction.
+
+- **One thing did unblock: reading.** The descriptors, `Resolver.cpp`, the merge policy and the
+  `cb-resolve` contract are now readable by anyone without collaborator access, so every "checked
+  against her repo" claim in this section is independently verifiable and re-checkable at a tag
+  rather than a moving `main`. The rule on *using* them is untouched — read from the user's own
+  checkout or a bundle at runtime, do not vendor her files into this GPL-3.0 tree.
+
+- [ ] **Keep the licence-gated list, and re-check it at the flip.** Blocked purely on the `LICENSE`
+  file, nothing else: linking `cb-resolve` for load-order resolution (still wanted only if the
+  never-a-dependency constraint is revisited), and vendoring the `Havok/` class descriptors instead
+  of reading them from the user's checkout. Both become ordinary engineering decisions the day CB's
+  `LICENSE` actually says GPL-3.0 — and the linking exception's wording matters for the first, since
+  a P/Invoke shim into a static library is the case such an exception exists to cover.
 
 ## Save / IO
 
