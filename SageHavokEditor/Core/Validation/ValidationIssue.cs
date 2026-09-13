@@ -40,7 +40,20 @@ namespace SageHavokEditor.Core.Validation
         /// converts, the game loads it, and the actor T-poses or the process hard
         /// -faults with nothing written to any log.
         /// </summary>
-        public bool IsStructural => IsError && Structural.Contains(Category);
+        public bool IsStructural => IsError && !DroppedOnSave && Structural.Contains(Category);
+
+        /// <summary>
+        /// True when the object this finding sits on is unreachable from the file
+        /// root, so an <c>.hkx</c> save drops it before the bytes are written.
+        ///
+        /// It is what keeps the refusal honest. The refusal is a statement about
+        /// the file that leaves the editor, and a contradiction inside an object
+        /// that never gets written is not in that file — refusing over one would
+        /// block a save that would have produced a perfectly good graph. The
+        /// finding is still reported: the object is about to be lost, which is
+        /// worth saying, and the <see cref="CategoryPruned"/> warning says it.
+        /// </summary>
+        public bool DroppedOnSave { get; set; }
 
         /// <summary>
         /// Distinguishes two findings of the same check on the same object, where
@@ -87,6 +100,8 @@ namespace SageHavokEditor.Core.Validation
         public const string CategoryDuplicateStateId = "duplicate-state-id";
         /// <summary>A transition whose <c>toStateId</c> is in no state of its machine.</summary>
         public const string CategoryToStateId = "to-state-id";
+        /// <summary>A transition whose <c>toNestedStateId</c> is in no state of the nested machine it enters.</summary>
+        public const string CategoryToNestedStateId = "to-nested-state-id";
         /// <summary>Two arrays the runtime pairs by position disagreeing on length.</summary>
         public const string CategoryArrayPairing = "array-pairing";
         /// <summary>A state machine with no states at all.</summary>
@@ -98,7 +113,7 @@ namespace SageHavokEditor.Core.Validation
         {
             CategoryBrokenRef, CategoryNullGenerator, CategoryIndexRange,
             CategoryStartState, CategoryDuplicateStateId, CategoryToStateId,
-            CategoryArrayPairing, CategoryMissingRoot,
+            CategoryToNestedStateId, CategoryArrayPairing, CategoryMissingRoot,
         };
     }
 }

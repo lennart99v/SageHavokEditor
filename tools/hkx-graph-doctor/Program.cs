@@ -94,6 +94,9 @@ static HashSet<string> Fingerprint(GraphDoctorReport r) =>
 
 var baseline = Run();
 var baseFingerprint = Fingerprint(baseline);
+// Taken here rather than at the fault-injection header: the soft-ref cross-check
+// below needs it, and it is the same set either way — nothing has been mutated yet.
+var structuralBaselineEarly = baseline.StructuralFingerprints();
 
 Console.WriteLine();
 Console.WriteLine($"== baseline ==  {baseline.Headline}");
@@ -110,7 +113,13 @@ Console.WriteLine();
 Console.WriteLine("== the new checks are quiet on a stock file ==");
 // The pre-existing validator checks are NOT asserted silent: vanilla
 // dragonbehavior really does carry duplicate and dangling stateIds, and those
-// findings are the 0.6 validator's, not the doctor's.
+// findings are the 0.6 validator's, not the doctor's. The soft-ref check's
+// categories stay off this list for the same reason and it surprised me: the
+// same file carries nine more dangling toStateId at the wildcard and nested
+// sites the old check skipped, and four dangling toNestedStateId. Asserting
+// silence there would be asserting that Bethesda's dragon is clean, which it is
+// not. What pins that check instead is the raw-XML re-derivation below, which is
+// a stronger claim than a count of zero.
 foreach (var quiet in new[]
          {
              ValidationIssue.CategoryNullGenerator,
@@ -235,6 +244,117 @@ foreach (var quiet in new[]
         $"+{reported.Except(expected).Count()} / -{expected.Except(reported).Count()}");
 }
 
+// The soft-ref findings get the prune check's treatment: re-derived from the raw
+// XML with ElementTree-style element walking instead of the model's resolver, so
+// the two disagree the moment GraphDoctor's walk is wrong. It matters more here
+// than anywhere else in this file, because these findings are allowed to refuse a
+// save, and because they are not rare on shipped content — vanilla dragonbehavior
+// carries fifteen of them, nine dangling toStateId at sites the old check skipped
+// and six dangling toNestedStateId, every one inherited rather than authored here.
+{
+    Console.WriteLine();
+    Console.WriteLine("== the soft-ref findings re-derive from the raw XML ==");
+
+    var doc = System.Xml.Linq.XDocument.Load(args[0], System.Xml.Linq.LoadOptions.PreserveWhitespace);
+    var byId = doc.Descendants("hkobject")
+        .Where(e => e.Attribute("name") != null)
+        .ToDictionary(e => e.Attribute("name")!.Value);
+
+    System.Xml.Linq.XElement? Par(System.Xml.Linq.XElement? o, string name) =>
+        o?.Elements("hkparam").FirstOrDefault(p => p.Attribute("name")?.Value == name);
+    string Val(System.Xml.Linq.XElement? o, string name)
+    {
+        var p = Par(o, name);
+        // Only the element's own text: a nested <hkobject> child's content must
+        // not be glued on, which is what .Value would do.
+        return p == null ? "" : string.Concat(p.Nodes()
+            .OfType<System.Xml.Linq.XText>().Select(t => t.Value)).Trim();
+    }
+    List<string> Refs(System.Xml.Linq.XElement? o, string name) =>
+        System.Text.RegularExpressions.Regex.Matches(Val(o, name), @"#\d+")
+            .Select(m => m.Value).ToList();
+    System.Xml.Linq.XElement? Ref1(System.Xml.Linq.XElement? o, string name)
+    {
+        var r = Refs(o, name);
+        return r.Count > 0 && byId.TryGetValue(r[0], out var t) ? t : null;
+    }
+    List<System.Xml.Linq.XElement> Inline(System.Xml.Linq.XElement? o, string name) =>
+        Par(o, name)?.Elements("hkobject").Where(e => e.Attribute("name") == null).ToList()
+        ?? new List<System.Xml.Linq.XElement>();
+
+    System.Xml.Linq.XElement? Nested(System.Xml.Linq.XElement state)
+    {
+        var seen = new HashSet<System.Xml.Linq.XElement>();
+        var cur = Ref1(state, "generator");
+        while (cur != null && seen.Add(cur))
+        {
+            var cls = cur.Attribute("class")?.Value;
+            if (cls == "hkbStateMachine") return cur;
+            if (cls == "hkbBehaviorReferenceGenerator") return null;
+            cur = Ref1(cur, "generator");
+        }
+        return null;
+    }
+
+    var expectTo = new List<string>();
+    var expectNested = new List<string>();
+
+    foreach (var sm in byId.Values.Where(e => e.Attribute("class")?.Value == "hkbStateMachine"))
+    {
+        var states = Refs(sm, "states").Where(byId.ContainsKey).Select(r => byId[r]).ToList();
+        if (states.Count == 0) continue;
+        var ids = states.Select(st => Val(st, "stateId")).ToHashSet();
+
+        var arrays = new List<(System.Xml.Linq.XElement? A, bool W)> { (Ref1(sm, "wildcardTransitions"), true) };
+        arrays.AddRange(states.Select(st => (Ref1(st, "transitions"), false)));
+
+        foreach (var (array, wild) in arrays)
+        {
+            if (array == null) continue;
+            foreach (var tr in Inline(array, "transitions"))
+            {
+                var isNested = Val(tr, "flags").Contains("TO_NESTED");
+                if (!wild && !isNested) continue;
+                var to = Val(tr, "toStateId");
+                if (to.Length == 0 || to == "-1") continue;
+                var arrayId = array.Attribute("name")!.Value;
+                if (!ids.Contains(to)) { expectTo.Add(arrayId); continue; }
+                if (!isNested) continue;
+
+                var tn = Val(tr, "toNestedStateId");
+                if (tn.Length == 0 || tn == "-1") continue;
+                var inner = Nested(states.First(st => Val(st, "stateId") == to));
+                if (inner == null) continue;
+                var innerIds = Refs(inner, "states").Where(byId.ContainsKey)
+                    .Select(r => Val(byId[r], "stateId")).ToHashSet();
+                if (innerIds.Count == 0 || innerIds.Contains(tn)) continue;
+                expectNested.Add(arrayId);
+            }
+        }
+    }
+
+    // Compared as sets of anchor objects: a machine with two identically broken
+    // transitions is one place to go and look, which is what the finding is for.
+    var gotTo = baseline.Issues
+        .Where(i => i.Category == ValidationIssue.CategoryToStateId && i.Subject == "transitions")
+        .Select(i => i.ObjectId).ToHashSet();
+    var gotNested = baseline.Issues
+        .Where(i => i.Category == ValidationIssue.CategoryToNestedStateId)
+        .Select(i => i.ObjectId).ToHashSet();
+
+    Check($"{expectTo.Distinct().Count()} dangling toStateId at the sites check 7 skips",
+        gotTo.SetEquals(expectTo.ToHashSet()),
+        $"+{gotTo.Except(expectTo).Count()} / -{expectTo.Except(gotTo).Count()}");
+    Check($"{expectNested.Distinct().Count()} dangling toNestedStateId",
+        gotNested.SetEquals(expectNested.ToHashSet()),
+        $"+{gotNested.Except(expectNested).Count()} / -{expectNested.Except(gotNested).Count()}");
+
+    // Whatever they are, they came with the file, so they are in the load-time
+    // baseline and no save is refused over them.
+    Check("all of them are inherited, so nothing is refused on an untouched file",
+        baseline.StructuralErrors.All(i => structuralBaselineEarly.Contains(i.Fingerprint)));
+}
+
 // The faults below all need a behaviour graph to break. A character, project or
 // skeleton file still exercises everything above, which is the point of running
 // one through: the doctor must stay quiet on a file that has no graph at all.
@@ -250,7 +370,7 @@ if (!manager.ObjectMap.Values.Any(o => o.ClassName == "hkbStateMachine"))
 // Each fault names the issue it must produce; the doctor is re-run, the new
 // issues are diffed against the baseline, and the file is put back.
 
-var structuralBaseline = baseline.StructuralFingerprints();
+var structuralBaseline = structuralBaselineEarly;
 
 void Fault(string title, string expectCategory, Func<string> apply, Action undo,
            Func<GraphDoctorReport, string, bool>? extra = null,
@@ -465,6 +585,182 @@ else
     Console.WriteLine();
     Console.WriteLine("== a clip names an unregistered animation ==");
     Console.WriteLine("  [SKIP] no character file given — pass one to exercise this check");
+}
+
+// -- 7b. a state deleted out from under a wildcard transition -------------
+// The soft-ref case, and the one that used to pass in silence: reachability GC
+// protects every #ref, so deleting a state really does remove it from the file —
+// and leaves every bare-integer toStateId that named it pointing at nothing.
+// Before the soft-ref check this produced zero findings and the .hkx save went
+// ahead, which is the whole reason the check exists. Re-run this with the check
+// removed and it fails, which is the only way to know it is doing the work.
+{
+    // A machine whose wildcard array targets one of its own states. Wildcard
+    // transitions are how most Skyrim machines are entered, so this is the
+    // common shape rather than a contrived one.
+    HkObject? machine = null, wild = null, victim = null;
+    foreach (var sm in manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
+    {
+        var array = manager.Resolve(ValueOf(sm, "wildcardTransitions"));
+        if (array == null) continue;
+        var targets = array.Params.Where(p => p.Name == "transitions").SelectMany(p => p.Children)
+            .Where(c => string.IsNullOrEmpty(c.Id))
+            .Select(tr => ValueOf(tr, "toStateId")).ToHashSet();
+
+        victim = HkRefList.Tokens(ValueOf(sm, "states"))
+            .Select(manager.Resolve)
+            .FirstOrDefault(st => st != null && targets.Contains(ValueOf(st, "stateId")));
+        if (victim == null) continue;
+
+        machine = sm; wild = array;
+        break;
+    }
+
+    if (machine == null)
+    {
+        Console.WriteLine();
+        Console.WriteLine("== a state deleted out from under a wildcard transition ==");
+        Console.WriteLine("  [SKIP] no machine in this file has a wildcard transition into its own state");
+    }
+    else
+    {
+        var states = machine.Params.First(p => p.Name == "states");
+        var (oldValue, oldChildren) = Snapshot(states);
+        var oldCount = states.NumElements;
+        var sid = ValueOf(victim!, "stateId");
+
+        Fault($"the state a wildcard transition enters is deleted "
+              + $"('{victim!.DisplayName}', stateId {sid}, from '{machine.DisplayName}')",
+            ValidationIssue.CategoryToStateId,
+            () =>
+            {
+                // Exactly what the graph view's Delete Node does: drop the state
+                // from its machine's states[] and from the object map. Nothing
+                // touches the wildcard transition that names its stateId.
+                var kept = HkRefList.Tokens(oldValue).Where(id => id != victim.Id).ToList();
+                states.Children.Clear();
+                foreach (var c in oldChildren) if (c.Id != victim.Id) states.Children.Add(c);
+                states.Value = string.Join(" ", kept);
+                states.NumElements = kept.Count.ToString();
+                manager.ObjectMap.Remove(victim.Id);
+                return wild!.Id;
+            },
+            () =>
+            {
+                manager.ObjectMap[victim.Id] = victim;
+                Restore(states, oldValue, oldChildren);
+                states.NumElements = oldCount;
+            });
+    }
+}
+
+// -- 7c. a nested destination that no longer exists -----------------------
+// The second soft ref. A TO_NESTED transition names a state inside the machine
+// under its destination's generator, and nothing in the old checks looked at it
+// at all: check 7 steps over every transition carrying the flag.
+{
+    // The transition has to be one whose nested machine is in *this* file. A
+    // TO_NESTED transition into an hkbBehaviorReferenceGenerator names a state in
+    // a graph the editor hasn't got, so the check declines it on purpose and a
+    // test that picked one would be asserting the opposite of the intent — which
+    // is exactly what happened first time round: 1hm_locomotion, blockbehavior and
+    // magicbehavior all lead with a reference, and all three went red.
+    HkObject? NestedMachineOf(HkObject state)
+    {
+        var seen = new HashSet<string>();
+        var current = manager.Resolve(ValueOf(state, "generator"));
+        while (current != null && seen.Add(current.Id))
+        {
+            if (current.ClassName == "hkbStateMachine") return current;
+            if (current.ClassName == "hkbBehaviorReferenceGenerator") return null;
+            current = manager.Resolve(ValueOf(current, "generator"));
+        }
+        return null;
+    }
+
+    HkObject? nestedArray = null, nestedTransition = null;
+    foreach (var sm in manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
+    {
+        var states = HkRefList.Tokens(ValueOf(sm, "states"))
+            .Select(manager.Resolve).Where(o => o != null).ToList();
+
+        var arrays = new List<HkObject?> { manager.Resolve(ValueOf(sm, "wildcardTransitions")) };
+        arrays.AddRange(states.Select(st => manager.Resolve(ValueOf(st!, "transitions"))));
+
+        foreach (var array in arrays)
+        {
+            if (array == null) continue;
+            foreach (var tr in array.Params.Where(p => p.Name == "transitions")
+                         .SelectMany(p => p.Children)
+                         .Where(c => string.IsNullOrEmpty(c.Id)
+                                     && ValueOf(c, "flags").Contains("TO_NESTED")))
+            {
+                var dest = states.FirstOrDefault(st => ValueOf(st!, "stateId") == ValueOf(tr, "toStateId"));
+                if (dest == null || NestedMachineOf(dest) == null) continue;
+                nestedArray = array;
+                nestedTransition = tr;
+                break;
+            }
+            if (nestedTransition != null) break;
+        }
+        if (nestedTransition != null) break;
+    }
+
+    if (nestedTransition == null)
+    {
+        Console.WriteLine();
+        Console.WriteLine("== a transition's nested destination no longer exists ==");
+        Console.WriteLine("  [SKIP] no TO_NESTED transition in this file enters a machine it also contains");
+    }
+    else
+    {
+        var toNested = nestedTransition.Params.First(p => p.Name == "toNestedStateId");
+        var old = toNested.Value;
+
+        Fault($"a transition asks for a nested state that isn't there (was {old})",
+            ValidationIssue.CategoryToNestedStateId,
+            () => { toNested.Value = "8123"; return nestedArray!.Id; },
+            () => toNested.Value = old);
+    }
+}
+
+// -- 7d. a fault inside an object the save is about to drop ---------------
+// The refusal is a statement about the file that gets written. An object nothing
+// reaches is not in that file, so a contradiction inside it must be reported and
+// must not refuse the save — otherwise deleting a subtree makes the next save
+// impossible for a reason the user cannot act on.
+{
+    Console.WriteLine();
+    Console.WriteLine("== a contradiction inside an object the save drops is reported, not refused ==");
+
+    var orphan = new HkObject { Id = "#9401", ClassName = "hkbStateMachineStateInfo" };
+    orphan.Params.Add(new HkParam { Name = "name", Value = "DoctorTest_Orphan" });
+    orphan.Params.Add(new HkParam { Name = "stateId", Value = "9401" });
+    // A null generator is structural, and would refuse a save on a live object.
+    orphan.Params.Add(new HkParam { Name = "generator", Value = "null" });
+    manager.ObjectMap[orphan.Id] = orphan;
+
+    try
+    {
+        var report = Run();
+        var mine = report.Issues.Where(i => i.ObjectId == orphan.Id).ToList();
+
+        Check("the fault is still reported",
+            mine.Any(i => i.Category == ValidationIssue.CategoryNullGenerator));
+        Check("and so is the loss of the object",
+            mine.Any(i => i.Category == ValidationIssue.CategoryPruned));
+        Check("but nothing on it is structural",
+            mine.All(i => !i.IsStructural),
+            string.Join("; ", mine.Where(i => i.IsStructural).Select(i => i.Category)));
+        Check("so the save is not refused",
+            report.StructuralErrors.All(i => structuralBaseline.Contains(i.Fingerprint)),
+            string.Join("; ", report.StructuralErrors
+                .Where(i => !structuralBaseline.Contains(i.Fingerprint)).Take(3)
+                .Select(i => i.Fingerprint)));
+    }
+    finally { manager.ObjectMap.Remove(orphan.Id); }
+
+    Check("removing it restores the baseline exactly", Fingerprint(Run()).SetEquals(baseFingerprint));
 }
 
 // -- 8. an edit that reworders somebody else's error, and must not be blamed --
