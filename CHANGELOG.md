@@ -24,16 +24,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   has one caller, `ClipPreviewService`; annotation and trigger editing read the
   annotations straight off the model and worked on these files all along.
 
-  **Written without a sample to test against**, which is the honest caveat: all 63
-  animations available here are spline-compressed. `tools/hkx-anim-interleaved`
-  verifies everything that can be verified without one — it decodes a real
-  animation with the trusted spline decoder, re-emits those exact frames as an
+  **Written without a sample, then confirmed against four.** It first shipped
+  verified only as far as a synthetic round trip could reach:
+  `tools/hkx-anim-interleaved` decodes a real animation with the trusted spline
+  decoder, re-emits those exact frames as an
   `hkaInterleavedUncompressedAnimation`, parses it back through the new branch and
-  requires a match: **62 animations, worst transform delta 9.5e-07**, the
-  precision the text itself carries. What that cannot settle is whether real files
-  store the array frame-major rather than track-major; it is Havok's documented
-  layout, but one real file should be run through the preview before this is
-  called settled. Requested by Sleme [SKYB].
+  requires a match — **62 animations, worst transform delta 9.5e-07**, the
+  precision the text itself carries.
+
+  What that could not settle was whether real files store the array frame-major
+  rather than track-major. Sleme supplied four real interleaved imp attack
+  animations the same day, and the layout now falls out of the motion rather than
+  out of documentation: an animation is smooth in time and not in bone index, so
+  the reading that makes consecutive samples of a bone nearly identical is the
+  real one. **Frame-major wins by 38–55×.** The files also agree with the parse on
+  every declared fact — frame counts and durations exact, all four landing on
+  exactly **30.00 fps** — which a wrong reshape would not produce. Requested by
+  Sleme [SKYB], and settled with his files.
 
 - **The graph doctor now checks the references reachability can't protect.**
   Saving an `.hkx` writes what the walk from the file root reaches and drops the
