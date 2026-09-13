@@ -479,6 +479,14 @@ the port's own README.
 
 ## Animation / clip preview
 
+- [x] **Preview interleaved / uncompressed animations.** Requested by Sleme [SKYB] on Discord 2026-09-13, whose sound work kept hitting *"No hkaSplineCompressedAnimation found (interleaved/uncompressed animations aren't supported yet)"*. Spline-compressed is the packed form Bethesda ships and the only one the preview could read; interleaved is the uncompressed form — every track's transform written out verbatim per frame — which authoring and conversion tools emit freely. `HavokAnimationParser` now picks a decoder instead of assuming one, and the interleaved decoder needs no decompression at all: the transforms *are* the frames. Done 2026-09-13.
+
+  **Scope worth knowing before anyone reports it as broken again:** `HavokAnimationParser.Parse` has exactly one caller, `ClipPreviewService`, so this only ever blocked the 3D preview. Annotation and trigger editing read the annotation params straight off the model and worked on interleaved files the whole time — which is why a user doing sound work hit it at all rather than being stopped much earlier.
+
+  **Written without a sample, and that is the caveat.** All 63 animations on this machine are spline-compressed; there is not one interleaved file to test against. What is verified is everything that could be: `tools/hkx-anim-interleaved` decodes a real spline animation with the trusted decoder, re-emits those exact frames as an `hkaInterleavedUncompressedAnimation`, parses *that* back through the new branch and requires the frames to match — **62 animations, worst transform delta 9.5e-07**, which is the precision the `F6` text carries. That pins the reshape, the ten-float `(t)(q)(s)` grouping, the `(x,y,z,w)` quaternion order and the reference-pose overlay. The grouping is not guesswork either: it is the same shape a skeleton's `referencePose` uses, so it reuses `SkeletonParser`'s reading of it, and HKX2's own `ReadQSTransformArray` chunks by the same ten floats.
+
+  **The one thing no file here can settle** is whether a real Havok file stores the array frame-major (all of frame 0's tracks, then frame 1's) rather than track-major. That is Havok's documented layout and what `getFrame` indexes, and the harness writes it that way — so the round trip cannot disprove it. If it is wrong, the preview shows a coherent but wrong pose rather than an error, which is this domain's usual failure. **Run one real interleaved file through the preview before calling this settled.**
+
 - [ ] **Export an animation as FBX.** Read-only preview is half a bridge: you can
   watch a clip but not take it anywhere. `tools/hkx-fbx-export` is the harness —
   it feeds `HavokSplineDecoder`'s `[frame][bone]` locals plus the project

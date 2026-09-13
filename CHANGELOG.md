@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The clip preview plays interleaved / uncompressed animations.** It used to
+  refuse anything that wasn't spline-compressed — *"No
+  hkaSplineCompressedAnimation found"* — which is the packed form Bethesda ships.
+  Interleaved is the uncompressed form, every track's transform written out
+  verbatim for every frame, and authoring and conversion tools emit it freely.
+  `HavokAnimationParser` now picks a decoder rather than assuming one; the
+  interleaved decoder needs no decompression at all, because the transforms
+  already are the frames. Everything after decoding — track-to-bone mapping, the
+  reference-pose overlay, annotations, the viewport — was already shared.
+
+  Worth recording because it was mis-scoped in the report and probably will be
+  again: this only ever blocked the **3D preview**. `HavokAnimationParser.Parse`
+  has one caller, `ClipPreviewService`; annotation and trigger editing read the
+  annotations straight off the model and worked on these files all along.
+
+  **Written without a sample to test against**, which is the honest caveat: all 63
+  animations available here are spline-compressed. `tools/hkx-anim-interleaved`
+  verifies everything that can be verified without one — it decodes a real
+  animation with the trusted spline decoder, re-emits those exact frames as an
+  `hkaInterleavedUncompressedAnimation`, parses it back through the new branch and
+  requires a match: **62 animations, worst transform delta 9.5e-07**, the
+  precision the text itself carries. What that cannot settle is whether real files
+  store the array frame-major rather than track-major; it is Havok's documented
+  layout, but one real file should be run through the preview before this is
+  called settled. Requested by Sleme [SKYB].
+
 - **The graph doctor now checks the references reachability can't protect.**
   Saving an `.hkx` writes what the walk from the file root reaches and drops the
   rest, which is a total guarantee for a `#ref` and none at all for the
