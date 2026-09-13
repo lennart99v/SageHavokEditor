@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using HKX2;
 using SageHavokEditor.Models;
 
 namespace SageHavokEditor.Core.Animation
@@ -77,20 +78,16 @@ namespace SageHavokEditor.Core.Animation
     }
 
     /// <summary>
-    /// Applies annotation edits to an animation .hkx/.xml on disk. The file is loaded
-    /// into the HkPackfile model, the hkaSplineCompressedAnimation's annotationTracks
-    /// array is rewritten, and the file is saved back through the same XML↔HKX pipeline
-    /// the behavior save uses. Tracks and annotations are INLINE hkobjects (no #id) —
+    /// Applies annotation edits to spline or interleaved animation .hkx/.xml files.
+    /// Binary files are edited directly through HKX2 to retain sample precision and
+    /// the source packfile layout. XML uses the HkPackfile model.
+    /// Tracks and annotations are INLINE hkobjects (no #id) —
     /// they are created straight into the owning param's Children and wired in the same
     /// action, so nothing can be orphaned/pruned on save. A one-time
     /// "&lt;file&gt;.bak" copy is made before the first overwrite.
     /// </summary>
     public sealed class AnimationAnnotationEditor
     {
-        private readonly HkxConversionService _conv;
-
-        public AnimationAnnotationEditor(HkxConversionService conv) => _conv = conv;
-
         public async Task<AnnotationEditResult> ApplyAsync(string animFullPath, AnnotationEdit edit)
         {
             try
@@ -98,10 +95,14 @@ namespace SageHavokEditor.Core.Animation
                 if (!File.Exists(animFullPath))
                     return Fail($"Animation not found: {animFullPath}");
 
+                if (!Enum.IsDefined(edit.Kind) || edit.TrackIndex < 0 ||
+                    edit.NewSet.Any(a => a.TrackIndex < 0 || !float.IsFinite(a.Time)) ||
+                    !float.IsFinite(edit.NewTime) || !float.IsFinite(edit.OldTime))
+                    return Fail("Invalid annotation edit: check the operation, track indices and times.");
+
                 bool binary = HkxConversionService.DetectFormat(animFullPath) == HkxFormat.HKX;
-                string xml = binary
-                    ? await _conv.HkxToXmlAsync(animFullPath)
-                    : await File.ReadAllTextAsync(animFullPath);
+                if (binary) return await Task.Run(() => ApplyBinary(animFullPath, edit));
+                string xml = await File.ReadAllTextAsync(animFullPath);
 
                 var serializer = new System.Xml.Serialization.XmlSerializer(typeof(HkPackfile));
                 HkPackfile pack;
@@ -109,30 +110,21 @@ namespace SageHavokEditor.Core.Animation
                     pack = (HkPackfile)serializer.Deserialize(sr)!;
 
                 var anim = pack.Sections.SelectMany(s => s.Objects)
-                    .FirstOrDefault(o => o.ClassName == "hkaSplineCompressedAnimation");
+                    .FirstOrDefault(o => HavokAnimationParser.IsSupportedAnimation(o.ClassName));
                 if (anim == null)
-                    return Fail("No hkaSplineCompressedAnimation in this file.");
+                    return Fail("No spline-compressed or interleaved/uncompressed animation in this file.");
 
                 var err = ApplyToAnimationObject(anim, edit);
                 if (err != null) return Fail(err);
 
-                var bak = animFullPath + ".bak";
-                if (!File.Exists(bak)) File.Copy(animFullPath, bak);
-
-                var tmpXml = animFullPath + ".tmp.xml";
-                using (var w = new StreamWriter(tmpXml, false, Encoding.UTF8))
-                    HkXml.Write(pack, w);
-
-                if (binary)
+                var tmpXml = animFullPath + "." + Guid.NewGuid().ToString("N") + ".tmp.xml";
+                try
                 {
-                    await _conv.XmlToHkxAsync(tmpXml, animFullPath);
-                    File.Delete(tmpXml);
+                    using (var w = new StreamWriter(tmpXml, false, Encoding.UTF8))
+                        HkXml.Write(pack, w);
+                    CommitFile(tmpXml, animFullPath);
                 }
-                else
-                {
-                    File.Delete(animFullPath);
-                    File.Move(tmpXml, animFullPath);
-                }
+                finally { if (File.Exists(tmpXml)) File.Delete(tmpXml); }
 
                 return new AnnotationEditResult { Success = true };
             }
@@ -140,6 +132,84 @@ namespace SageHavokEditor.Core.Animation
             {
                 return Fail(ex.Message);
             }
+        }
+
+        private static void CommitFile(string temporary, string destination)
+        {
+            var bak = destination + ".bak";
+            if (!File.Exists(bak)) File.Copy(destination, bak);
+            File.Move(temporary, destination, overwrite: true);
+        }
+
+        private static AnnotationEditResult ApplyBinary(string path, AnnotationEdit e)
+        {
+            var des = new PackFileDeserializer();
+            hkRootLevelContainer root;
+            using (var stream = File.OpenRead(path))
+                root = (hkRootLevelContainer)des.Deserialize(new BinaryReaderEx(stream) { PreserveFloatPrecision = true });
+
+            // A preview has no animation selector. Refuse ambiguous containers
+            // rather than risk writing annotations to a different clip.
+            var animations = root.m_namedVariants.Select(v => v?.m_variant)
+                .OfType<hkaAnimationContainer>()
+                .SelectMany(c => c.m_animations.Concat(c.m_bindings.Select(b => b.m_animation)))
+                .Concat(root.m_namedVariants.Select(v => v?.m_variant).OfType<hkaAnimation>())
+                .Where(a => a != null && HavokAnimationParser.IsSupportedAnimation(a.GetType().Name))
+                .DistinctBy(a => a, ReferenceEqualityComparer.Instance).ToList();
+            if (animations.Count != 1)
+                return Fail(animations.Count == 0 ? "No supported animation in this file."
+                    : "This file contains multiple supported animations; annotation editing requires a single clip.");
+            var anim = animations[0]!;
+            var tracks = anim.m_annotationTracks.ToList();
+
+            static hkaAnnotationTrackAnnotation NewAnnotation(float time, string text) =>
+                new() { m_time = time, m_text = text };
+
+            if (e.Kind == AnnotationEditKind.ReplaceAll)
+            {
+                int needed = e.NewSet.Count == 0 ? 0 : e.NewSet.Max(a => a.TrackIndex) + 1;
+                while (tracks.Count < needed) tracks.Add(new hkaAnnotationTrack());
+                for (int ti = 0; ti < tracks.Count; ti++)
+                    tracks[ti].m_annotations = e.NewSet.Where(a => a.TrackIndex == ti)
+                        .OrderBy(a => a.Time).Select(a => NewAnnotation(a.Time, a.Text)).ToList();
+            }
+            else
+            {
+                if (e.Kind == AnnotationEditKind.Add && e.TrackIndex == tracks.Count)
+                    tracks.Add(new hkaAnnotationTrack());
+                if (e.TrackIndex >= tracks.Count)
+                    return Fail($"Annotation track {e.TrackIndex} not found.");
+                var annotations = tracks[e.TrackIndex].m_annotations.ToList();
+                if (e.Kind != AnnotationEditKind.Add)
+                {
+                    int index = annotations.FindIndex(a => Math.Abs(a.m_time - e.OldTime) < 1e-4f
+                        && (a.m_text ?? "").Trim() == e.OldText);
+                    if (index < 0)
+                        return Fail($"Annotation '{e.OldText}' @ {e.OldTime:F3}s not found " +
+                            "(was the file changed outside the editor?).");
+                    annotations.RemoveAt(index);
+                }
+                if (e.Kind is AnnotationEditKind.Add or AnnotationEditKind.Edit)
+                {
+                    int index = annotations.FindIndex(a => a.m_time > e.NewTime);
+                    var annotation = NewAnnotation(e.NewTime, e.NewText);
+                    if (index < 0) annotations.Add(annotation); else annotations.Insert(index, annotation);
+                }
+                tracks[e.TrackIndex].m_annotations = annotations;
+            }
+            anim.m_annotationTracks = tracks;
+
+            // Do not route uncompressed samples through the XML writer's F6
+            // formatting. Only annotation objects were changed in this graph.
+            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                using (var stream = File.Create(temporary))
+                    new PackFileSerializer().Serialize(root, new BinaryWriterEx(stream), des._header);
+                CommitFile(temporary, path);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            return new AnnotationEditResult { Success = true };
         }
 
         private static string? ApplyToAnimationObject(HkObject anim, AnnotationEdit e)

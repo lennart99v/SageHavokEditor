@@ -321,7 +321,7 @@ namespace SageHavokEditor.UI
                 _suppressScrub = true;
                 _scrub.Value = clip.Duration > 0 ? (keepT / clip.Duration) * 1000 : 0;
                 _suppressScrub = false;
-                _skel.SetFrame(clip.FrameAt(keepT));
+                _skel.SetFrame(clip.FrameAt(keepT, loop: false));
                 UpdateTimeLabel(keepT);
             }
             else
@@ -371,7 +371,7 @@ namespace SageHavokEditor.UI
             if (_suppressScrub || _clip == null) return;
             Stop();
             double t = (_scrub.Value / 1000.0) * _clip.Duration;
-            _skel.SetFrame(_clip.FrameAt(t));
+            _skel.SetFrame(_clip.FrameAt(t, loop: false));
             UpdateTimeLabel(t);
             HighlightTicks(t);
         }
@@ -1232,11 +1232,12 @@ namespace SageHavokEditor.UI
         private float CurrentTime()
             => _clip == null ? 0 : (float)((_scrub.Value / 1000.0) * _clip.Duration);
 
-        /// <summary>Nearest frame boundary (frame grid = duration/numFrames, matching FrameAt).</summary>
+        /// <summary>Nearest boundary on the animation's sample grid.</summary>
         private float SnapToFrame(float t)
         {
             if (_clip == null || _clip.NumFrames <= 0 || _clip.Duration <= 0) return t;
-            float dt = _clip.Duration / _clip.NumFrames;
+            float dt = _clip.FrameDuration > 0 ? _clip.FrameDuration
+                : _clip.Duration / Math.Max(1, _clip.NumFrames - 1);
             return (float)Math.Clamp((float)Math.Round(t / dt) * dt, 0, _clip.Duration);
         }
 

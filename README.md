@@ -16,7 +16,8 @@ without shipping modified behavior files.
 - Load and edit Havok packfile (`.hkx`) and XML behavior projects.
 - State-machine graph view: pan/zoom canvas, lasso select, inline transition
   and state editing.
-- Animation clip preview with skeleton-aware playback (front/side/top).
+- Animation clip preview with skeleton-aware playback (front/side/top), supporting
+  spline-compressed and interleaved/uncompressed animations, with annotation editing.
 - Global search across variables, events, clips, transitions and bindings.
 - Validation pass over the loaded object graph with click-to-jump issues.
 - Nemesis-style patch system: take a snapshot of a vanilla file, edit, then
@@ -53,6 +54,17 @@ It publishes a single-file, self-contained `win-x64` build, drops the exe in
 `<Version>` in `SageHavokEditor.csproj` — bump it there before a release.
 
 ## Project layout
+
+The animation regression harness runs without a Windows UI or game assets:
+
+```pwsh
+dotnet run --project tools/hkx-interleaved-tests -c Release
+```
+
+It checks interleaved sample layout, bone bindings, timing, malformed input,
+and annotation editing/undo through XML and both LE and SE binary packfiles.
+Binary saves are checked for preservation of transform/float sample precision,
+root motion, bindings, and the source edition.
 
 ```
 SageHavokEditor/

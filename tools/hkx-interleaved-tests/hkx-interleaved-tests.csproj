@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\SageHavokEditor\Core\Animation\HKTransform.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Animation\SkeletonParser.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Animation\HavokSplineDecoder.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Animation\HavokAnimationParser.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Animation\AnimationAnnotationEditor.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
+    <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
+    <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
+  </ItemGroup>
+</Project>

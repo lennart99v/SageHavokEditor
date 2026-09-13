@@ -72,7 +72,10 @@ namespace HKX2
 
             // Deserialize the objects
             _deserializedObjects = new Dictionary<uint, IHavokObject>();
-            var br2 = new BinaryReaderEx(_header.Endian == 0, _header.PointerSize == 8, _dataSection.SectionData);
+            var br2 = new BinaryReaderEx(_header.Endian == 0, _header.PointerSize == 8, _dataSection.SectionData)
+            {
+                PreserveFloatPrecision = br.PreserveFloatPrecision
+            };
             return ConstructVirtualClass(br2, 0);
         }
 

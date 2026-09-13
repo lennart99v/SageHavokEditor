@@ -382,6 +382,9 @@ namespace SageHavokEditor.UI.Dialogs
                 "A skeleton-aware animation player in its own window. Open it with the ▶ button on a " +
                 "Clips tab row, the ▶ next to an animation name on the Character tab, ▶ Preview in the " +
                 "Object Data panel, or by right-clicking a state in the graph → Show animation & tags.\n\n" +
+                "Both spline-compressed and interleaved/uncompressed animations are supported, " +
+                "from Havok XML or Skyrim LE/SE HKX files. Use the matching skeleton. Float-only " +
+                "animations show the reference pose; the preview does not render float tracks.\n\n" +
                 "Playback\n" +
                 "• Play/pause, a scrubbable timeline, and front / side / top camera views.\n" +
                 "• Ctrl+click a timeline tick to seek straight to it.\n" +
@@ -412,7 +415,8 @@ namespace SageHavokEditor.UI.Dialogs
                 "• If the animation has more than one annotation track, a track picker appears " +
                 "(new annotations default to track 0, the hkanno convention).\n\n" +
                 "Where the edits go\n" +
-                "• Edits write back to the animation file itself (XML or SE HKX). The first write makes " +
+                "• Edits write back to the animation file itself (XML or LE/SE HKX), retaining its " +
+                "animation format. Binary annotation edits preserve motion sample precision. The first write makes " +
                 "a one-time .bak copy beside the file.\n" +
                 "• Everything is undoable — undo rewrites the file and refreshes the preview — and the " +
                 "playhead stays where it was instead of resetting to zero.");

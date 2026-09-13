@@ -1409,7 +1409,7 @@ namespace SageHavokEditor
         private async Task ApplyAnnotationEditAsync(
             string animFullPath, AnnotationEdit edit, ClipInfo clip, bool recordUndo)
         {
-            _annotationEditor ??= new AnimationAnnotationEditor(_hkxConv);
+            _annotationEditor ??= new AnimationAnnotationEditor();
 
             var result = await _annotationEditor.ApplyAsync(animFullPath, edit);
             if (!result.Success)

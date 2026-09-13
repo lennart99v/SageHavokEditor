@@ -67,7 +67,7 @@ namespace SageHavokEditor.Core.Animation
                 {
                     Translation = new Vector3(t[0], t[1], t[2]),
                     Rotation = new Quaternion(q[0], q[1], q[2], q[3]),  // (x,y,z,w)
-                    Scale = s[0]   // uniform; Skyrim scales are 1,1,1
+                    ScaleVector = new Vector3(s[0], s[1], s[2])
                 };
             }
 

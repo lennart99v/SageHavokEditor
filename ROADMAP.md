@@ -469,6 +469,14 @@ the port's own README.
 
 ## Animation / clip preview
 
+- [x] **Interleaved/uncompressed animations.** Preview and annotation editing
+  accept `hkaInterleavedUncompressedAnimation`; frame count comes from the
+  frame-major sample arrays and the frame interval is duration/(frames-1).
+  Unanimated bones keep the reference pose. The synthetic regression harness
+  covers XML plus LE/SE annotation saves, including exact binary sample
+  preservation. HKX2's legacy reader rounded floats too, so direct binary
+  annotation edits opt into a precise reader as well as bypassing XML formatting.
+
 - [ ] **Export an animation as FBX.** Read-only preview is half a bridge: you can
   watch a clip but not take it anywhere. `tools/hkx-fbx-export` is the harness —
   it feeds `HavokSplineDecoder`'s `[frame][bone]` locals plus the project

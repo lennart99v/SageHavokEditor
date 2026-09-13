@@ -14,6 +14,12 @@ This fork modified classes for Skyrim SE hkx file.
 
 ### Known issues
 
+Local editor integration: `BinaryReaderEx.PreserveFloatPrecision` opts out of
+the historical six-decimal rounding and NaN replacement in `ReadSingle`.
+`PackFileDeserializer` carries this setting into its data-section reader.
+Binary annotation editing opts in so that uncompressed samples and root motion
+survive an annotation-only save. The default reader behavior is unchanged.
+
 - ~Ragdoll files (.hkrg) differ from vanilla files because of different fixup ordering. This issue shouldn't affect functionality.~
 - can't deserialize some old FNIS generated hkx files due to malformed(?) `__classname__` or virtualFixup section or wrong assigned member (`hkbBlendingTransitionEffec` assign to `hkbStateMachineTransitionInfoArray`)
 

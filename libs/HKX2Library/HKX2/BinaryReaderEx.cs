@@ -36,6 +36,10 @@ namespace HKX2
 
         public bool BigEndian { get; set; }
 
+        /// <summary>Opt out of the legacy six-decimal rounding/NaN replacement
+        /// when editing binary data that must retain its original float values.</summary>
+        public bool PreserveFloatPrecision { get; set; }
+
         public bool USizeLong { get; }
 
         public Stream Stream { get; }
@@ -299,10 +303,10 @@ namespace HKX2
             if (BigEndian)
             {
                 var revVal = BitConverter.ToSingle(ReadReversedBytes(4), 0);
-                return float.IsNaN(revVal) ? 0 : (float)Math.Round(revVal, 6);
+                return PreserveFloatPrecision ? revVal : float.IsNaN(revVal) ? 0 : (float)Math.Round(revVal, 6);
             }
             var val = br.ReadSingle();
-            return float.IsNaN(val) ? 0 : (float)Math.Round(val, 6);
+            return PreserveFloatPrecision ? val : float.IsNaN(val) ? 0 : (float)Math.Round(val, 6);
         }
 
         public float AssertSingle(params float[] options)

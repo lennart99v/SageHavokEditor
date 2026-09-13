@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Interleaved/uncompressed animation preview and annotation editing.**
+  `hkaInterleavedUncompressedAnimation` now loads alongside spline-compressed
+  clips. The parser reads frame-major transform triples, derives the frame count
+  from the track/sample counts, retains all three scale components, and selects
+  the binding that references the animation. Float-only clips show the reference
+  pose; incomplete or inconsistent arrays produce a descriptive load error.
+  Playback and annotation snapping use the actual sample period, and scrubbing
+  to the end shows the final frame.
+
+  The reported spline-only load error also exposed a save hazard: both the XML
+  writer and HKX2's default binary reader round floats to six decimal places.
+  Annotation saves now edit binary objects directly, using an opt-in precise
+  reader, and retain the source LE/SE header. Existing conversion defaults are
+  unchanged. Saves complete in a temporary file before replacing the original,
+  with the existing one-time backup. The synthetic `tools/hkx-interleaved-tests`
+  harness covers loading, invalid input, editing/undo and sample preservation.
+
 - **The graph doctor now checks the references reachability can't protect.**
   Saving an `.hkx` writes what the walk from the file root reaches and drops the
   rest, which is a total guarantee for a `#ref` and none at all for the

@@ -7,7 +7,13 @@ namespace SageHavokEditor.Core.Animation
     {
         public Vector3 Translation;
         public Quaternion Rotation;
-        public float Scale;
+        public Vector3 ScaleVector;
+        // Compatibility with the spline decoder and existing uniform-scale callers.
+        public float Scale
+        {
+            readonly get => ScaleVector.X;
+            set => ScaleVector = new Vector3(value);
+        }
 
         public static readonly HkTransform Identity = new()
         {
@@ -19,9 +25,9 @@ namespace SageHavokEditor.Core.Animation
         // world = parent * local  — matches hkaBone.GetWorldCoordinate composition order
         public static HkTransform operator *(HkTransform a, HkTransform b) => new()
         {
-            Translation = a.Translation + Vector3.Transform(b.Translation, a.Rotation) * a.Scale,
+            Translation = a.Translation + Vector3.Transform(b.Translation * a.ScaleVector, a.Rotation),
             Rotation = a.Rotation * b.Rotation,
-            Scale = a.Scale * b.Scale
+            ScaleVector = a.ScaleVector * b.ScaleVector
         };
 
         public static HkTransform[] ComputeWorld(HkTransform[] local, int[] parentIndices)
