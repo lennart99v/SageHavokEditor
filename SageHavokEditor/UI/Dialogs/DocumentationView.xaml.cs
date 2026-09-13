@@ -394,7 +394,16 @@ namespace SageHavokEditor.UI.Dialogs
                 "the clip's hkbClipGenerator in the behaviour graph.\n" +
                 "• Both are editable right on the timeline (see the next two sections), but their edits " +
                 "land in different places: annotation edits write to the animation file, trigger edits " +
-                "are behaviour edits saved with the behaviour file.");
+                "are behaviour edits saved with the behaviour file.\n\n" +
+                "Which animations it can play\n" +
+                "Both of the ways Havok stores motion: spline-compressed, which is what the game ships, " +
+                "and interleaved (uncompressed), which is what many tools produce when they create or " +
+                "convert an animation. The difference is only how the motion is stored — compressed as " +
+                "curves that have to be unpacked, or written out bone by bone for every frame — and the " +
+                "preview reads both.\n\n" +
+                "If a file will not open here at all, that stops the preview only. Editing annotations " +
+                "works regardless, because the markers are read straight out of the file without " +
+                "unpacking any motion.");
 
             AddSection("preview_annotations", "Editing Annotations",
                 "Annotations are the timed text markers inside an animation file — the same data hkanno " +

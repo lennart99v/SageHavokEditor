@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace SageHavokEditor.Core.Animation
@@ -47,27 +49,123 @@ namespace SageHavokEditor.Core.Animation
 
     public static class HavokAnimationParser
     {
+        /// <summary>
+        /// The two ways a Skyrim animation stores its motion.
+        ///
+        /// Spline-compressed is the packed form Bethesda ships and the one this
+        /// parser was written for: the curves have to be decompressed to get a
+        /// frame back, which is what <see cref="HavokSplineDecoder"/> does.
+        /// Interleaved is the uncompressed form — every track's transform written
+        /// out verbatim for every frame — which tools that author or convert
+        /// animations often emit, and which needs no decoding at all.
+        ///
+        /// Only the decode step differs. Track-to-bone mapping, the reference-pose
+        /// overlay, annotations and everything downstream in the preview are
+        /// shared, so this is a choice of decoder rather than a second parser.
+        /// </summary>
         public static AnimationClip Parse(string xmlPath, Skeleton skeleton)
         {
             var doc = XDocument.Load(xmlPath);
 
-            var anim = doc.Descendants("hkobject")
-                .FirstOrDefault(o => (string?)o.Attribute("class") == "hkaSplineCompressedAnimation");
-            if (anim == null)
+            XElement? Find(string cls) => doc.Descendants("hkobject")
+                .FirstOrDefault(o => (string?)o.Attribute("class") == cls);
+
+            var spline = Find("hkaSplineCompressedAnimation");
+            if (spline != null) return Build(doc, spline, skeleton, DecodeSpline(spline));
+
+            var interleaved = Find("hkaInterleavedUncompressedAnimation");
+            if (interleaved != null)
+                return Build(doc, interleaved, skeleton, DecodeInterleaved(interleaved));
+
+            throw new AnimationParseException(
+                "No animation found in this file — expected an hkaSplineCompressedAnimation " +
+                "or an hkaInterleavedUncompressedAnimation.");
+        }
+
+        private static string Param(XElement anim, string n) => anim.Elements("hkparam")
+            .FirstOrDefault(p => (string?)p.Attribute("name") == n)?.Value?.Trim() ?? "";
+
+        /// <summary>
+        /// The uncompressed form: <c>transforms</c> is already the frames.
+        ///
+        /// An <c>hkQsTransform</c> array is written as groups of
+        /// <c>(tx ty tz)(qx qy qz qw)(sx sy sz)</c> — three groups, ten floats, per
+        /// transform. That is the same shape a skeleton's <c>referencePose</c>
+        /// uses, so this reads it the way <see cref="SkeletonParser"/> already
+        /// does rather than inventing a second reading of the same format, and
+        /// HKX2's own <c>ReadQSTransformArray</c> agrees on the layout.
+        ///
+        /// The array is frame-major: all of frame 0's tracks, then all of frame
+        /// 1's. That is the one thing here not checkable against something else in
+        /// this repo, so it is asserted rather than assumed — a count that isn't a
+        /// whole number of frames is reported instead of being reshaped into
+        /// nonsense.
+        /// </summary>
+        private static HkTransform[][] DecodeInterleaved(XElement anim)
+        {
+            int numTracks = ParseI(Param(anim, "numberOfTransformTracks"), 0);
+            if (numTracks <= 0)
                 throw new AnimationParseException(
-                    "No hkaSplineCompressedAnimation found " +
-                    "(interleaved/uncompressed animations aren't supported yet).");
+                    $"numberOfTransformTracks is {numTracks} — nothing to animate.");
 
-            string P(string n) => anim.Elements("hkparam")
-                .FirstOrDefault(p => (string?)p.Attribute("name") == n)?.Value?.Trim() ?? "";
+            var groups = GroupRx.Matches(Param(anim, "transforms"))
+                .Select(m => m.Groups[1].Value
+                    .Split(SplitChars, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(t => ParseF(t, 0f))
+                    .ToArray())
+                .ToList();
 
-            float duration = ParseF(P("duration"), 1f);
+            if (groups.Count == 0)
+                throw new AnimationParseException("The animation has no transforms.");
+            if (groups.Count % 3 != 0)
+                throw new AnimationParseException(
+                    $"transforms holds {groups.Count} groups, which is not a whole number of "
+                    + "(translation)(rotation)(scale) triples.");
+
+            int total = groups.Count / 3;
+            if (total % numTracks != 0)
+                throw new AnimationParseException(
+                    $"transforms holds {total} transforms, which is not a whole number of frames "
+                    + $"at {numTracks} track(s) per frame.");
+
+            int numFrames = total / numTracks;
+            var frames = new HkTransform[numFrames][];
+            for (int f = 0; f < numFrames; f++)
+            {
+                var row = new HkTransform[numTracks];
+                for (int t = 0; t < numTracks; t++)
+                {
+                    var g = (f * numTracks + t) * 3;
+                    var tr = groups[g];        // tx ty tz
+                    var q = groups[g + 1];     // qx qy qz qw
+                    var sc = groups[g + 2];    // sx sy sz
+                    row[t] = new HkTransform
+                    {
+                        Translation = new Vector3(At(tr, 0), At(tr, 1), At(tr, 2)),
+                        Rotation = new Quaternion(At(q, 0), At(q, 1), At(q, 2), At(q, 3)),
+                        // Uniform, as everywhere else here: Skyrim's scales are 1,1,1
+                        // and HkTransform carries a single factor.
+                        Scale = sc.Length > 0 ? sc[0] : 1f,
+                    };
+                }
+                frames[f] = row;
+            }
+            return frames;
+
+            static float At(float[] a, int i) => i < a.Length ? a[i] : 0f;
+        }
+
+        private static readonly Regex GroupRx = new(@"\(([^)]*)\)", RegexOptions.Compiled);
+        private static readonly char[] SplitChars = { ' ', '\n', '\r', '\t' };
+
+        private static HkTransform[][] DecodeSpline(XElement anim)
+        {
+            string P(string n) => Param(anim, n);
+
             int numFrames = ParseI(P("numFrames"), 0);
-            float frameDuration = ParseF(P("frameDuration"), 0f);
             int numBlocks = ParseI(P("numBlocks"), 1);
             int maxFramesPerBlock = ParseI(P("maxFramesPerBlock"), 256);
             int maskSize = ParseI(P("maskAndQuantizationSize"), 0);
-            int numTracks = ParseI(P("numberOfTransformTracks"), maskSize / 4);
 
             if (numFrames <= 0) throw new AnimationParseException($"No frames (numFrames={numFrames}).");
             if (maskSize <= 0) throw new AnimationParseException("maskAndQuantizationSize missing or zero.");
@@ -82,10 +180,9 @@ namespace SageHavokEditor.Core.Animation
                     $"Multi-block animation declares {numBlocks} blocks but only " +
                     $"{blockOffsets.Length} block offset(s).");
 
-            HkTransform[][] trackFrames;                                 // [frame][track]
             try
             {
-                trackFrames = HavokSplineDecoder.DecodeBlocks(
+                return HavokSplineDecoder.DecodeBlocks(
                     data, numFrames, maskSize, numBlocks, maxFramesPerBlock, blockOffsets);
             }
             catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException)
@@ -93,6 +190,20 @@ namespace SageHavokEditor.Core.Animation
                 throw new AnimationParseException(
                     $"Could not decode the animation's {numBlocks} block(s): {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Everything after decoding, which both formats share: lay each frame's
+        /// tracks over the skeleton's reference pose, and read the annotations.
+        /// </summary>
+        private static AnimationClip Build(XDocument doc, XElement anim, Skeleton skeleton,
+            HkTransform[][] trackFrames)
+        {
+            float duration = ParseF(Param(anim, "duration"), 1f);
+            float frameDuration = ParseF(Param(anim, "frameDuration"), 0f);
+            int numFrames = trackFrames.Length;
+            int numTracks = ParseI(Param(anim, "numberOfTransformTracks"),
+                trackFrames.Length > 0 ? trackFrames[0].Length : 0);
 
             int[]? trackToBone = ParseTrackToBone(doc);     // null = identity (track i → bone i)
             int boneCount = skeleton.ReferencePose.Length;
