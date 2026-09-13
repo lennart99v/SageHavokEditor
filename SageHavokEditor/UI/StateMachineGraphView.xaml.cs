@@ -192,13 +192,32 @@ namespace SageHavokEditor.UI
         private readonly (double scale, double tx, double ty, string label)?[] _graphBookmarks
             = new (double, double, double, string)?[10];
 
+        /// <summary>
+        /// One state machine's <c>states</c> list as it stood before a delete,
+        /// with enough to put it back exactly.
+        ///
+        /// Both halves are needed and that is the point of the type. <c>Value</c>
+        /// alone does not describe the param: <see cref="HkParam.Value"/>'s getter
+        /// returns the resolved <c>Children</c> ids whenever that cache holds
+        /// anything, so a list restored only through <c>Value</c> silently keeps
+        /// whatever the cache still has.
+        /// </summary>
+        public sealed class StatesListEdit
+        {
+            public required HkObject Machine { get; init; }
+            public required HkParam Param { get; init; }
+            public required string OldValue { get; init; }
+            public required List<HkObject> OldChildren { get; init; }
+            public required string OldNumElements { get; init; }
+        }
+
         // ── Events ────────────────────────────────────────────────────────────
         public event Action<string>? StateSelected;
         public event Action<string, string>? AddTransitionRequested;
         public event Action<HkObject, HkObject, string, string>? TransitionDeletedFromGraph;
         public event Action<string, string, string>? NodeRenamedOnGraph;
         public event Action<HkObject, HkObject>? NodeAddedToGraph;
-        public event Action<HkObject, HkObject, string>? NodeDeletedFromGraph;
+        public event Action<HkObject, IReadOnlyList<StatesListEdit>>? NodeDeletedFromGraph;
         public event Action<string>? StatusText_;
         public event Action<HkObject, string, string>? TransitionRetargetedFromGraph; // (trChild, oldToStateId, newToStateId)
         public event Action<string>? NavigateToEventRequested; // (eventId) — jump to the event definition + usages
@@ -2893,43 +2912,119 @@ namespace SageHavokEditor.UI
             var className = obj.ClassName;
             var nodeName = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? node.Id;
 
-            // Find the parent SM that owns this state
-            HkObject parentSM = null;
-            HkParam statesParam = null;
-            if (className == "hkbStateMachineStateInfo")
-            {
-                parentSM = _manager.ObjectMap.Values.FirstOrDefault(o =>
-                    o.ClassName == "hkbStateMachine" &&
-                    HkRefList.Tokens(o.Params.FirstOrDefault(p => p.Name == "states")?.Value)
-                        .Contains(node.Id));
-                statesParam = parentSM?.Params.FirstOrDefault(p => p.Name == "states");
-            }
+            var owners = className == "hkbStateMachineStateInfo"
+                ? OwningMachines(_manager, node.Id)
+                : new List<StatesListEdit>();
+
+            var also = owners.Count > 1
+                ? $"\n\nIt is listed by {owners.Count} state machines " +
+                  $"({string.Join(", ", owners.Select(o => o.Machine.DisplayName))}) and will be removed from all of them."
+                : "";
 
             if (MessageBox.Show(
-                    $"Delete '{nodeName}' ({className})? 'This will remove the node from the model.Transitions referencing it will become broken.",
+                    $"Delete '{nodeName}' ({className})?\n\nThis removes the node from the model. " +
+                    $"Transitions referencing it will become broken.{also}",
                     "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning)
                 != MessageBoxResult.Yes) return;
 
-            // Remove from SM states list
-            string oldStatesValue = statesParam?.Value;
-            if (statesParam != null)
-            {
-                var ids = HkRefList.Tokens(statesParam.Value)
-                    .Where(id => id != node.Id).ToList();
-                statesParam.Value = string.Join(" ", ids);
-                statesParam.NumElements = ids.Count.ToString();
-            }
-
-            // Remove from ObjectMap
-            _manager.ObjectMap.Remove(node.Id);
+            ApplyNodeDelete(_manager, node.Id, owners);
 
             // Fire for MainWindow undo recording
-            NodeDeletedFromGraph?.Invoke(obj, parentSM, oldStatesValue);
-            StatusText_?.Invoke($"✓ Deleted '{nodeName}'");
+            NodeDeletedFromGraph?.Invoke(obj, owners);
+            StatusText_?.Invoke(owners.Count > 1
+                ? $"✓ Deleted '{nodeName}' from {owners.Count} state machines"
+                : $"✓ Deleted '{nodeName}'");
 
             // Rebuild
             var filter = MachineSelector.SelectedItem as string ?? "-- All Machines --";
             BuildStateMachineGraph(filter);
+        }
+
+        /// <summary>
+        /// Every state machine listing this state, snapshotted before a delete.
+        ///
+        /// Every one, not the first found, and that is the whole reason this is a
+        /// method: Havok lets one state object belong to more than one
+        /// <c>hkbStateMachine</c> — in vanilla <c>dragonbehavior</c>,
+        /// <c>ST_Ground_Combat_Attack_Bite</c> is in both <c>BHR_Ground</c> and
+        /// <c>BHR_Ground_Combat</c> — so "the machine that owns this state" is not
+        /// a function. Stripping it from one and then dropping the object from the
+        /// map left the others holding a <c>#ref</c> to nothing.
+        /// </summary>
+        public static List<StatesListEdit> OwningMachines(HavokManager manager, string nodeId)
+        {
+            var owners = new List<StatesListEdit>();
+            foreach (var sm in manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
+            {
+                var param = sm.Params.FirstOrDefault(p => p.Name == "states");
+                if (param == null || !HkRefList.Tokens(param.Value).Contains(nodeId)) continue;
+                owners.Add(new StatesListEdit
+                {
+                    Machine = sm,
+                    Param = param,
+                    OldValue = param.Value,
+                    OldChildren = param.Children.ToList(),
+                    OldNumElements = param.NumElements,
+                });
+            }
+            return owners;
+        }
+
+        /// <summary>
+        /// The model half of a delete: take the state out of every list naming it,
+        /// then out of the file. Split from the command so it can be exercised
+        /// without the confirmation dialog — see <c>tools/hkx-graph-doctor-ui</c>.
+        /// </summary>
+        public static void ApplyNodeDelete(HavokManager manager, string nodeId,
+            IReadOnlyList<StatesListEdit> owners)
+        {
+            foreach (var owner in owners) RemoveFromStates(owner.Param, nodeId);
+            manager.ObjectMap.Remove(nodeId);
+        }
+
+        /// <summary>
+        /// Take one id out of a <c>states</c> list, cache included.
+        ///
+        /// Writing <c>Value</c> alone is not enough and fails silently, which is
+        /// what made this worth a method. <see cref="HkParam.Value"/>'s getter
+        /// prefers the resolved <c>Children</c> ids over the text whenever that
+        /// cache holds anything, and the loader fills it for every single-ref
+        /// list — 377 of 1HM_Behavior's 507 state machines hold exactly one state.
+        /// Deleting that state used to leave the machine still listing it, with
+        /// <c>numelements</c> now reading 0: a reference to an object no longer in
+        /// the file, which the graph doctor reports and an .hkx save refuses.
+        /// </summary>
+        private static void RemoveFromStates(HkParam param, string id)
+        {
+            foreach (var child in param.Children.Where(c => c.Id == id).ToList())
+                param.Children.Remove(child);
+
+            var ids = HkRefList.Tokens(param.Value).Where(t => t != id).ToList();
+            param.Value = string.Join(" ", ids);
+            // Read back rather than using ids.Count: with the cache emptied the
+            // getter now answers from the text, but the two must agree whichever
+            // one it read, and numelements is authoritative on conversion.
+            param.NumElements = HkRefList.Tokens(param.Value).Length.ToString();
+        }
+
+        /// <summary>
+        /// Put a <c>states</c> list back exactly as it was — the counterpart of
+        /// <see cref="RemoveFromStates"/>, and the undo half of a delete. The
+        /// cache is restored first, because <c>Value</c>'s setter ignores a write
+        /// that matches what it already holds.
+        /// </summary>
+        public static void RestoreStates(StatesListEdit edit)
+        {
+            edit.Param.Children.Clear();
+            foreach (var child in edit.OldChildren) edit.Param.Children.Add(child);
+            edit.Param.Value = edit.OldValue;
+            edit.Param.NumElements = edit.OldNumElements;
+        }
+
+        /// <summary>Re-apply a delete to every list it touched — the redo half.</summary>
+        public static void ReapplyStatesDelete(IReadOnlyList<StatesListEdit> edits, string id)
+        {
+            foreach (var edit in edits) RemoveFromStates(edit.Param, id);
         }
 
         // ── Search / Go-To ────────────────────────────────────────────────────

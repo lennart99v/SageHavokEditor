@@ -80,6 +80,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Deleting a state left the machine still listing it, and the next `.hkx` save
+  was refused.** 🗑 Delete Node wrote the shortened list to `HkParam.Value`, and
+  that getter answers from the resolved `Children` cache whenever the cache holds
+  anything — which the loader fills for every single-ref list. So on a
+  single-state machine the write went into a field nothing reads: `states` still
+  named the deleted state, `numelements` now said 0, and the graph doctor
+  reported a reference to an object no longer in the file. Not a rare shape —
+  **377 of `1HM_Behavior`'s 507 state machines hold exactly one state**, 35 in
+  `0_master`, 4 in vanilla `dragonbehavior`.
+
+  **A second fault underneath it: a state can belong to more than one machine.**
+  The delete found its owner with `FirstOrDefault`, stripped the state from that
+  one and then dropped the object from the file, leaving every other machine
+  holding a `#ref` to nothing. Vanilla `dragonbehavior`'s
+  `ST_Ground_Combat_Attack_Bite` is in both `BHR_Ground` and `BHR_Ground_Combat`.
+  Rare — none in `0_master` or `mt_behavior` — but the confirmation now says when
+  a state is listed by several machines, and the delete clears all of them.
+
+  Undo was wrong in both the same ways, restoring one machine and only its text;
+  it now restores every list it touched, cache included. Both faults are pinned
+  in `tools/hkx-graph-doctor-ui`, and both were re-introduced on purpose to check
+  the new checks actually go red — the shared-state one first went *green* by
+  skipping, because its subject finder called the very method under test.
+
 - **A save is no longer refused over an object it is about to throw away.** The
   refusal is a statement about the file that gets written, and an object nothing
   reaches is not in that file — but every check ran over the whole working set,

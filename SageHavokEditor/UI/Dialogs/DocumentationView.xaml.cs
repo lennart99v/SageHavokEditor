@@ -153,7 +153,11 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Export PNG — render the current graph to a PNG file.\n\n" +
                 "Keyboard shortcuts (while the graph has focus)\n" +
                 "• F — fit to view.\n" +
-                "• Delete / Backspace — delete the selected node.\n" +
+                "• Delete / Backspace — delete the selected node. A state is removed from " +
+                "every state machine that lists it, not just the one you are looking at: Havok " +
+                "lets one state belong to several machines, and leaving it in the others would " +
+                "point them at an object that is no longer in the file. The confirmation says so " +
+                "when there is more than one, and Undo puts all of them back.\n" +
                 "• F2 — rename the selected node inline.\n" +
                 "• C — wrap selected nodes in a comment box.\n" +
                 "• Q — align selected nodes in a horizontal row.\n" +
