@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-patch-anchors</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The editor's own model and patching layer, not a copy, so this exercises
+         the anchors the patch export actually writes and the patch apply
+         actually resolves. -->
+    <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\HavokManager.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HavokArrayKinds.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Patching\BehaviorPatch.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Patching\ObjectSnapshot.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Patching\PatchGenerator.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Patching\PatchApplier.cs" />
+    <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
+  </ItemGroup>
+
+</Project>

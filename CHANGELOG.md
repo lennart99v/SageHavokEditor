@@ -80,6 +80,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A generated patch could anchor its edits to the wrong object.** A patch says
+  which object it means by name rather than by id, because the file it is applied
+  to has different ids from the one it was authored against — and the name was
+  written without the class. A Havok name is unique within a class and reused
+  freely across them, so `name:MT_Jump` in `0_master` means both a state and the
+  clip that state plays, and the applier took whichever the object map enumerated
+  first.
+
+  **Measured by round-tripping every anchor over twenty real files** — make the
+  anchor, resolve it, ask whether the same object comes back: **2,782 of 11,895
+  named objects share a name, and 1,393 anchors resolved to a different object
+  than the one they described**, 661 in `mt_behavior` alone. Every collision in
+  the corpus is cross-class; there are no same-class ones at all, which is what
+  makes the class the right qualifier.
+
+  Anchors are now `name:<Class>:<name>`. The old unqualified form still resolves,
+  since patches written before this keep working, but an ambiguous one is
+  reported in the apply warnings instead of resolved by luck. `stateId:` and
+  `animName:` anchors say so too — stateIds restart in every state machine and
+  several clips can play one animation — though neither is ever generated,
+  because every state and clip in real content has a name. `tools/hkx-patch-anchors`
+  pins the round trip and goes red if the class is dropped.
+
+- **Comparing two files could throw instead of comparing them.** The clip map was
+  keyed on bare name with `ToDictionary`, which is safe on vanilla content — no
+  two clips of one name anywhere in the corpus — and would have taken the whole
+  comparison down on a modded file that had them.
+
 - **Deleting a state left the machine still listing it, and the next `.hkx` save
   was refused.** 🗑 Delete Node wrote the shortened list to `HkParam.Value`, and
   that getter answers from the resolved `Children` cache whenever the cache holds

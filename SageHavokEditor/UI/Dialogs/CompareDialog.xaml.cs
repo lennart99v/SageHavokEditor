@@ -166,13 +166,21 @@ namespace SageHavokEditor.UI.Dialogs
             }
 
             // --- CLIPS ---
+            // Grouped rather than keyed directly: a name is unique within a class
+            // in vanilla content — zero same-class collisions across the twenty
+            // files measured for this — but nothing in Havok enforces it, and a
+            // modded file with two clips of one name would have thrown here and
+            // taken the whole comparison down. First wins, which is what keying
+            // did anyway when it worked.
             var clipsB = _managerB.ObjectMap.Values
                 .Where(o => o.ClassName == "hkbClipGenerator")
+                .GroupBy(o => o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id)
                 .ToDictionary(
-                    o => o.Params.FirstOrDefault(p => p.Name == "name")?.Value ?? o.Id,
-                    o => o.Params.FirstOrDefault(p => p.Name == "animationName")?.Value ?? "");
+                    g => g.Key,
+                    g => g.First().Params.FirstOrDefault(p => p.Name == "animationName")?.Value ?? "");
 
-            var clipsADict = _clipsA.ToDictionary(c => c.Name, c => c.AnimationPath ?? "");
+            var clipsADict = _clipsA.GroupBy(c => c.Name)
+                .ToDictionary(g => g.Key, g => g.First().AnimationPath ?? "");
 
             var allClipNames = clipsADict.Keys.Union(clipsB.Keys).OrderBy(n => n);
             foreach (var name in allClipNames)

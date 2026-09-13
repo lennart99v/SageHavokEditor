@@ -407,12 +407,29 @@ namespace SageHavokEditor.Core.Patching
                     .ToList();
         }
 
+        /// <summary>
+        /// How a patch says which object it means, in a way that survives being
+        /// applied to a file whose ids differ from the one it was authored
+        /// against.
+        ///
+        /// The name is qualified with the class, and that is not decoration. A
+        /// Havok node name is unique within a class and routinely reused across
+        /// them: measured over the vanilla character behaviours, the troll and a
+        /// modded dragon, **2,782 of 11,895 named objects share their name with
+        /// an object of a different class** — a state and the clip it plays,
+        /// usually, like <c>MT_Jump</c> in <c>0_master</c>. Unqualified,
+        /// <c>name:MT_Jump</c> resolved to whichever the object map enumerated
+        /// first, and across that corpus 1,393 anchors named one object and
+        /// resolved to another. A patch that edits the wrong object is this
+        /// domain's worst failure: it applies cleanly, converts, and the actor
+        /// does something inexplicable in-game with nothing in any log.
+        /// </summary>
         private static string MakeAnchor(string id, HkObject obj)
         {
             // 1. Named objects — most portable
             var name = obj.Params.FirstOrDefault(p => p.Name == "name")?.Value;
             if (!string.IsNullOrEmpty(name))
-                return $"name:{name}";
+                return $"name:{obj.ClassName}:{name}";
 
             // 2. Objects with a unique identifying param combo
             // e.g. hkbStateMachineStateInfo has stateId + parent SM
