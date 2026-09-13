@@ -150,7 +150,7 @@ namespace SageHavokEditor.Core.Patching
 
         private void ApplyDeleteObject(DeleteObjectOp op, ApplyResult result)
         {
-            var obj = ResolveAnchor(op.Anchor);
+            var obj = ResolveAnchor(op.Anchor, result);
             if (obj == null)
             {
                 result.Warnings.Add($"DeleteObject: could not resolve anchor '{op.Anchor}' — skipping");
@@ -165,7 +165,7 @@ namespace SageHavokEditor.Core.Patching
 
         private void ApplyModifyParam(ModifyParamOp op, ApplyResult result)
         {
-            var obj = ResolveAnchor(op.Anchor);
+            var obj = ResolveAnchor(op.Anchor, result);
             if (obj == null)
             {
                 result.Warnings.Add($"ModifyParam: could not resolve anchor '{op.Anchor}' — skipping [{op.Note}]");
@@ -192,7 +192,7 @@ namespace SageHavokEditor.Core.Patching
 
         private void ApplyAppendParam(AppendParamOp op, ApplyResult result)
         {
-            var obj = ResolveAnchor(op.Anchor);
+            var obj = ResolveAnchor(op.Anchor, result);
             if (obj == null)
             {
                 result.Warnings.Add($"AppendParam: could not resolve anchor '{op.Anchor}' — skipping");
@@ -239,7 +239,7 @@ namespace SageHavokEditor.Core.Patching
         // ── ADD CHILD ──────────────────────────────────────────────────────
         private void ApplyAddChild(AddChildOp op, ApplyResult result)
         {
-            var obj = ResolveAnchor(op.Anchor);
+            var obj = ResolveAnchor(op.Anchor, result);
             if (obj == null)
             {
                 result.Warnings.Add($"AddChild: could not resolve anchor '{op.Anchor}' — skipping");
@@ -284,7 +284,7 @@ namespace SageHavokEditor.Core.Patching
                 result.Warnings.Add($"Skipped string data child op (use RenameEventOp instead)");
                 return;
             }
-            var obj = ResolveAnchor(op.Anchor);
+            var obj = ResolveAnchor(op.Anchor, result);
             if (obj == null)
             {
                 result.Warnings.Add($"ModifyChild: could not resolve anchor '{op.Anchor}' — skipping");
@@ -472,16 +472,58 @@ namespace SageHavokEditor.Core.Patching
         // ── Helpers ───────────────────────────────────────────────────────────
 
         /// Resolve "name:BHR_Master" or "id:#0052" to an HkObject
-        private HkObject? ResolveAnchor(string anchor)
+        /// <param name="result">
+        /// Where an ambiguous anchor is reported. An anchor matching several
+        /// objects used to resolve to whichever came first, which is how a patch
+        /// edits the wrong node and says nothing.
+        /// </param>
+        private HkObject? ResolveAnchor(string anchor, ApplyResult? result = null)
         {
             if (string.IsNullOrEmpty(anchor)) return null;
 
-            // name:BHR_Master
+            // name:hkbStateMachine:BHR_Master — the class is what disambiguates.
+            // A Havok name is unique within a class and reused freely across them
+            // (a state and the clip it plays typically share one), so the older
+            // unqualified "name:BHR_Master" form names an object only by luck.
+            // Both are accepted: patches written before the class was recorded
+            // have to keep working, and where one of those is ambiguous the
+            // ambiguity is reported rather than resolved by enumeration order.
             if (anchor.StartsWith("name:"))
             {
-                var name = anchor.Substring(5);
-                return _manager.ObjectMap.Values.FirstOrDefault(o =>
-                    o.Params.Any(p => p.Name == "name" && p.Value == name));
+                var payload = anchor.Substring(5);
+                var split = payload.IndexOf(':');
+
+                if (split > 0)
+                {
+                    var cls = payload.Substring(0, split);
+                    var qualified = payload.Substring(split + 1);
+                    // Only a segment that really is a class in this file counts as
+                    // a qualifier — a legacy name may itself contain a colon.
+                    var byClass = _manager.ObjectMap.Values.Where(o =>
+                        o.ClassName == cls
+                        && o.Params.Any(p => p.Name == "name" && p.Value == qualified)).ToList();
+                    if (byClass.Count > 0)
+                    {
+                        if (byClass.Count > 1)
+                            result?.Warnings.Add(
+                                $"Anchor '{anchor}' matches {byClass.Count} objects of the same class " +
+                                $"({string.Join(", ", byClass.Select(o => o.Id))}) — using the first. " +
+                                "Two objects of one class sharing a name does not occur in vanilla content; " +
+                                "this file has been edited in a way the patch cannot address precisely.");
+                        return byClass[0];
+                    }
+                    if (_manager.ObjectMap.Values.Any(o => o.ClassName == cls))
+                        return null;   // the class exists, the name does not: a real miss
+                }
+
+                var byName = _manager.ObjectMap.Values.Where(o =>
+                    o.Params.Any(p => p.Name == "name" && p.Value == payload)).ToList();
+                if (byName.Count > 1)
+                    result?.Warnings.Add(
+                        $"Anchor '{anchor}' names no class and matches {byName.Count} objects " +
+                        $"({string.Join(", ", byName.Select(o => $"{o.Id} {o.ClassName}"))}) — using the first. " +
+                        "Re-export the patch to record the class with the name.");
+                return byName.FirstOrDefault();
             }
 
             // id:#0052 — direct ID lookup, least portable
@@ -491,22 +533,39 @@ namespace SageHavokEditor.Core.Patching
                 return byId;
             }
 
-            // stateId:3 — find hkbStateMachineStateInfo with matching stateId
+            // stateId:3 — find hkbStateMachineStateInfo with matching stateId.
+            // stateIds restart in every state machine, so this names one object
+            // only in a file with a single machine; anywhere else it is a guess.
+            // Left in for hand-written patches, but no longer a silent one — and
+            // never generated, because every state in real content has a name.
             if (anchor.StartsWith("stateId:"))
             {
                 var sid = anchor.Substring(8);
-                return _manager.ObjectMap.Values.FirstOrDefault(o =>
+                var states = _manager.ObjectMap.Values.Where(o =>
                     o.ClassName == "hkbStateMachineStateInfo" &&
-                    o.Params.Any(p => p.Name == "stateId" && p.Value == sid));
+                    o.Params.Any(p => p.Name == "stateId" && p.Value == sid)).ToList();
+                if (states.Count > 1)
+                    result?.Warnings.Add(
+                        $"Anchor '{anchor}' matches {states.Count} states — stateIds restart in every " +
+                        $"state machine, so this anchor cannot say which one is meant " +
+                        $"({string.Join(", ", states.Take(5).Select(o => o.Id))}). Using the first; " +
+                        "anchor by name instead.");
+                return states.FirstOrDefault();
             }
 
-            // animName:Animations\Ground_Bite.HKX
+            // animName:Animations\Ground_Bite.HKX — several clips can play one
+            // animation, so this is ambiguous whenever they do.
             if (anchor.StartsWith("animName:"))
             {
                 var anim = anchor.Substring(9);
-                return _manager.ObjectMap.Values.FirstOrDefault(o =>
+                var clips = _manager.ObjectMap.Values.Where(o =>
                     o.ClassName == "hkbClipGenerator" &&
-                    o.Params.Any(p => p.Name == "animationName" && p.Value == anim));
+                    o.Params.Any(p => p.Name == "animationName" && p.Value == anim)).ToList();
+                if (clips.Count > 1)
+                    result?.Warnings.Add(
+                        $"Anchor '{anchor}' matches {clips.Count} clip generators playing the same " +
+                        $"animation ({string.Join(", ", clips.Take(5).Select(o => o.Id))}) — using the first.");
+                return clips.FirstOrDefault();
             }
 
             // class:hkbBehaviorGraphStringData — for singleton objects

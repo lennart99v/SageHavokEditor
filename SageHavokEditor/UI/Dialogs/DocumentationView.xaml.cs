@@ -914,14 +914,27 @@ namespace SageHavokEditor.UI.Dialogs
                 "4. Click Export Nemesis or Export Pandora and choose an output folder.\n" +
                 "5. The exporter writes one #XXXX.txt per changed object with ORIGINAL/NEW markers.\n\n" +
                 "The snapshot used for diffing is taken when the file is first loaded. " +
-                "Reloading the file resets the snapshot baseline.");
+                "Reloading the file resets the snapshot baseline.\n\n" +
+                "How a patch says which object it means\n" +
+                "The file you apply a patch to has different object ids from the file it was " +
+                "written against, so a patch names its target by content instead — the object's " +
+                "name and its class together, as name:hkbClipGenerator:MT_Jump. The class is not " +
+                "decoration: Havok names are only unique among objects of the same kind, and a " +
+                "state and the clip it plays almost always share one — MT_Jump in 0_master is " +
+                "both, and 659 names in MT_Behavior are. Patches written before the class was " +
+                "recorded still apply, and if one of them is genuinely ambiguous the apply " +
+                "report says so rather than picking for you.");
 
             AddSection("patch_apply", "Applying Patches",
                 "Apply a Nemesis/Pandora patch folder or a native .behaviorpatch file.\n\n" +
                 "• Click 🔧 Apply Patch in the toolbar.\n" +
                 "• Browse to a .behaviorpatch file or navigate into a Nemesis/Pandora mod folder.\n" +
                 "• The preview shows every operation with checkboxes — uncheck any you want to skip.\n" +
-                "• Click Apply to commit. The UI refreshes automatically.");
+                "• Click Apply to commit. The UI refreshes automatically.\n\n" +
+                "Read the warnings in the result. An operation whose target could not be found " +
+                "is skipped and says so, and one whose target was ambiguous names every object " +
+                "it could have meant — that happens with older patches recording a name without " +
+                "its class, and it is the one case where a patch can quietly do the wrong thing.");
 
             AddSection("global_search", "Global Search",
                 "Press Ctrl+G or click 🔭 Search All to open the Global Search dialog. This is the " +
