@@ -153,7 +153,11 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Export PNG — render the current graph to a PNG file.\n\n" +
                 "Keyboard shortcuts (while the graph has focus)\n" +
                 "• F — fit to view.\n" +
-                "• Delete / Backspace — delete the selected node.\n" +
+                "• Delete / Backspace — delete the selected node. A state is removed from " +
+                "every state machine that lists it, not just the one you are looking at: Havok " +
+                "lets one state belong to several machines, and leaving it in the others would " +
+                "point them at an object that is no longer in the file. The confirmation says so " +
+                "when there is more than one, and Undo puts all of them back.\n" +
                 "• F2 — rename the selected node inline.\n" +
                 "• C — wrap selected nodes in a comment box.\n" +
                 "• Q — align selected nodes in a horizontal row.\n" +
@@ -973,6 +977,19 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Event ids and variable indices past the end of this file's own tables. Both are " +
                 "bare positional indices into eventNames / variableNames and the runtime does not " +
                 "bounds-check them.\n" +
+                "• Transition destinations that no longer exist — including the two kinds the " +
+                "older toStateId check never looked at: a machine's wildcardTransitions, which is " +
+                "how most Skyrim machines are actually entered, and a transition's " +
+                "toNestedStateId, the state it starts the nested machine in. These are the " +
+                "references saving cannot protect you from. Deleting an object removes it from " +
+                "the file cleanly, because nothing points at it any more — but a transition names " +
+                "its destination by number, not by pointer, so the number survives and now means " +
+                "nothing. A nested destination is followed through the destination state's " +
+                "generator to the machine it starts; when that leads into another file through a " +
+                "behavior reference, it is left alone rather than guessed at.\n" +
+                "• A clip's animationBindingIndex past the end of the character's registered " +
+                "animations, when a character file is open. -1 is the normal value and means the " +
+                "clip binds by animationName instead.\n" +
                 "• Clips whose animationName isn't in the character's animationNames list, when a " +
                 "character file is open. The graph names the animation but the runtime loads it " +
                 "through the character — the usual outcome of adding an animation and forgetting " +
@@ -1008,17 +1025,25 @@ namespace SageHavokEditor.UI.Dialogs
                 "One case is not a decision: an .hkx save is refused when the graph contradicts " +
                 "itself in a way it did not when you opened the file. A reference to an object " +
                 "that isn't there, a null generator, an event id or variable index past the end of " +
-                "the table, a startStateId or transition target matching no state, two states in " +
-                "one machine sharing a stateId, paired arrays of different lengths — any of these " +
-                "and the file is not written, with no Save anyway to click.\n\n" +
+                "the table, a startStateId or transition target matching no state — wildcard and " +
+                "nested destinations included — two states in one machine sharing a stateId, " +
+                "paired arrays of different lengths: any of these and the file is not written, " +
+                "with no Save anyway to click.\n\n" +
+                "A fault inside an object the save was going to drop anyway never refuses it. The " +
+                "refusal is about the file that gets written, and an object nothing reaches is " +
+                "not in that file — it is still listed in the report, as something about to be " +
+                "lost.\n\n" +
                 "The reason it isn't a warning is that nothing downstream will object either. The " +
                 "conversion succeeds, the game loads the file, and then an actor T-poses or the " +
                 "process falls over with nothing written to any log. This is the last moment at " +
                 "which the reason is still knowable.\n\n" +
                 "Only what your session introduced counts. Vanilla files are not clean by this " +
-                "standard — dragonbehavior.hkx ships a duplicate stateId, two start states that " +
-                "don't exist and nine transitions to missing states — so the editor records what " +
-                "was already wrong when it opened the file and refuses only over the rest. Opening " +
+                "standard — dragonbehavior.hkx ships two start states that don't exist and twenty " +
+                "transitions to missing states, nine of them at the wildcard and nested sites, " +
+                "plus six transitions asking for a nested state the machine hasn't got. Mostly " +
+                "these are states that were renumbered with the transitions into them left " +
+                "behind. So the editor records what was already wrong when it opened the file and " +
+                "refuses only over the rest. Opening " +
                 "a file with pre-existing defects, editing it and saving works exactly as before; " +
                 "those defects stay in the report as errors. Saving to XML is never refused this " +
                 "way either: XML is the working format, not what the game loads.");

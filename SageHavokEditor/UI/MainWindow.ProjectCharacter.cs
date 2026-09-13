@@ -642,15 +642,20 @@ namespace SageHavokEditor
         private void OnGraphStatus(string msg)
             => StatusText.Text = msg;
 
+        /// <summary>
+        /// Undo for a deleted node. <paramref name="statesEdits"/> carries one
+        /// entry per state machine the delete touched, because a state can be in
+        /// more than one; undoing only the first left the rest short a state, and
+        /// each entry restores the resolved-ref cache as well as the text, which
+        /// is what makes the restore actually stick.
+        /// </summary>
         private void OnNodeDeletedFromGraph(
             SageHavokEditor.Models.HkObject deletedObj,
-            SageHavokEditor.Models.HkObject parentSM,
-            string oldStatesValue)
+            IReadOnlyList<StateMachineGraphView.StatesListEdit> statesEdits)
         {
             var capturedId = deletedObj.Id;
             var capturedObj = deletedObj;
-            var capturedSM = parentSM;
-            var capturedOldStates = oldStatesValue;
+            var capturedEdits = statesEdits.ToList();
 
             _undoRedo.Record(new EditAction
             {
@@ -658,17 +663,8 @@ namespace SageHavokEditor
                 Undo = () =>
                 {
                     manager.ObjectMap[capturedId] = capturedObj;
-                    if (capturedSM != null)
-                    {
-                        var sp = capturedSM.Params.FirstOrDefault(p => p.Name == "states");
-                        if (sp != null)
-                        {
-                            sp.Value = capturedOldStates;
-                            sp.NumElements = (capturedOldStates ?? "")
-                                .Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
-                                .Length.ToString();
-                        }
-                    }
+                    foreach (var edit in capturedEdits)
+                        StateMachineGraphView.RestoreStates(edit);
                     RefreshLookups();
                     GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
                     UpdateUndoRedoButtons();
@@ -676,18 +672,7 @@ namespace SageHavokEditor
                 Redo = () =>
                 {
                     manager.ObjectMap.Remove(capturedId);
-                    if (capturedSM != null)
-                    {
-                        var sp = capturedSM.Params.FirstOrDefault(p => p.Name == "states");
-                        if (sp != null)
-                        {
-                            var ids = (sp.Value ?? "")
-                                .Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
-                                .Where(id => id != capturedId).ToList();
-                            sp.Value = string.Join(" ", ids);
-                            sp.NumElements = ids.Count.ToString();
-                        }
-                    }
+                    StateMachineGraphView.ReapplyStatesDelete(capturedEdits, capturedId);
                     RefreshLookups();
                     GraphView.Load(manager, EventList.ToList(), VariableList.ToList());
                     UpdateUndoRedoButtons();

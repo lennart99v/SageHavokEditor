@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The graph doctor now checks the references reachability can't protect.**
+  Saving an `.hkx` writes what the walk from the file root reaches and drops the
+  rest, which is a total guarantee for a `#ref` and none at all for the
+  references Havok spells as bare integers: a transition's `toStateId` and
+  `toNestedStateId`, and a clip's `animationBindingIndex`. Delete the state one of
+  those names and the collector does its job perfectly — the state is
+  unreachable, so it isn't written — while the transition that still names it
+  survives, pointing at a number that now means nothing. The file converts, the
+  game loads it, and the actor T-poses with nothing in any log.
+
+  **The gap was the common case, not an exotic one.** `HavokValidator`'s
+  `toStateId` check reads only the transition arrays hanging off a machine's own
+  states, and inside those it steps over anything flagged `WILDCARD` or
+  `TO_NESTED` — so a machine's `wildcardTransitions` array was never looked at at
+  all, and neither was any nested destination. Wildcard transitions are how most
+  Skyrim machines are actually entered. Reproduced before writing anything:
+  delete a state a wildcard transition enters, exactly as 🗑 Delete Node does it,
+  and the doctor reported **nothing** and the save went ahead.
+
+  A `TO_NESTED` destination is resolved by following `generator` down from the
+  destination state to the machine it starts. Over the 540 nested transitions in
+  the corpus below that resolves 515 — 412 through an `hkbModifierGenerator`, 101
+  straight to the machine, 2 through two wrappers — and the 25 it declines all
+  end at an `hkbBehaviorReferenceGenerator`, where the nested machine is in
+  another file and this one has nothing to say about it. Declining is deliberate:
+  a check that refuses saves has to be over-forgiving wherever it can't see.
+
+  **Measured before it was allowed to refuse anything.** Across vanilla
+  `0_master`, `mt_behavior`, the sixteen other character behaviours,
+  `trollbehavior` and a modded dragon graph: 844 wildcard transitions, 540 nested
+  destinations and 3,552 clips, and the doctor's findings on all twenty files are
+  byte-identical to what it reported before this change. It adds nothing to
+  content that works.
+
+  **It is not silent on Bethesda's dragon, though, and that was the surprise.**
+  `dragonbehavior` carries fifteen of these for real — nine dangling `toStateId`
+  at the wildcard and nested sites the old check skipped, and six dangling
+  `toNestedStateId`, mostly states renumbered with the transitions into them left
+  behind. All fifteen are re-derived independently from the raw XML in
+  `tools/hkx-graph-doctor`, because a check allowed to refuse a save should not
+  be the only witness to its own findings. Being inherited, they go into the
+  load-time baseline and refuse nothing.
+
+  `animationBindingIndex` is bounds-checked against the character's registered
+  animations, and only when a character file is open. `-1` means "bind by
+  `animationName` instead" and is what all 3,552 clips in the corpus carry, so it
+  fires only on a value somebody set by hand. It is a warning, like the
+  clip-registration check beside it: the character file is a second file the
+  editor doesn't write, and it may be about to gain the animations that would
+  make the index good.
+
 - **Export a behaviour as Community Behaviors `.hky` source.** 📤 Export now asks
   which — the CSV summary it always wrote, or the graph itself, written back into
   the YAML source format it can be edited and shared in. Pick a folder and the
@@ -28,6 +79,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a unit that looks right and is not.
 
 ### Fixed
+
+- **Deleting a state left the machine still listing it, and the next `.hkx` save
+  was refused.** 🗑 Delete Node wrote the shortened list to `HkParam.Value`, and
+  that getter answers from the resolved `Children` cache whenever the cache holds
+  anything — which the loader fills for every single-ref list. So on a
+  single-state machine the write went into a field nothing reads: `states` still
+  named the deleted state, `numelements` now said 0, and the graph doctor
+  reported a reference to an object no longer in the file. Not a rare shape —
+  **377 of `1HM_Behavior`'s 507 state machines hold exactly one state**, 35 in
+  `0_master`, 4 in vanilla `dragonbehavior`.
+
+  **A second fault underneath it: a state can belong to more than one machine.**
+  The delete found its owner with `FirstOrDefault`, stripped the state from that
+  one and then dropped the object from the file, leaving every other machine
+  holding a `#ref` to nothing. Vanilla `dragonbehavior`'s
+  `ST_Ground_Combat_Attack_Bite` is in both `BHR_Ground` and `BHR_Ground_Combat`.
+  Rare — none in `0_master` or `mt_behavior` — but the confirmation now says when
+  a state is listed by several machines, and the delete clears all of them.
+
+  Undo was wrong in both the same ways, restoring one machine and only its text;
+  it now restores every list it touched, cache included. Both faults are pinned
+  in `tools/hkx-graph-doctor-ui`, and both were re-introduced on purpose to check
+  the new checks actually go red — the shared-state one first went *green* by
+  skipping, because its subject finder called the very method under test.
+
+- **A save is no longer refused over an object it is about to throw away.** The
+  refusal is a statement about the file that gets written, and an object nothing
+  reaches is not in that file — but every check ran over the whole working set,
+  so a contradiction inside a subtree you had just unwired could block the save
+  that would have removed it, for a reason you could not act on. Findings on
+  objects the `.hkx` save drops are now reported and never structural; the
+  "objects an .hkx save would drop" warning already says they are going.
 
 - **Every bone weight was dropped when opening a Community Behaviors source
   folder.** A blend uses them to weight one part of the body against another, and

@@ -34,7 +34,7 @@ internal static class Program
     private static int _failed;
     private static string _shotDir;
     private static string _projectRoot;
-    /// <summary>Run one phase instead of all of them: report, gate, baseline, refusal, reference, compare.</summary>
+    /// <summary>Run one phase instead of all of them: report, gate, baseline, refusal, reference, compare, prompts, delete.</summary>
     private static string _only;
 
     private static bool Phase(string name) => _only == null || _only == name;
@@ -97,6 +97,7 @@ internal static class Program
             if (Phase("reference")) BehaviorReferencePath(mw, manager);
             if (Phase("compare")) CompareEventsPath(mw, manager, path);
             if (Phase("prompts")) PromptWiringPath(mw);
+            if (Phase("delete")) DeleteNodePath(mw, manager, path);
         }
         catch (Exception ex)
         {
@@ -105,6 +106,125 @@ internal static class Program
 
         Console.WriteLine(_failed == 0 ? "\nall checks passed" : $"\n{_failed} check(s) FAILED");
         Environment.Exit(_failed == 0 ? 0 : 1);
+    }
+
+    /// <summary>
+    /// Every finding, as a set, so "the graph came back to where it started" is a
+    /// set comparison rather than a count — a fault that swaps one issue for
+    /// another would slip past a count.
+    /// </summary>
+    private static HashSet<string> Fingerprint(GraphDoctorReport r) =>
+        r.Issues.Select(i => $"{i.Severity}|{i.Category}|{i.ObjectId}|{i.Description}").ToHashSet();
+
+    // -- 🗑 Delete Node: the model half ---------------------------------------
+    // The command itself opens a modal confirmation nothing can dismiss from
+    // inside the process, so what runs here is everything it does either side of
+    // that dialog: find the machines listing the state, strip it from all of
+    // them, drop it from the file — then undo, and require the graph to be
+    // exactly what it was.
+    //
+    // Two faults are pinned, and both used to end the same way: an .hkx save
+    // refused over a reference to an object that is no longer in the file.
+    private static void DeleteNodePath(SageHavokEditor.MainWindow mw,
+        SageHavokEditor.Core.HavokManager manager, string path)
+    {
+        Console.WriteLine("deleting a state:");
+
+        string Val(HkObject o, string p) => o?.Params.FirstOrDefault(x => x.Name == p)?.Value ?? "";
+
+        var doctor = (GraphDoctorReport)Invoke(mw, "RunGraphDoctor");
+        var before = Fingerprint(doctor);
+        var baseline = doctor.StructuralFingerprints();
+
+        void DeleteAndCheck(string what, HkObject victim)
+        {
+            // Counted independently, for the same reason as OwnerCount below: the
+            // delete must clear every machine that actually lists the state, not
+            // every machine it happened to notice.
+            var listedBy = manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachine"
+                            && HkRefList.Tokens(Val(o, "states")).Contains(victim.Id))
+                .Select(o => o.DisplayName).ToList();
+
+            var owners = StateMachineGraphView.OwningMachines(manager, victim.Id);
+            Console.WriteLine($"  {what}: '{victim.DisplayName}' ({victim.Id}), "
+                + $"listed by {listedBy.Count} machine(s): {string.Join(", ", listedBy)}");
+            Check("the delete sees every machine listing it", owners.Count == listedBy.Count,
+                $"found {owners.Count} of {listedBy.Count}");
+
+            StateMachineGraphView.ApplyNodeDelete(manager, victim.Id, owners);
+            try
+            {
+                // The point of the whole fix: no machine may still name it.
+                var stillListed = manager.ObjectMap.Values
+                    .Where(o => o.ClassName == "hkbStateMachine"
+                                && HkRefList.Tokens(Val(o, "states")).Contains(victim.Id))
+                    .Select(o => o.DisplayName).ToList();
+                Check("no machine still lists the deleted state", stillListed.Count == 0,
+                    string.Join(", ", stillListed));
+
+                // numelements is authoritative on XML→HKX conversion, so a list
+                // whose count disagrees with its contents truncates on the way out.
+                var mismatched = owners
+                    .Where(o => o.Param.NumElements != HkRefList.Tokens(o.Param.Value).Length.ToString())
+                    .Select(o => $"{o.Machine.DisplayName} says {o.Param.NumElements} "
+                               + $"for {HkRefList.Tokens(o.Param.Value).Length}").ToList();
+                Check("numelements agrees with the list it counts", mismatched.Count == 0,
+                    string.Join("; ", mismatched));
+
+                var after = (GraphDoctorReport)Invoke(mw, "RunGraphDoctor");
+                var broke = after.StructuralErrors
+                    .Where(i => !baseline.Contains(i.Fingerprint)
+                                && i.Category == ValidationIssue.CategoryBrokenRef).ToList();
+                Check("the delete leaves no broken reference behind", broke.Count == 0,
+                    string.Join("; ", broke.Take(3).Select(i => i.Description)));
+            }
+            finally
+            {
+                manager.ObjectMap[victim.Id] = victim;
+                foreach (var edit in owners) StateMachineGraphView.RestoreStates(edit);
+            }
+
+            Check("undo puts the graph back exactly",
+                Fingerprint((GraphDoctorReport)Invoke(mw, "RunGraphDoctor")).SetEquals(before));
+        }
+
+        // Fault one: the resolved-ref cache. HkParam.Value answers from Children
+        // whenever that cache holds anything, and the loader fills it for every
+        // single-ref list — so deleting the one state of a single-state machine
+        // used to write the new list into a field nothing reads. 1HM_Behavior has
+        // 377 such machines; vanilla dragonbehavior has 4.
+        var cached = manager.ObjectMap.Values.FirstOrDefault(o =>
+            o.ClassName == "hkbStateMachine"
+            && o.Params.FirstOrDefault(p => p.Name == "states") is HkParam sp
+            && sp.Children.Count > 0);
+        if (cached == null)
+            Console.WriteLine("  [SKIP] no machine in this file keeps a resolved states cache");
+        else
+            DeleteAndCheck("a state whose machine keeps a resolved-ref cache",
+                manager.ObjectMap[HkRefList.Tokens(Val(cached, "states"))[0]]);
+
+        // Fault two: a state listed by more than one machine. Rare — one in
+        // vanilla dragonbehavior, none in 0_master or mt_behavior — and it is the
+        // reason the delete has to look past the first machine it finds.
+        //
+        // Counted here rather than through OwningMachines, which is the method
+        // under test. Asking it how many machines hold a state, and then checking
+        // that it strips all of them, means a regression that makes it stop at the
+        // first one takes the subject away with it — the test skips instead of
+        // going red, which is the failure this harness has already been bitten by
+        // once (fault injection 8 in tools/hkx-graph-doctor).
+        int OwnerCount(string stateId) => manager.ObjectMap.Values
+            .Count(o => o.ClassName == "hkbStateMachine"
+                        && HkRefList.Tokens(Val(o, "states")).Contains(stateId));
+
+        var shared = manager.ObjectMap.Values
+            .Where(o => o.ClassName == "hkbStateMachineStateInfo")
+            .FirstOrDefault(st => OwnerCount(st.Id) > 1);
+        if (shared == null)
+            Console.WriteLine("  [SKIP] no state in this file belongs to two machines");
+        else
+            DeleteAndCheck("a state belonging to two machines", shared);
     }
 
     // -- ✓ Validate: the read-out ---------------------------------------------

@@ -129,14 +129,29 @@ namespace SageHavokEditor.Core.Validation
             if (_manager?.ObjectMap == null || _manager.ObjectMap.Count == 0)
                 return new GraphDoctorReport();
 
+            // What an .hkx save will actually write. Computed first because two
+            // things need it: the prune report, and every check that has to be
+            // judged on the final graph rather than on the editing session's
+            // working set.
+            var survives = Reachable();
+
             issues.AddRange(new HavokValidator(_manager).RunValidation());
             issues.AddRange(NullGenerators());
             issues.AddRange(IndicesOutOfRange());
             issues.AddRange(UnregisteredAnimations());
             issues.AddRange(UnreachableStates());
+            issues.AddRange(SoftRefs(survives));
             issues.AddRange(BehaviorReferences());
 
-            var pruned = PrunedOnSave(issues);
+            // A finding on an object the save drops is reported but never refused
+            // over — see ValidationIssue.DroppedOnSave. Tagging happens here, once,
+            // so no individual check has to remember to do it.
+            if (survives != null)
+                foreach (var issue in issues)
+                    if (issue.ObjectId.Length > 0 && !survives.Contains(issue.ObjectId))
+                        issue.DroppedOnSave = true;
+
+            var pruned = PrunedOnSave(issues, survives);
             issues.AddRange(pruned);
 
             return new GraphDoctorReport
@@ -358,7 +373,8 @@ namespace SageHavokEditor.Core.Validation
         /// whether anything referenced the object: two dead objects referencing
         /// each other passed that test and were pruned anyway.
         /// </summary>
-        private List<ValidationIssue> PrunedOnSave(List<ValidationIssue> issues)
+        private List<ValidationIssue> PrunedOnSave(List<ValidationIssue> issues,
+            HashSet<string>? survives)
         {
             var root = _manager.RootObject;
             if (root == null)
@@ -377,16 +393,7 @@ namespace SageHavokEditor.Core.Validation
                 return new List<ValidationIssue>();
             }
 
-            var reached = new HashSet<string>(StringComparer.Ordinal) { root.Id };
-            var pending = new Stack<HkObject>();
-            pending.Push(root);
-            while (pending.Count > 0)
-            {
-                foreach (var (_, refId) in HkRefWalk.EnumerateRefs(pending.Pop()))
-                    if (_manager.ObjectMap.TryGetValue(refId, out var target)
-                        && target != null && reached.Add(refId))
-                        pending.Push(target);
-            }
+            var reached = survives ?? new HashSet<string>(StringComparer.Ordinal);
 
             return _manager.ObjectMap.Values
                 .Where(o => !reached.Contains(o.Id))
@@ -403,6 +410,240 @@ namespace SageHavokEditor.Core.Validation
                                   "(an XML save keeps it). Wire it into its parent to keep it.",
                 })
                 .ToList();
+        }
+
+        /// <summary>
+        /// The references reachability cannot protect.
+        ///
+        /// An <c>.hkx</c> save keeps what the walk from the root reaches and drops
+        /// the rest, which is a complete guarantee for a <c>#ref</c>: a pointer is
+        /// either followed, and its target written, or it is not a pointer anybody
+        /// holds. It is no guarantee at all for the references Havok spells as bare
+        /// integers and resolves later, at runtime — a transition's
+        /// <c>toStateId</c> and <c>toNestedStateId</c>, and a clip's
+        /// <c>animationBindingIndex</c>. Delete the state one of those names and
+        /// the collector does its job perfectly: the state is unreachable, so it is
+        /// not written. The transition that still names it survives, pointing at a
+        /// number that now means nothing. The file converts, Havok loads it, and
+        /// the actor T-poses with nothing in any log.
+        ///
+        /// The sites read here are the ones <see cref="HavokValidator"/>'s
+        /// <c>toStateId</c> check (its check 7) skips, and the skips are why this
+        /// was worth writing. That check reads only the transition arrays hanging
+        /// off a machine's own states, and inside those it steps over anything
+        /// flagged <c>WILDCARD</c> or <c>TO_NESTED</c> — so a machine's
+        /// <c>wildcardTransitions</c> array was never looked at at all, and neither
+        /// was any nested destination. Wildcard transitions are how most Skyrim
+        /// machines are actually entered, so the gap covered the common case rather
+        /// than an exotic one.
+        ///
+        /// Judged on the graph as it will be saved rather than as it is being
+        /// edited: only surviving objects are read, and only a surviving state
+        /// counts as a destination, so a state on its way out cannot keep a
+        /// transition looking valid.
+        ///
+        /// Measured before it was allowed to refuse anything. Over vanilla
+        /// <c>0_master</c>, <c>mt_behavior</c>, the sixteen other character
+        /// behaviours, <c>trollbehavior</c> and a modded dragon graph — 844
+        /// wildcard transitions, 540 nested destinations, 3,552 clips — it reports
+        /// nothing at all, and the doctor's output on those twenty files is
+        /// identical to what it was before this check existed. Adding nothing to
+        /// content that works is what earns it the right to refuse a save.
+        ///
+        /// It is <em>not</em> silent on vanilla <c>dragonbehavior</c>, which is the
+        /// one thing to know before trusting the paragraph above: that file carries
+        /// fifteen of these for real — nine dangling <c>toStateId</c> at the
+        /// wildcard and nested sites, six dangling <c>toNestedStateId</c>, mostly
+        /// states renumbered with the transitions into them left behind. They are
+        /// inherited, so they land in the load-time baseline and refuse nothing,
+        /// and all fifteen are re-derived from the raw XML in
+        /// <c>tools/hkx-graph-doctor</c> rather than taken on this code's word.
+        /// </summary>
+        private IEnumerable<ValidationIssue> SoftRefs(HashSet<string>? survives)
+        {
+            if (survives == null) yield break;
+
+            HkObject? Live(string? id) =>
+                Resolve(id) is HkObject o && survives.Contains(o.Id) ? o : null;
+
+            foreach (var sm in _manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbStateMachine" && survives.Contains(o.Id)))
+            {
+                var states = HkRefList.Tokens(Get(sm, "states"))
+                    .Select(Live).Where(o => o != null).ToList();
+                if (states.Count == 0) continue;   // the validator reports the empty machine
+
+                var stateIds = new HashSet<string>(
+                    states.Select(st => Get(st!, "stateId") ?? ""), StringComparer.Ordinal);
+
+                // The machine's own wildcard array first, then each state's — the
+                // latter only for the transitions check 7 steps over, so no defect
+                // is reported twice under two categories.
+                var arrays = new List<(HkObject? Array, bool Wildcard)>
+                {
+                    (Live(Get(sm, "wildcardTransitions")), true)
+                };
+                foreach (var st in states)
+                    arrays.Add((Live(Get(st!, "transitions")), false));
+
+                foreach (var (array, wildcard) in arrays)
+                {
+                    if (array == null) continue;
+                    foreach (var tr in InlineElements(array, "transitions"))
+                    {
+                        var nested = (Get(tr, "flags") ?? "").Contains("TO_NESTED");
+                        if (!wildcard && !nested) continue;   // check 7 already has this one
+
+                        var to = (Get(tr, "toStateId") ?? "").Trim();
+                        if (to.Length == 0 || to == "-1") continue;
+
+                        if (!stateIds.Contains(to))
+                        {
+                            yield return new ValidationIssue
+                            {
+                                Severity = "Error",
+                                Category = ValidationIssue.CategoryToStateId,
+                                // A transition is an inline element with no id of
+                                // its own, so the array holding it is the anchor.
+                                // The wildcard array and a state's own array are
+                                // different objects, so the id tells them apart and
+                                // Subject only has to separate this from a finding
+                                // of another kind on the same array.
+                                Subject = "transitions",
+                                Cause = "the destination state was deleted, or its stateId was renumbered — "
+                                      + "removing a state doesn't touch the transitions that name it",
+                                ObjectId = array.Id,
+                                ObjectClass = array.ClassName,
+                                ObjectName = Name(sm),
+                                Description = $"{(wildcard ? "Wildcard transition" : "Transition")} toStateId {to} " +
+                                              $"is no state of '{Name(sm)}' " +
+                                              $"(stateIds: {string.Join(", ", stateIds.OrderBy(x => x, StringComparer.Ordinal))})",
+                            };
+                            continue;   // no destination, so nothing to resolve a nested id against
+                        }
+
+                        if (!nested) continue;
+
+                        var toNested = (Get(tr, "toNestedStateId") ?? "").Trim();
+                        if (toNested.Length == 0 || toNested == "-1") continue;
+
+                        var destination = states.First(st => Get(st!, "stateId") == to)!;
+                        var inner = NestedMachine(destination, survives);
+                        if (inner == null) continue;   // resolves in another file — see below
+
+                        var innerIds = HkRefList.Tokens(Get(inner, "states"))
+                            .Select(Live).Where(o => o != null)
+                            .Select(o => Get(o!, "stateId") ?? "")
+                            .ToHashSet(StringComparer.Ordinal);
+                        if (innerIds.Count == 0 || innerIds.Contains(toNested)) continue;
+
+                        yield return new ValidationIssue
+                        {
+                            Severity = "Error",
+                            Category = ValidationIssue.CategoryToNestedStateId,
+                            Subject = "toNestedStateId",
+                            Cause = "the state was deleted from the nested machine, or its stateId was "
+                                  + "renumbered, after this transition was pointed at it",
+                            ObjectId = array.Id,
+                            ObjectClass = array.ClassName,
+                            ObjectName = Name(sm),
+                            Description = $"Transition into '{Name(destination)}' asks for nested state {toNested}, " +
+                                          $"which is no state of '{Name(inner)}' " +
+                                          $"(stateIds: {string.Join(", ", innerIds.OrderBy(x => x, StringComparer.Ordinal))}) — " +
+                                          "the nested machine starts in its own start state instead, silently",
+                        };
+                    }
+                }
+            }
+
+            // A clip's animationBindingIndex is the third soft reference, and the
+            // only one that resolves outside this file: it indexes the character's
+            // registered animations. -1 means "bind by animationName instead" and
+            // is what every one of the 3,552 clips in the measured corpus carries,
+            // so this fires only on a value somebody set deliberately.
+            if (_projectAnimations.Count == 0) yield break;
+
+            foreach (var clip in _manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbClipGenerator" && survives.Contains(o.Id)))
+            {
+                var raw = (Get(clip, "animationBindingIndex") ?? "").Trim();
+                if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bound))
+                    continue;
+                if (bound < 0 || bound < _projectAnimations.Count) continue;
+
+                yield return new ValidationIssue
+                {
+                    // A warning, like the clip-registration check beside it and for
+                    // the same reason: the character file is a second file this
+                    // editor does not write, and it may be about to gain the
+                    // animations that would make this index good.
+                    Severity = "Warning",
+                    Category = ValidationIssue.CategoryAnimation,
+                    Subject = "animationBindingIndex",
+                    Cause = "the index was set by hand or copied from a project with a longer "
+                          + "animation list, or animations were removed from the character file",
+                    ObjectId = clip.Id,
+                    ObjectClass = clip.ClassName,
+                    ObjectName = Name(clip),
+                    Description = $"animationBindingIndex {bound} is past the end of the character's " +
+                                  $"{_projectAnimations.Count} registered animations — " +
+                                  "-1 is the normal value, and binds the clip by animationName instead",
+                };
+            }
+        }
+
+        /// <summary>
+        /// The state machine a <c>TO_NESTED</c> transition actually starts: the one
+        /// reached by following <c>generator</c> down from the destination state.
+        /// Null when it cannot be known here, which is never a finding — a check
+        /// that refuses saves has to be over-forgiving wherever it can't see.
+        ///
+        /// Over the 540 nested transitions in the measured corpus this resolves
+        /// 515, every one of them through plain <c>generator</c> links: 412
+        /// <c>hkbModifierGenerator</c> → <c>hkbStateMachine</c>, 101 straight to the
+        /// machine, 2 through two modifier wrappers. All 25 it declines end at an
+        /// <c>hkbBehaviorReferenceGenerator</c>, where the nested machine lives in a
+        /// different file and this one genuinely has nothing to say about it.
+        /// </summary>
+        private HkObject? NestedMachine(HkObject state, HashSet<string> survives)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var current = Resolve(Get(state, "generator"));
+            while (current != null && survives.Contains(current.Id) && seen.Add(current.Id))
+            {
+                if (current.ClassName == "hkbStateMachine") return current;
+                if (current.ClassName == "hkbBehaviorReferenceGenerator") return null;
+                // Only a wrapper that passes a single generator through is followed.
+                // Anything holding several children picks between them at runtime,
+                // and Get returns nothing for it, so the walk stops rather than
+                // guessing which child the transition meant.
+                current = Resolve(Get(current, "generator"));
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// The objects an <c>.hkx</c> save writes: everything the reference walk
+        /// reaches from <c>toplevelobject</c>. Null when the file has no root, in
+        /// which case there is no final graph to judge anything on and the
+        /// missing-root error is the only thing worth saying.
+        /// </summary>
+        private HashSet<string>? Reachable()
+        {
+            var root = _manager.RootObject;
+            if (root == null) return null;
+
+            var reached = new HashSet<string>(StringComparer.Ordinal) { root.Id };
+            var pending = new Stack<HkObject>();
+            pending.Push(root);
+            while (pending.Count > 0)
+            {
+                foreach (var (_, refId) in HkRefWalk.EnumerateRefs(pending.Pop()))
+                    if (_manager.ObjectMap.TryGetValue(refId, out var target)
+                        && target != null && reached.Add(refId))
+                        pending.Push(target);
+            }
+            return reached;
         }
 
         /// <summary>

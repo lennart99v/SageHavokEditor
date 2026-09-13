@@ -94,6 +94,9 @@ static HashSet<string> Fingerprint(GraphDoctorReport r) =>
 
 var baseline = Run();
 var baseFingerprint = Fingerprint(baseline);
+// Taken here rather than at the fault-injection header: the soft-ref cross-check
+// below needs it, and it is the same set either way — nothing has been mutated yet.
+var structuralBaselineEarly = baseline.StructuralFingerprints();
 
 Console.WriteLine();
 Console.WriteLine($"== baseline ==  {baseline.Headline}");
@@ -110,7 +113,13 @@ Console.WriteLine();
 Console.WriteLine("== the new checks are quiet on a stock file ==");
 // The pre-existing validator checks are NOT asserted silent: vanilla
 // dragonbehavior really does carry duplicate and dangling stateIds, and those
-// findings are the 0.6 validator's, not the doctor's.
+// findings are the 0.6 validator's, not the doctor's. The soft-ref check's
+// categories stay off this list for the same reason and it surprised me: the
+// same file carries nine more dangling toStateId at the wildcard and nested
+// sites the old check skipped, and four dangling toNestedStateId. Asserting
+// silence there would be asserting that Bethesda's dragon is clean, which it is
+// not. What pins that check instead is the raw-XML re-derivation below, which is
+// a stronger claim than a count of zero.
 foreach (var quiet in new[]
          {
              ValidationIssue.CategoryNullGenerator,
@@ -235,6 +244,117 @@ foreach (var quiet in new[]
         $"+{reported.Except(expected).Count()} / -{expected.Except(reported).Count()}");
 }
 
+// The soft-ref findings get the prune check's treatment: re-derived from the raw
+// XML with ElementTree-style element walking instead of the model's resolver, so
+// the two disagree the moment GraphDoctor's walk is wrong. It matters more here
+// than anywhere else in this file, because these findings are allowed to refuse a
+// save, and because they are not rare on shipped content — vanilla dragonbehavior
+// carries fifteen of them, nine dangling toStateId at sites the old check skipped
+// and six dangling toNestedStateId, every one inherited rather than authored here.
+{
+    Console.WriteLine();
+    Console.WriteLine("== the soft-ref findings re-derive from the raw XML ==");
+
+    var doc = System.Xml.Linq.XDocument.Load(args[0], System.Xml.Linq.LoadOptions.PreserveWhitespace);
+    var byId = doc.Descendants("hkobject")
+        .Where(e => e.Attribute("name") != null)
+        .ToDictionary(e => e.Attribute("name")!.Value);
+
+    System.Xml.Linq.XElement? Par(System.Xml.Linq.XElement? o, string name) =>
+        o?.Elements("hkparam").FirstOrDefault(p => p.Attribute("name")?.Value == name);
+    string Val(System.Xml.Linq.XElement? o, string name)
+    {
+        var p = Par(o, name);
+        // Only the element's own text: a nested <hkobject> child's content must
+        // not be glued on, which is what .Value would do.
+        return p == null ? "" : string.Concat(p.Nodes()
+            .OfType<System.Xml.Linq.XText>().Select(t => t.Value)).Trim();
+    }
+    List<string> Refs(System.Xml.Linq.XElement? o, string name) =>
+        System.Text.RegularExpressions.Regex.Matches(Val(o, name), @"#\d+")
+            .Select(m => m.Value).ToList();
+    System.Xml.Linq.XElement? Ref1(System.Xml.Linq.XElement? o, string name)
+    {
+        var r = Refs(o, name);
+        return r.Count > 0 && byId.TryGetValue(r[0], out var t) ? t : null;
+    }
+    List<System.Xml.Linq.XElement> Inline(System.Xml.Linq.XElement? o, string name) =>
+        Par(o, name)?.Elements("hkobject").Where(e => e.Attribute("name") == null).ToList()
+        ?? new List<System.Xml.Linq.XElement>();
+
+    System.Xml.Linq.XElement? Nested(System.Xml.Linq.XElement state)
+    {
+        var seen = new HashSet<System.Xml.Linq.XElement>();
+        var cur = Ref1(state, "generator");
+        while (cur != null && seen.Add(cur))
+        {
+            var cls = cur.Attribute("class")?.Value;
+            if (cls == "hkbStateMachine") return cur;
+            if (cls == "hkbBehaviorReferenceGenerator") return null;
+            cur = Ref1(cur, "generator");
+        }
+        return null;
+    }
+
+    var expectTo = new List<string>();
+    var expectNested = new List<string>();
+
+    foreach (var sm in byId.Values.Where(e => e.Attribute("class")?.Value == "hkbStateMachine"))
+    {
+        var states = Refs(sm, "states").Where(byId.ContainsKey).Select(r => byId[r]).ToList();
+        if (states.Count == 0) continue;
+        var ids = states.Select(st => Val(st, "stateId")).ToHashSet();
+
+        var arrays = new List<(System.Xml.Linq.XElement? A, bool W)> { (Ref1(sm, "wildcardTransitions"), true) };
+        arrays.AddRange(states.Select(st => (Ref1(st, "transitions"), false)));
+
+        foreach (var (array, wild) in arrays)
+        {
+            if (array == null) continue;
+            foreach (var tr in Inline(array, "transitions"))
+            {
+                var isNested = Val(tr, "flags").Contains("TO_NESTED");
+                if (!wild && !isNested) continue;
+                var to = Val(tr, "toStateId");
+                if (to.Length == 0 || to == "-1") continue;
+                var arrayId = array.Attribute("name")!.Value;
+                if (!ids.Contains(to)) { expectTo.Add(arrayId); continue; }
+                if (!isNested) continue;
+
+                var tn = Val(tr, "toNestedStateId");
+                if (tn.Length == 0 || tn == "-1") continue;
+                var inner = Nested(states.First(st => Val(st, "stateId") == to));
+                if (inner == null) continue;
+                var innerIds = Refs(inner, "states").Where(byId.ContainsKey)
+                    .Select(r => Val(byId[r], "stateId")).ToHashSet();
+                if (innerIds.Count == 0 || innerIds.Contains(tn)) continue;
+                expectNested.Add(arrayId);
+            }
+        }
+    }
+
+    // Compared as sets of anchor objects: a machine with two identically broken
+    // transitions is one place to go and look, which is what the finding is for.
+    var gotTo = baseline.Issues
+        .Where(i => i.Category == ValidationIssue.CategoryToStateId && i.Subject == "transitions")
+        .Select(i => i.ObjectId).ToHashSet();
+    var gotNested = baseline.Issues
+        .Where(i => i.Category == ValidationIssue.CategoryToNestedStateId)
+        .Select(i => i.ObjectId).ToHashSet();
+
+    Check($"{expectTo.Distinct().Count()} dangling toStateId at the sites check 7 skips",
+        gotTo.SetEquals(expectTo.ToHashSet()),
+        $"+{gotTo.Except(expectTo).Count()} / -{expectTo.Except(gotTo).Count()}");
+    Check($"{expectNested.Distinct().Count()} dangling toNestedStateId",
+        gotNested.SetEquals(expectNested.ToHashSet()),
+        $"+{gotNested.Except(expectNested).Count()} / -{expectNested.Except(gotNested).Count()}");
+
+    // Whatever they are, they came with the file, so they are in the load-time
+    // baseline and no save is refused over them.
+    Check("all of them are inherited, so nothing is refused on an untouched file",
+        baseline.StructuralErrors.All(i => structuralBaselineEarly.Contains(i.Fingerprint)));
+}
+
 // The faults below all need a behaviour graph to break. A character, project or
 // skeleton file still exercises everything above, which is the point of running
 // one through: the doctor must stay quiet on a file that has no graph at all.
@@ -250,7 +370,21 @@ if (!manager.ObjectMap.Values.Any(o => o.ClassName == "hkbStateMachine"))
 // Each fault names the issue it must produce; the doctor is re-run, the new
 // issues are diffed against the baseline, and the file is put back.
 
-var structuralBaseline = baseline.StructuralFingerprints();
+var structuralBaseline = structuralBaselineEarly;
+
+// Every fault needs something in the file to break, and not every behaviour
+// file has one of each kind: sprintbehavior and staggerbehavior carry no
+// transitions at all, so the eventId fault below has nothing to point at. Saying
+// so and carrying on is the difference between "this file cannot exercise that
+// check" and an unhandled exception that ends the run before the eight checks
+// after it have been tried — which is what used to happen, and which made the
+// two smallest files in the corpus untestable rather than partly testable.
+void Skip(string title, string why)
+{
+    Console.WriteLine();
+    Console.WriteLine($"== {title} ==");
+    Console.WriteLine($"  [SKIP] {why}");
+}
 
 void Fault(string title, string expectCategory, Func<string> apply, Action undo,
            Func<GraphDoctorReport, string, bool>? extra = null,
@@ -313,108 +447,167 @@ void Fault(string title, string expectCategory, Func<string> apply, Action undo,
         .GroupBy(tok => tok)
         .ToDictionary(g => g.Key, g => g.Count());
 
-    var state = manager.ObjectMap.Values.First(o =>
+    var state = manager.ObjectMap.Values.FirstOrDefault(o =>
         o.ClassName == "hkbStateMachineStateInfo"
         && RefOf(o, "generator") is string g && inbound.GetValueOrDefault(g) == 1);
-    var param = state.Params.First(p => p.Name == "generator");
-    var (oldValue, oldChildren) = Snapshot(param);
 
-    Fault($"a state's generator is null ('{state.DisplayName}')",
-        ValidationIssue.CategoryNullGenerator,
-        () => { SetRef(param, "null"); return state.Id; },
-        () => Restore(param, oldValue, oldChildren),
-        // The generator subtree is now unreachable, which is exactly the kind of
-        // silent loss the prune report exists to name.
-        (r, _) => r.PrunedCount > baseline.PrunedCount);
+    if (state == null)
+    {
+        Skip("a state's generator is null",
+            "no state in this file owns its generator outright — every one is shared, "
+            + "so nulling a reference would orphan nothing and prove nothing");
+    }
+    else
+    {
+        var param = state.Params.First(p => p.Name == "generator");
+        var (oldValue, oldChildren) = Snapshot(param);
+
+        Fault($"a state's generator is null ('{state.DisplayName}')",
+            ValidationIssue.CategoryNullGenerator,
+            () => { SetRef(param, "null"); return state.Id; },
+            () => Restore(param, oldValue, oldChildren),
+            // The generator subtree is now unreachable, which is exactly the kind
+            // of silent loss the prune report exists to name.
+            (r, _) => r.PrunedCount > baseline.PrunedCount);
+    }
 }
 
 // -- 2. a generator pointing at an id the file doesn't have ---------------
 {
-    var state = manager.ObjectMap.Values.First(o =>
+    var state = manager.ObjectMap.Values.FirstOrDefault(o =>
         o.ClassName == "hkbStateMachineStateInfo" && RefOf(o, "generator") != null);
-    var param = state.Params.First(p => p.Name == "generator");
-    var (oldValue, oldChildren) = Snapshot(param);
 
-    Fault($"a generator points at a missing object ('{state.DisplayName}')",
-        ValidationIssue.CategoryBrokenRef,
-        () => { SetRef(param, "#9999"); return state.Id; },
-        () => Restore(param, oldValue, oldChildren));
+    if (state == null)
+    {
+        Skip("a generator points at a missing object",
+            "this file has no state with a generator reference to break");
+    }
+    else
+    {
+        var param = state.Params.First(p => p.Name == "generator");
+        var (oldValue, oldChildren) = Snapshot(param);
+
+        Fault($"a generator points at a missing object ('{state.DisplayName}')",
+            ValidationIssue.CategoryBrokenRef,
+            () => { SetRef(param, "#9999"); return state.Id; },
+            () => Restore(param, oldValue, oldChildren));
+    }
 }
 
 // -- 3. a transition listening for an event the file doesn't have ---------
 {
-    var stringData = manager.ObjectMap.Values.First(o => o.ClassName == "hkbBehaviorGraphStringData");
-    int eventCount = stringData.Params.First(p => p.Name == "eventNames").Strings.Count;
+    var stringData = manager.ObjectMap.Values
+        .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
 
-    var array = manager.ObjectMap.Values.First(o =>
+    // The file that made this guard necessary: sprintbehavior and staggerbehavior
+    // are state machines whose states are entered from elsewhere, so they hold no
+    // transition array with anything in it.
+    var array = manager.ObjectMap.Values.FirstOrDefault(o =>
         o.ClassName == "hkbStateMachineTransitionInfoArray"
         && o.Params.Any(p => p.Name == "transitions" && p.Children.Count > 0));
-    var transition = array.Params.First(p => p.Name == "transitions").Children[0];
-    var eventId = transition.Params.First(p => p.Name == "eventId");
-    var oldEvent = eventId.Value;
+    var eventId = array == null ? null
+        : array.Params.First(p => p.Name == "transitions").Children[0]
+               .Params.FirstOrDefault(p => p.Name == "eventId");
 
-    Fault($"a transition's eventId is past the end of eventNames ({eventCount} events)",
-        ValidationIssue.CategoryIndexRange,
-        () => { eventId.Value = (eventCount + 7).ToString(); return array.Id; },
-        () => eventId.Value = oldEvent);
+    if (stringData == null || eventId == null)
+    {
+        Skip("a transition's eventId is past the end of eventNames",
+            stringData == null
+                ? "this file has no hkbBehaviorGraphStringData, so there is no event table"
+                : "this file has no transition carrying an eventId");
+    }
+    else
+    {
+        int eventCount = stringData.Params.First(p => p.Name == "eventNames").Strings.Count;
+        var oldEvent = eventId.Value;
+
+        Fault($"a transition's eventId is past the end of eventNames ({eventCount} events)",
+            ValidationIssue.CategoryIndexRange,
+            () => { eventId.Value = (eventCount + 7).ToString(); return array!.Id; },
+            () => eventId.Value = oldEvent);
+    }
 }
 
 // -- 4. a variable binding pointing past the end of the variable table ----
 {
-    var stringData = manager.ObjectMap.Values.First(o => o.ClassName == "hkbBehaviorGraphStringData");
-    int variableCount = stringData.Params.First(p => p.Name == "variableNames").Strings.Count;
+    var stringData = manager.ObjectMap.Values
+        .FirstOrDefault(o => o.ClassName == "hkbBehaviorGraphStringData");
 
-    var (owner, param) = manager.ObjectMap.Values
+    var bound = manager.ObjectMap.Values
         .SelectMany(o => Params(o).Select(t => (Owner: o, t.Param)))
-        .First(t => t.Param.TypeInfo?.Semantic == HkParamSemantic.VariableIndex
-                    && int.TryParse(t.Param.Value, out int n) && n >= 0);
-    var oldIndex = param.Value;
+        .Where(t => t.Param.TypeInfo?.Semantic == HkParamSemantic.VariableIndex
+                    && int.TryParse(t.Param.Value, out int n) && n >= 0)
+        .ToList();
 
-    Fault($"a binding's variableIndex is past the end of variableNames ({variableCount} variables)",
-        ValidationIssue.CategoryIndexRange,
-        () => { param.Value = (variableCount + 3).ToString(); return owner.Id; },
-        () => param.Value = oldIndex);
+    if (stringData == null || bound.Count == 0)
+    {
+        Skip("a binding's variableIndex is past the end of variableNames",
+            stringData == null
+                ? "this file has no hkbBehaviorGraphStringData, so there is no variable table"
+                : "nothing in this file binds to a variable");
+    }
+    else
+    {
+        int variableCount = stringData.Params.First(p => p.Name == "variableNames").Strings.Count;
+        var (owner, param) = bound[0];
+        var oldIndex = param.Value;
+
+        Fault($"a binding's variableIndex is past the end of variableNames ({variableCount} variables)",
+            ValidationIssue.CategoryIndexRange,
+            () => { param.Value = (variableCount + 3).ToString(); return owner.Id; },
+            () => param.Value = oldIndex);
+    }
 }
 
 // -- 5. a state nothing transitions into ----------------------------------
 {
-    var machine = manager.ObjectMap.Values.First(o =>
+    var machine = manager.ObjectMap.Values.FirstOrDefault(o =>
         o.ClassName == "hkbStateMachine"
-        && HkRefList.Tokens(ValueOf(o, "states")).Length > 1);
-    var states = machine.Params.First(p => p.Name == "states");
-    var donor = manager.Resolve(HkRefList.Tokens(states.Value)[0])!;
+        && HkRefList.Tokens(ValueOf(o, "states")).Length > 1
+        && manager.Resolve(HkRefList.Tokens(ValueOf(o, "states"))[0]) != null);
 
-    // The real scenario: a state copied into the machine and never wired up.
-    var unwired = new HkObject { Id = "#9001", ClassName = "hkbStateMachineStateInfo" };
-    unwired.Params.Add(new HkParam { Name = "name", Value = "DoctorTest_Unwired" });
-    unwired.Params.Add(new HkParam { Name = "stateId", Value = "9001" });
-    unwired.Params.Add(new HkParam { Name = "generator", Value = ValueOf(donor, "generator") });
+    if (machine == null)
+    {
+        Skip("a state nothing transitions into",
+            "no machine in this file has two or more resolvable states to add a third to");
+    }
+    else
+    {
+        var states = machine.Params.First(p => p.Name == "states");
+        var donor = manager.Resolve(HkRefList.Tokens(states.Value)[0])!;
 
-    var (oldValue, oldChildren) = Snapshot(states);
-    var oldCount = states.NumElements;
+        // The real scenario: a state copied into the machine and never wired up.
+        var unwired = new HkObject { Id = "#9001", ClassName = "hkbStateMachineStateInfo" };
+        unwired.Params.Add(new HkParam { Name = "name", Value = "DoctorTest_Unwired" });
+        unwired.Params.Add(new HkParam { Name = "stateId", Value = "9001" });
+        unwired.Params.Add(new HkParam { Name = "generator", Value = ValueOf(donor, "generator") });
 
-    Fault($"a state nothing transitions into (added to '{machine.DisplayName}')",
-        ValidationIssue.CategoryUnreachableState,
-        () =>
-        {
-            manager.ObjectMap[unwired.Id] = unwired;
-            // The resolved-ref cache is what the Value getter reads, so appending
-            // to the text alone would not stick — the usual #ref trap.
-            if (states.Children.Count > 0) states.Children.Add(unwired);
-            states.Value = string.Join(" ", HkRefList.Tokens(oldValue).Append(unwired.Id));
-            states.NumElements = HkRefList.Tokens(states.Value).Length.ToString();
-            return unwired.Id;
-        },
-        () =>
-        {
-            manager.ObjectMap.Remove(unwired.Id);
-            states.Children.Remove(unwired);
-            Restore(states, oldValue, oldChildren);
-            states.NumElements = oldCount;
-        },
-        // A state nothing reaches yet is where every new state starts, so this is
-        // a warning and never a refusal.
-        extra: null, expectStructural: false);
+        var (oldValue, oldChildren) = Snapshot(states);
+        var oldCount = states.NumElements;
+
+        Fault($"a state nothing transitions into (added to '{machine.DisplayName}')",
+            ValidationIssue.CategoryUnreachableState,
+            () =>
+            {
+                manager.ObjectMap[unwired.Id] = unwired;
+                // The resolved-ref cache is what the Value getter reads, so appending
+                // to the text alone would not stick — the usual #ref trap.
+                if (states.Children.Count > 0) states.Children.Add(unwired);
+                states.Value = string.Join(" ", HkRefList.Tokens(oldValue).Append(unwired.Id));
+                states.NumElements = HkRefList.Tokens(states.Value).Length.ToString();
+                return unwired.Id;
+            },
+            () =>
+            {
+                manager.ObjectMap.Remove(unwired.Id);
+                states.Children.Remove(unwired);
+                Restore(states, oldValue, oldChildren);
+                states.NumElements = oldCount;
+            },
+            // A state nothing reaches yet is where every new state starts, so this is
+            // a warning and never a refusal.
+            extra: null, expectStructural: false);
+    }
 }
 
 // -- 6. two dead objects that reference each other ------------------------
@@ -444,27 +637,208 @@ void Fault(string title, string expectCategory, Func<string> apply, Action undo,
 }
 
 // -- 7. a clip naming an unregistered animation ---------------------------
-if (animations.Count > 0)
 {
-    var clip = manager.ObjectMap.Values.First(o =>
-        o.ClassName == "hkbClipGenerator"
-        && !string.IsNullOrWhiteSpace(ValueOf(o, "animationName")));
-    var param = clip.Params.First(p => p.Name == "animationName");
-    var oldPath = param.Value;
+    var clip = animations.Count == 0 ? null
+        : manager.ObjectMap.Values.FirstOrDefault(o =>
+            o.ClassName == "hkbClipGenerator"
+            && !string.IsNullOrWhiteSpace(ValueOf(o, "animationName")));
 
-    Fault($"a clip names an animation the character never registered ('{clip.DisplayName}')",
-        ValidationIssue.CategoryAnimation,
-        () => { param.Value = @"Animations\DoctorTest_NotRegistered.hkx"; return clip.Id; },
-        () => param.Value = oldPath,
-        // The character file is outside this graph, and the editor can't know it
-        // isn't about to be updated too.
-        extra: null, expectStructural: false);
+    if (clip == null)
+    {
+        Skip("a clip names an unregistered animation",
+            animations.Count == 0
+                ? "no character file given — pass one to exercise this check"
+                : "this file has no clip with an animation path to repoint");
+    }
+    else
+    {
+        var param = clip.Params.First(p => p.Name == "animationName");
+        var oldPath = param.Value;
+
+        Fault($"a clip names an animation the character never registered ('{clip.DisplayName}')",
+            ValidationIssue.CategoryAnimation,
+            () => { param.Value = @"Animations\DoctorTest_NotRegistered.hkx"; return clip.Id; },
+            () => param.Value = oldPath,
+            // The character file is outside this graph, and the editor can't know
+            // it isn't about to be updated too.
+            extra: null, expectStructural: false);
+    }
 }
-else
+
+// -- 7b. a state deleted out from under a wildcard transition -------------
+// The soft-ref case, and the one that used to pass in silence: reachability GC
+// protects every #ref, so deleting a state really does remove it from the file —
+// and leaves every bare-integer toStateId that named it pointing at nothing.
+// Before the soft-ref check this produced zero findings and the .hkx save went
+// ahead, which is the whole reason the check exists. Re-run this with the check
+// removed and it fails, which is the only way to know it is doing the work.
+{
+    // A machine whose wildcard array targets one of its own states. Wildcard
+    // transitions are how most Skyrim machines are entered, so this is the
+    // common shape rather than a contrived one.
+    HkObject? machine = null, wild = null, victim = null;
+    foreach (var sm in manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
+    {
+        var array = manager.Resolve(ValueOf(sm, "wildcardTransitions"));
+        if (array == null) continue;
+        var targets = array.Params.Where(p => p.Name == "transitions").SelectMany(p => p.Children)
+            .Where(c => string.IsNullOrEmpty(c.Id))
+            .Select(tr => ValueOf(tr, "toStateId")).ToHashSet();
+
+        victim = HkRefList.Tokens(ValueOf(sm, "states"))
+            .Select(manager.Resolve)
+            .FirstOrDefault(st => st != null && targets.Contains(ValueOf(st, "stateId")));
+        if (victim == null) continue;
+
+        machine = sm; wild = array;
+        break;
+    }
+
+    if (machine == null)
+    {
+        Console.WriteLine();
+        Console.WriteLine("== a state deleted out from under a wildcard transition ==");
+        Console.WriteLine("  [SKIP] no machine in this file has a wildcard transition into its own state");
+    }
+    else
+    {
+        var states = machine.Params.First(p => p.Name == "states");
+        var (oldValue, oldChildren) = Snapshot(states);
+        var oldCount = states.NumElements;
+        var sid = ValueOf(victim!, "stateId");
+
+        Fault($"the state a wildcard transition enters is deleted "
+              + $"('{victim!.DisplayName}', stateId {sid}, from '{machine.DisplayName}')",
+            ValidationIssue.CategoryToStateId,
+            () =>
+            {
+                // Exactly what the graph view's Delete Node does: drop the state
+                // from its machine's states[] and from the object map. Nothing
+                // touches the wildcard transition that names its stateId.
+                var kept = HkRefList.Tokens(oldValue).Where(id => id != victim.Id).ToList();
+                states.Children.Clear();
+                foreach (var c in oldChildren) if (c.Id != victim.Id) states.Children.Add(c);
+                states.Value = string.Join(" ", kept);
+                states.NumElements = kept.Count.ToString();
+                manager.ObjectMap.Remove(victim.Id);
+                return wild!.Id;
+            },
+            () =>
+            {
+                manager.ObjectMap[victim.Id] = victim;
+                Restore(states, oldValue, oldChildren);
+                states.NumElements = oldCount;
+            });
+    }
+}
+
+// -- 7c. a nested destination that no longer exists -----------------------
+// The second soft ref. A TO_NESTED transition names a state inside the machine
+// under its destination's generator, and nothing in the old checks looked at it
+// at all: check 7 steps over every transition carrying the flag.
+{
+    // The transition has to be one whose nested machine is in *this* file. A
+    // TO_NESTED transition into an hkbBehaviorReferenceGenerator names a state in
+    // a graph the editor hasn't got, so the check declines it on purpose and a
+    // test that picked one would be asserting the opposite of the intent — which
+    // is exactly what happened first time round: 1hm_locomotion, blockbehavior and
+    // magicbehavior all lead with a reference, and all three went red.
+    HkObject? NestedMachineOf(HkObject state)
+    {
+        var seen = new HashSet<string>();
+        var current = manager.Resolve(ValueOf(state, "generator"));
+        while (current != null && seen.Add(current.Id))
+        {
+            if (current.ClassName == "hkbStateMachine") return current;
+            if (current.ClassName == "hkbBehaviorReferenceGenerator") return null;
+            current = manager.Resolve(ValueOf(current, "generator"));
+        }
+        return null;
+    }
+
+    HkObject? nestedArray = null, nestedTransition = null;
+    foreach (var sm in manager.ObjectMap.Values.Where(o => o.ClassName == "hkbStateMachine"))
+    {
+        var states = HkRefList.Tokens(ValueOf(sm, "states"))
+            .Select(manager.Resolve).Where(o => o != null).ToList();
+
+        var arrays = new List<HkObject?> { manager.Resolve(ValueOf(sm, "wildcardTransitions")) };
+        arrays.AddRange(states.Select(st => manager.Resolve(ValueOf(st!, "transitions"))));
+
+        foreach (var array in arrays)
+        {
+            if (array == null) continue;
+            foreach (var tr in array.Params.Where(p => p.Name == "transitions")
+                         .SelectMany(p => p.Children)
+                         .Where(c => string.IsNullOrEmpty(c.Id)
+                                     && ValueOf(c, "flags").Contains("TO_NESTED")))
+            {
+                var dest = states.FirstOrDefault(st => ValueOf(st!, "stateId") == ValueOf(tr, "toStateId"));
+                if (dest == null || NestedMachineOf(dest) == null) continue;
+                nestedArray = array;
+                nestedTransition = tr;
+                break;
+            }
+            if (nestedTransition != null) break;
+        }
+        if (nestedTransition != null) break;
+    }
+
+    if (nestedTransition == null)
+    {
+        Console.WriteLine();
+        Console.WriteLine("== a transition's nested destination no longer exists ==");
+        Console.WriteLine("  [SKIP] no TO_NESTED transition in this file enters a machine it also contains");
+    }
+    else
+    {
+        var toNested = nestedTransition.Params.First(p => p.Name == "toNestedStateId");
+        var old = toNested.Value;
+
+        Fault($"a transition asks for a nested state that isn't there (was {old})",
+            ValidationIssue.CategoryToNestedStateId,
+            () => { toNested.Value = "8123"; return nestedArray!.Id; },
+            () => toNested.Value = old);
+    }
+}
+
+// -- 7d. a fault inside an object the save is about to drop ---------------
+// The refusal is a statement about the file that gets written. An object nothing
+// reaches is not in that file, so a contradiction inside it must be reported and
+// must not refuse the save — otherwise deleting a subtree makes the next save
+// impossible for a reason the user cannot act on.
 {
     Console.WriteLine();
-    Console.WriteLine("== a clip names an unregistered animation ==");
-    Console.WriteLine("  [SKIP] no character file given — pass one to exercise this check");
+    Console.WriteLine("== a contradiction inside an object the save drops is reported, not refused ==");
+
+    var orphan = new HkObject { Id = "#9401", ClassName = "hkbStateMachineStateInfo" };
+    orphan.Params.Add(new HkParam { Name = "name", Value = "DoctorTest_Orphan" });
+    orphan.Params.Add(new HkParam { Name = "stateId", Value = "9401" });
+    // A null generator is structural, and would refuse a save on a live object.
+    orphan.Params.Add(new HkParam { Name = "generator", Value = "null" });
+    manager.ObjectMap[orphan.Id] = orphan;
+
+    try
+    {
+        var report = Run();
+        var mine = report.Issues.Where(i => i.ObjectId == orphan.Id).ToList();
+
+        Check("the fault is still reported",
+            mine.Any(i => i.Category == ValidationIssue.CategoryNullGenerator));
+        Check("and so is the loss of the object",
+            mine.Any(i => i.Category == ValidationIssue.CategoryPruned));
+        Check("but nothing on it is structural",
+            mine.All(i => !i.IsStructural),
+            string.Join("; ", mine.Where(i => i.IsStructural).Select(i => i.Category)));
+        Check("so the save is not refused",
+            report.StructuralErrors.All(i => structuralBaseline.Contains(i.Fingerprint)),
+            string.Join("; ", report.StructuralErrors
+                .Where(i => !structuralBaseline.Contains(i.Fingerprint)).Take(3)
+                .Select(i => i.Fingerprint)));
+    }
+    finally { manager.ObjectMap.Remove(orphan.Id); }
+
+    Check("removing it restores the baseline exactly", Fingerprint(Run()).SetEquals(baseFingerprint));
 }
 
 // -- 8. an edit that reworders somebody else's error, and must not be blamed --
@@ -485,12 +859,22 @@ else
     else
     {
         var state = manager.ObjectMap[victim.ObjectId];
-        var machine = manager.ObjectMap.Values.First(o =>
+
+        // Every machine holding this state, not the first one found. A state can
+        // belong to more than one — vanilla dragonbehavior's
+        // ST_Ground_Combat_Attack_Bite is in both BHR_Ground and
+        // BHR_Ground_Combat — and a toStateId finding names the state, not the
+        // machine, so which machine the error is *about* can't be read off the
+        // issue. Adding to the first match edited the wrong one, the wording did
+        // not change, and the check went red claiming to prove something it had
+        // not tested. Adding to all of them is correct whichever one it was.
+        var machines = manager.ObjectMap.Values.Where(o =>
             o.ClassName == "hkbStateMachine"
-            && HkRefList.Tokens(ValueOf(o, "states")).Contains(state.Id));
-        var states = machine.Params.First(p => p.Name == "states");
-        var (oldValue, oldChildren) = Snapshot(states);
-        var oldCount = states.NumElements;
+            && HkRefList.Tokens(ValueOf(o, "states")).Contains(state.Id)).ToList();
+        var edited = machines
+            .Select(mc => mc.Params.First(p => p.Name == "states"))
+            .Select(sp => (Param: sp, Snapshot(sp).Value, Snapshot(sp).Children, sp.NumElements))
+            .ToList();
 
         var extra = new HkObject { Id = "#9201", ClassName = "hkbStateMachineStateInfo" };
         extra.Params.Add(new HkParam { Name = "name", Value = "DoctorTest_Reworder" });
@@ -498,9 +882,12 @@ else
         extra.Params.Add(new HkParam { Name = "generator", Value = ValueOf(state, "generator") });
 
         manager.ObjectMap[extra.Id] = extra;
-        if (states.Children.Count > 0) states.Children.Add(extra);
-        states.Value = string.Join(" ", HkRefList.Tokens(oldValue).Append(extra.Id));
-        states.NumElements = HkRefList.Tokens(states.Value).Length.ToString();
+        foreach (var (states, oldValue, _, _) in edited)
+        {
+            if (states.Children.Count > 0) states.Children.Add(extra);
+            states.Value = string.Join(" ", HkRefList.Tokens(oldValue).Append(extra.Id));
+            states.NumElements = HkRefList.Tokens(states.Value).Length.ToString();
+        }
 
         try
         {
@@ -522,9 +909,12 @@ else
         finally
         {
             manager.ObjectMap.Remove(extra.Id);
-            states.Children.Remove(extra);
-            Restore(states, oldValue, oldChildren);
-            states.NumElements = oldCount;
+            foreach (var (states, oldValue, oldChildren, oldCount) in edited)
+            {
+                states.Children.Remove(extra);
+                Restore(states, oldValue, oldChildren);
+                states.NumElements = oldCount;
+            }
         }
 
         Check("removing the edit restores the baseline exactly",
@@ -570,69 +960,79 @@ else
 
     // Wire the node into the graph properly: an unreferenced object is dropped by
     // the .hkx save, and a check that only fires on orphans would be worthless.
-    var host = manager.ObjectMap.Values.First(o =>
+    var host = manager.ObjectMap.Values.FirstOrDefault(o =>
         o.ClassName == "hkbStateMachineStateInfo"
         && (o.Params.FirstOrDefault(p => p.Name == "generator")?.Value ?? "").StartsWith("#"));
-    var generator = host.Params.First(p => p.Name == "generator");
-    var oldGen = generator.Value;
-    var oldGenChildren = generator.Children.ToList();
 
-    var reference = new HkObject { Id = "#9301", ClassName = "hkbBehaviorReferenceGenerator" };
-    reference.Params.Add(new HkParam { Name = "name", Value = "DoctorTest_Reference" });
-    reference.Params.Add(new HkParam { Name = "behaviorName", Value = "" });
-    var behaviorName = reference.Params[1];
-
-    manager.ObjectMap[reference.Id] = reference;
-    generator.Children.Clear();
-    generator.Value = reference.Id;
-
-    try
+    // The checks above read the references this file already has, and stand on
+    // their own. Only the injected one needs somewhere to hang a node.
+    if (host == null)
     {
-        Check("an empty behaviorName is reported",
-            RefIssues(RunRefs()).Any(i => i.Category == ValidationIssue.CategoryBehaviorReference
-                                          && i.ObjectId == reference.Id));
+        Console.WriteLine("  [SKIP] no state with a generator reference to hang a test node off");
+    }
+    else
+    {
+        var generator = host.Params.First(p => p.Name == "generator");
+        var oldGen = generator.Value;
+        var oldGenChildren = generator.Children.ToList();
 
-        behaviorName.Value = @"Behaviors\DoctorTest_NoSuchFile.hkx";
-        var missing = RefIssues(RunRefs())
-            .FirstOrDefault(i => i.ObjectId == reference.Id);
-        Check("a path that isn't on disk is reported", missing != null);
-        if (missing != null)
+        var reference = new HkObject { Id = "#9301", ClassName = "hkbBehaviorReferenceGenerator" };
+        reference.Params.Add(new HkParam { Name = "name", Value = "DoctorTest_Reference" });
+        reference.Params.Add(new HkParam { Name = "behaviorName", Value = "" });
+        var behaviorName = reference.Params[1];
+
+        manager.ObjectMap[reference.Id] = reference;
+        generator.Children.Clear();
+        generator.Value = reference.Id;
+
+        try
         {
-            Console.WriteLine($"          → {missing.Severity}: {Trim(missing.Description, 130)}");
-            // Deliberately not structural. Whether a file is on this disk says
-            // nothing about whether the graph contradicts itself, and a mod
-            // manager's virtual file system legitimately keeps it elsewhere — so
-            // this reports, and never refuses a save.
-            Check("but never refuses the save", !missing.IsStructural);
+            Check("an empty behaviorName is reported",
+                RefIssues(RunRefs()).Any(i => i.Category == ValidationIssue.CategoryBehaviorReference
+                                              && i.ObjectId == reference.Id));
+
+            behaviorName.Value = @"Behaviors\DoctorTest_NoSuchFile.hkx";
+            var missing = RefIssues(RunRefs())
+                .FirstOrDefault(i => i.ObjectId == reference.Id);
+            Check("a path that isn't on disk is reported", missing != null);
+            if (missing != null)
+            {
+                Console.WriteLine($"          → {missing.Severity}: {Trim(missing.Description, 130)}");
+                // Deliberately not structural. Whether a file is on this disk says
+                // nothing about whether the graph contradicts itself, and a mod
+                // manager's virtual file system legitimately keeps it elsewhere — so
+                // this reports, and never refuses a save.
+                Check("but never refuses the save", !missing.IsStructural);
+            }
+
+            // .hkx is what a behaviourName always says; the file beside us is .xml,
+            // which is how a project mid-edit actually looks.
+            var self = Path.GetFileNameWithoutExtension(args[0]) + ".hkx";
+            behaviorName.Value = self;
+            var resolved = RefIssues(RunRefs());
+            Check($"'{self}' resolves to the .xml beside it",
+                !resolved.Any(i => i.ObjectId == reference.Id),
+                string.Join("; ", resolved.Take(2).Select(i => Trim(i.Description, 80))));
+            Check("and a resolved reference says nothing further about itself",
+                resolved.Count == inherited,
+                string.Join("; ", resolved.Take(2).Select(i => Trim(i.Description, 100))));
+
+            // Event alignment across the reference used to be asserted here. It is no
+            // longer a doctor finding at all: measured against vanilla 0_master it
+            // fires on 10 of 13 references, up to 418 events, on a file the game runs
+            // perfectly. It is a dialog now, asked for rather than volunteered.
+        }
+        finally
+        {
+            manager.ObjectMap.Remove(reference.Id);
+            generator.Children.Clear();
+            foreach (var c in oldGenChildren) generator.Children.Add(c);
+            generator.Value = oldGen;
         }
 
-        // .hkx is what a behaviourName always says; the file beside us is .xml,
-        // which is how a project mid-edit actually looks.
-        var self = Path.GetFileNameWithoutExtension(args[0]) + ".hkx";
-        behaviorName.Value = self;
-        var resolved = RefIssues(RunRefs());
-        Check($"'{self}' resolves to the .xml beside it",
-            !resolved.Any(i => i.ObjectId == reference.Id),
-            string.Join("; ", resolved.Take(2).Select(i => Trim(i.Description, 80))));
-        Check("and a resolved reference says nothing further about itself",
-            resolved.Count == inherited,
-            string.Join("; ", resolved.Take(2).Select(i => Trim(i.Description, 100))));
-
-        // Event alignment across the reference used to be asserted here. It is no
-        // longer a doctor finding at all: measured against vanilla 0_master it
-        // fires on 10 of 13 references, up to 418 events, on a file the game runs
-        // perfectly. It is a dialog now, asked for rather than volunteered.
+        Check("removing the reference restores the baseline exactly",
+            Fingerprint(Run()).SetEquals(baseFingerprint));
     }
-    finally
-    {
-        manager.ObjectMap.Remove(reference.Id);
-        generator.Children.Clear();
-        foreach (var c in oldGenChildren) generator.Children.Add(c);
-        generator.Value = oldGen;
-    }
-
-    Check("removing the reference restores the baseline exactly",
-        Fingerprint(Run()).SetEquals(baseFingerprint));
 }
 
 // -- 10. which projects get the first-person reminder ---------------------
