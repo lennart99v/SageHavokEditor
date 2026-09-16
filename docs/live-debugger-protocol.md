@@ -1,90 +1,99 @@
-# Live debugger — wire protocol
+# Live debugger — the SKSE plugin and its wire protocol
 
-Sage Havok Editor ships the **client** half of a live behaviour debugger: a panel
-that shows which states a running actor's graph is in, which transition just
-fired, and what every behaviour variable is worth, lined up against the file open
-in the editor. The **game** half — an SKSE plugin — does not exist. This document
-is the contract it would have to satisfy, written out of the shipping client
-(`SageHavokEditor/Core/BehaviorDebuggerClient.cs`) so that anyone who wants to
-write that plugin does not have to read C# to find out what the editor expects.
+The Debugger tab talks to an SKSE plugin called **SkyrimBehaviorDebugger** over a
+pair of local named pipes. This document describes both halves as built.
 
-Nothing here is fixed except by the accident that only one side is implemented.
-If you are writing the plugin and a decision below is wrong for the game, say so —
-the client is 200 lines and changing it is easier than working around it.
+## Status
+
+The plugin **exists and works**. It is not in this repository, not in version
+control anywhere, and has never been released — so anybody who reads the Guide,
+goes looking for it on Nexus and finds nothing is not doing anything wrong. Until
+it is published, the Debugger tab is effectively author-only.
+
+- Source: `C:\SkyrimBehaviorDebugger\` — CMake + vcpkg + CommonLibSSE-NG,
+  one translation unit (`src/Plugin.cpp`, ~470 lines) plus a PCH and a one-symbol
+  `RegexStub.cpp` that satisfies a CommonLibSSE built against an older MSVC STL.
+- Built artefact: `SkyrimBehaviorDebugger.dll`, installed to
+  `Data/SKSE/Plugins/`. Writes `SkyrimBehaviorDebugger.log` to the usual SKSE log
+  directory.
+- Dependencies are `commonlibsse-ng` and `spdlog` (header-only), both via vcpkg;
+  C++23, static MSVC runtime.
+
+Getting it published is tracked in `ROADMAP.md` under *Live debugger*.
 
 ## Shape
 
 Two local named pipes. **The plugin is the server on both**; the editor connects
-as a client and retries until the game appears. There is no network transport and
-both halves must be on the same machine.
+as a client and retries until the game appears. No network transport — both halves
+must be on the same machine.
 
 | Pipe | Direction | Purpose |
 | --- | --- | --- |
-| `\\.\pipe\SkyrimBehaviorDebugger` | game → editor | one JSON snapshot per line, continuously |
+| `\\.\pipe\SkyrimBehaviorDebugger` | game → editor | one JSON snapshot per line, every 500 ms |
 | `\\.\pipe\SkyrimBehaviorDebugger_Config` | editor → game | one JSON watch-list, on demand |
 
 The editor never writes to the first and never reads from the second.
 
+Three detached threads do the work: a pipe server, a config listener, and a
+snapshot sender that starts at `kDataLoaded`.
+
 ## `SkyrimBehaviorDebugger` — snapshots
 
-A byte stream of UTF-8 **newline-delimited JSON**: one complete object per line,
-`\n`-terminated. The editor reads with a line reader, skips blank lines, and
-silently discards any line it cannot parse — so a malformed snapshot costs one
-frame, not the session.
+`PIPE_ACCESS_OUTBOUND`, byte mode, `PIPE_NOWAIT`, one instance, 64 KB out buffer.
+The sender builds a snapshot and writes it plus `\n` every **500 ms** — a
+deliberate 2 Hz, not a per-frame firehose. The editor imposes no rate limit and
+handles whatever arrives; it skips blank lines and silently discards any line it
+cannot parse, so a malformed snapshot costs one frame, not the session.
+
+A real line, formatted here for reading — the plugin emits it on one line with no
+spaces:
 
 ```json
 {
-  "formId": "0x00000014",
+  "formId": "00000014",
   "actorName": "Player",
-  "behaviorFile": "0_master.hkx",
+  "behaviorFile": "0_master",
   "activeStates": [
     { "smName": "MTState", "stateId": 12, "stateName": "" }
   ],
   "variables": [
-    { "name": "SpeedSampled", "value": 0.0 },
-    { "name": "bIsSynced",    "value": 1.0 }
-  ],
-  "dragon": null
+    { "name": "SpeedSampled", "value": 0.000000 },
+    { "name": "bIsRiding",    "value": 0 }
+  ]
 }
 ```
 
-Field by field:
-
-- **`formId`**, **`actorName`** — identify the actor. `actorName` is displayed in
-  the panel header and written into exported recordings; `formId` is carried
-  through but not currently displayed.
-- **`behaviorFile`** — the graph the game is running, displayed so the user can
-  tell they have the wrong file open. The bare filename is enough.
-- **`activeStates`** — one entry per *watched* state machine (see the config
-  below), not per machine in the graph. `stateId` is the number; **`stateName`
-  may be sent empty** — the editor resolves the readable name itself from the
-  file the user has open, and shows `state 12` when it cannot. Sending a name is
-  harmless but it is not used.
-- **`variables`** — the watched variables and their current values. **`value` is
-  always a JSON number read as a float**, including for integer and boolean
-  variables: send `1.0` for a true bool, not `true`. The editor flashes a
-  variable whose value moved by more than `0.001`.
-- **`dragon`** — optional, `null` when absent. The mount's graph while riding,
-  with the same `formId` / `behaviorFile` / `activeStates` / `variables` shape.
-  The name is historical and the panel labels it the mount group; it is not
-  dragon-specific and a horse belongs here too.
-
-Omitted fields deserialize to empty, so a minimal plugin can send `actorName`,
-`behaviorFile` and `variables` and get a working variable view with no active
-states.
-
-**Cadence is unspecified and is the plugin's call.** The editor imposes no rate
-limit and handles whatever arrives; the graph's live-state pulse redraws about 30
-times a second, so anything at or below that is smooth and anything much above it
-is wasted. A snapshot per behaviour-graph update is more than is needed. Sending
-only on change is fine — the editor holds the last value.
+- **`formId`** — eight uppercase hex digits, **no `0x` prefix** (`00000014` for
+  the player). Carried by the editor but not currently displayed.
+- **`actorName`** — hardcoded `"Player"`. The plugin only ever reports the player
+  (plus a mount, below); it does not look at targets or followers.
+- **`behaviorFile`** — read from `graphs[0]->behaviorGraph->name`, so it is the
+  **graph's name**, not a path or a filename with an extension. Empty string if
+  the actor has no animation graph yet.
+- **`activeStates`** — one entry per tracked state machine. `stateName` is
+  **always sent empty**; the editor resolves the readable name itself, positionally,
+  against the file the user has open, and shows `state 12` when it cannot. A
+  machine whose state variable is missing or reads negative is **omitted
+  entirely** rather than reported as unknown.
+- **`variables`** — the configured watch list. A variable the running graph does
+  not have is **skipped**, not sent as zero. Floats are printed with six decimals
+  (`0.000000`); ints are printed bare (`12`). Never a JSON `true`/`false` — the
+  editor reads every value as a float and flashes a variable whose value moved by
+  more than `0.001`.
+- **`bIsRiding`** — appended to `variables` unconditionally, whether or not the
+  editor asked for it, so the mount group can appear.
+- **`dragon`** — present only while riding, and the key is **absent** rather than
+  `null` otherwise. Same `formId` / `behaviorFile` / `activeStates` / `variables`
+  shape, read off `GetMount()` with the same watch list. The name is historical;
+  the panel labels it the mount group and a horse belongs there too.
 
 ## `SkyrimBehaviorDebugger_Config` — the watch list
 
-The editor connects, writes **one UTF-8 JSON object with no trailing newline**,
-flushes, and **disconnects**. It does not wait for a reply. Every config send is a
-fresh connection, so the plugin must loop on accept rather than handle one client
-and stop.
+`PIPE_ACCESS_INBOUND`, byte mode, `PIPE_WAIT`, 64 KB in buffer. The listener
+loops on accept, reads to EOF, parses, and goes back to waiting — so every config
+send is a fresh connection, which is exactly what the editor does: connect, write
+**one UTF-8 JSON object with no trailing newline**, flush, disconnect. It does not
+wait for a reply.
 
 ```json
 {
@@ -98,66 +107,74 @@ and stop.
 }
 ```
 
-- **`variables`** — everything the editor wants back in each snapshot, built from
-  the variable table of the file it has open. `type` is `"float"` for `REAL`,
-  `VECTOR` and `QUATERNION` variables and `"int"` for everything else; it tells
-  the plugin which getter to call, and the answer still comes back as a number.
-- **`stateMachines`** — the machines that can report a state, each as its name
-  plus **the behaviour variable to read that state from**. See below.
+- **`variables`** — everything the editor wants back, built from the variable
+  table of the file it has open. `type` is `"float"` for `REAL`, `VECTOR` and
+  `QUATERNION` variables and `"int"` for everything else; it selects
+  `GetGraphVariableFloat` or `GetGraphVariableInt`.
+- **`stateMachines`** — each machine's name plus the behaviour variable to read
+  its state from. See below.
 
-The editor re-sends the whole config — it is never a delta — on start, on every
-reconnect, whenever the user loads a different file while debugging, and
-immediately after the user enables tracking for a machine.
+The editor re-sends the whole config — never a delta — on start, on every
+reconnect, whenever a different file is loaded while debugging, and immediately
+after the user enables tracking for a machine.
 
-## How active states are read today, and why you might not want to
+**The parser is hand-rolled substring scanning, not a JSON parser**, and that
+constrains the format more than the format admits:
 
-A `hkbStateMachine` does not publish its current state to the game. It can mirror
-it into a behaviour variable, named by the machine's `syncVariableIndex`
-parameter, and that mirror is what the protocol above is built around: the editor
-tells the plugin *"machine `MTState` reports through variable `iState_MT`"*, and
-the plugin answers by calling the ordinary int-variable getter.
+- It takes the first `[` after a key and the **first `]` after that**, so an array
+  containing a nested array or any bracketed string would truncate. The config
+  must stay flat.
+- Within an entry, `"type"` must follow `"name"`, and `"smName"` must follow
+  `"variableName"`. Key order is load-bearing.
+- Anything it cannot find is silently absent rather than an error.
 
-That works with nothing but `GetGraphVariableInt`, which is the appeal. The cost
-is that **almost nothing in Skyrim is synced**: 11 of 112 state machines in
-vanilla `0_master.hkx`, and none at all in `WeapEquip.hkx`. The editor has a
-command that adds an int variable and points a machine's `syncVariableIndex` at
-it, but that edits the graph, which means re-running Nemesis or Pandora before
-the game sees it. It is the single biggest wart in the feature.
+This matches what the editor emits today. It is worth knowing before either side
+changes shape.
 
-**If the plugin can reach the live graph instead, it should.** A plugin that
-already holds the behaviour graph can read a state machine's active state
-directly and report every machine in it, with no `syncVariableIndex`, no graph
-edit and no patch run. In that case `stateMachines` in the config becomes
-advisory — a filter, or ignorable — and `activeStates` simply carries everything.
-The editor needs no change for this: it keys active states on `smName` and
-resolves the id against the open file either way.
+## How active states are read, and why it is the weak point
 
-Treat the sync-variable path as the floor, not the design.
+A `hkbStateMachine` does not publish its current state. It can mirror it into a
+behaviour variable, named by the machine's `syncVariableIndex`, and that mirror is
+what the protocol is built on: the editor says *"machine `MTState` reports through
+variable `iState_MT`"*, and the plugin answers with `GetGraphVariableInt`.
 
-## Notes for an implementer
+That needs nothing but the ordinary variable getter, which is the appeal. The cost
+is that **almost nothing in Skyrim is synced** — 11 of 112 state machines in
+vanilla `0_master.hkx`, none at all in `WeapEquip.hkx`. The editor can add an int
+variable and point a machine's `syncVariableIndex` at it, but that edits the graph,
+which means re-running Nemesis or Pandora before the game sees it. It is the
+feature's worst wart and it is a property of this design, not of the game.
 
-- The client connects with a 2 s timeout on the snapshot pipe and 3 s on the
-  config pipe, and retries about once a second forever. Starting the game first
-  or the editor first both work.
-- Both pipes should be created once at plugin load and torn down at shutdown. The
-  editor treats a dropped pipe as a reconnect, not an error.
-- Variable and state-machine names are the graph's own names, matched as written.
-  The editor resolves state ids **by position against the file the user has
-  open**, which is why it tells users to open the Nemesis/Pandora output rather
-  than their pre-patch source.
-- `GetGraphVariableFloat` / `GetGraphVariableInt` on the actor are enough for the
-  `variables` array and for the sync-variable readback.
+**If the plugin can reach the live graph instead, it should.** It already holds
+`BSAnimationGraphManagerPtr` in `GetBehaviorFileName`; reading a state machine's
+active state from there would report every machine with no `syncVariableIndex`, no
+graph edit and no patch run. The editor needs no change to accept it — it keys
+active states on `smName` and resolves the id against the open file either way,
+so `stateMachines` in the config would simply become advisory.
 
-## Open questions
+**Fallback when no config has arrived.** With an empty machine list the plugin
+reads a variable literally named `iState` and reports it as a machine called
+`BehaviorMode`. That is a development convenience from before the config pipe
+existed; it fires whenever the editor has not sent a config yet, and it will
+produce a machine name that exists in no real graph.
 
-Worth settling with whoever writes the plugin rather than guessing:
+## Known limitations
 
-1. **Which actor?** The client assumes one — in practice the player — plus an
-   optional mount. Reporting an arbitrary targeted actor would be more useful and
-   costs the protocol nothing, but the editor's panel would need a picker.
-2. **Cadence and throttling** — per graph update, fixed Hz, or on-change only.
-3. **Direct state access** — the section above; the answer decides whether
-   `syncVariableIndex` stays in the feature at all.
-4. **Whether `dragon` should be a general `mounts` / `others` array** rather than
-   one optional slot with a misleading name. Changing it is a client change, and
-   the client is the easy half to change.
+Worth fixing before the plugin is published, and worth knowing meanwhile.
+
+1. **One editor session per game launch.** After a client connects, the pipe
+   thread parks in `while (_running) Sleep(100)` and never notices the
+   disconnect, so the pipe is never torn down and recreated. Stop Debug and start
+   again and the editor will wait forever against a game that thinks it still has
+   a client. The editor's own reconnect loop is fine; the plugin is the half that
+   cannot. Restarting Skyrim is the current workaround.
+2. **Write failures are ignored.** `Send` discards the `WriteFile` result, so a
+   broken pipe is indistinguishable from a successful send and the plugin keeps
+   building snapshots for a reader that has gone. Checking it is also how the
+   thread would learn to recreate the pipe and fix (1).
+3. **Player only.** Reporting a targeted actor would be more useful for debugging
+   a creature or a follower, and costs the protocol nothing — but the editor's
+   panel would need an actor picker.
+4. **Fixed 2 Hz.** Fine for variables, coarse for catching a state held briefly.
+   The graph's live pulse redraws about 30 times a second, so there is headroom;
+   sending on change would be better than simply raising the rate.

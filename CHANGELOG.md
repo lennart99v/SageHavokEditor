@@ -9,42 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **The Guide implied you could install the live debugger's SKSE plugin. You
-  cannot — it does not exist.** The Debugger tab section read *"It needs the
-  SkyrimBehaviorDebugger SKSE plugin installed in the game"* and the setup
-  section *"The game side is the SkyrimBehaviorDebugger SKSE plugin"*, both
-  written as statements about a thing you could go and download. Only the client
-  half was ever built: `Core/BehaviorDebuggerClient.cs` connects to
-  `\\.\pipe\SkyrimBehaviorDebugger`, and nothing has ever served that pipe. The
-  failure mode is the cruellest available — the client retries forever by design,
-  so a missing plugin is indistinguishable from a game that has not launched yet,
-  and the Guide told the user that red status line was a wait rather than an
-  error. Found by a user (Sleme, 2026-09-15) who went looking for the plugin on
-  Nexus, could not find it, and asked whether it was WIP or whether he was
-  missing something. Both Guide sections and the README feature list now say the
-  game half is unimplemented.
+- **The Guide told users to install an SKSE plugin that has never been
+  released.** The Debugger tab section read *"It needs the SkyrimBehaviorDebugger
+  SKSE plugin installed in the game"* and the setup section *"The game side is
+  the SkyrimBehaviorDebugger SKSE plugin"* — both true statements about a plugin
+  that exists and works, and neither of which mentions that it is not bundled
+  with the editor, not on Nexus, and not obtainable anywhere. The feature has
+  therefore only ever worked on the author's machine.
+
+  The failure mode is the cruellest available. The client retries forever by
+  design, so that the editor and the game can be started in either order, and the
+  Guide correctly taught that 🔴 *Live debugger disconnected — retrying…* is a
+  wait rather than a failure. Without the plugin that line is the permanent
+  steady state, and it looks exactly like a game not yet launched. Found by a
+  user (Sleme, 2026-09-15) who went looking for the plugin on Nexus, could not
+  find it, and asked whether it was WIP or whether he was missing something. Both
+  Guide sections and the README feature list now say it is unreleased, and the
+  Guide names a missing plugin as the reason for a red status line that never
+  goes green.
+
+  Two facts about the plugin also reached the Guide, because they change what a
+  user should do. It serves **one editor session per game launch** — Stop Debug
+  and start again and the second connection is never accepted, so Skyrim needs
+  restarting. And the "re-connects by itself if the game exits or reloads" claim
+  in the setup section was never true of the game half, so it is gone.
 
 ### Added
 
-- **The live-debugger wire protocol is written down.**
-  `docs/live-debugger-protocol.md` specifies what an SKSE plugin has to do to
-  drive the Debugger tab, derived from the shipping client rather than from
-  intent: the two pipe names and which end is the server, the newline-delimited
-  UTF-8 snapshot JSON with its `activeStates` / `variables` / optional mount
-  group, the config JSON the editor pushes on a fresh connection each time, the
-  connect timeouts and the retry loop, and the traps a reimplementer would
-  otherwise hit — `value` is a float even for int and bool variables, `stateName`
-  may be sent empty because the editor resolves it against the open file, and the
-  config is always whole rather than a delta.
+- **The live debugger's plugin and wire protocol are documented.**
+  `docs/live-debugger-protocol.md` writes down both halves as built, read out of
+  the plugin source and `Core/BehaviorDebuggerClient.cs` rather than out of
+  intent: where the plugin lives and what it is built from, the two pipe names
+  and which end is the server, the 500 ms snapshot cadence, the exact snapshot
+  JSON — `formId` as bare uppercase hex, `actorName` hardcoded to `Player`,
+  `behaviorFile` being the graph's name rather than a filename, `stateName`
+  always empty because the editor resolves it positionally, absent variables
+  skipped rather than zeroed, `bIsRiding` appended whether or not it was asked
+  for, and the mount group's key absent rather than null — plus the config JSON
+  and the fact that its parser is hand-rolled substring scanning, so the config
+  must stay flat and key order within an entry is load-bearing.
 
-  It also records the design question the protocol is currently on the wrong side
-  of. Active states are read through `syncVariableIndex`, a machine mirroring its
-  state into a behaviour variable, because that is all a process outside the game
-  can reach — but only 11 of 112 state machines in vanilla `0_master` are synced
-  and none in `WeapEquip`, so tracking a machine means editing the graph and
-  re-running Nemesis/Pandora. A plugin holding the live graph could read the
-  state directly and report every machine with none of that, and the client would
-  need no change to accept it, since it keys on the machine name either way.
+  It also records the design question the protocol is on the wrong side of.
+  Active states are read through `syncVariableIndex`, a machine mirroring its
+  state into a behaviour variable, which is all a process *outside* the game
+  could manage — but the plugin runs inside it and already holds an animation
+  graph manager. Only 11 of 112 state machines in vanilla `0_master` are synced
+  and none in `WeapEquip`, so tracking a machine currently means editing the
+  graph and re-running Nemesis/Pandora. Reading the graph directly would report
+  every machine with none of that, and the client would need no change to accept
+  it, since it keys on the machine name either way.
 
 - **The clip preview plays interleaved / uncompressed animations.** It used to
   refuse anything that wasn't spline-compressed — *"No
