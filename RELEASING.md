@@ -87,20 +87,50 @@ dotnet publish SageHavokEditor/SageHavokEditor.csproj -c Release -p:PublishProfi
 Output lands in `SageHavokEditor/bin/Release/net8.0-windows/win-x64/publish/win-x64/`.
 Warnings are expected (the pre-existing nullable ones); errors are not.
 
+**5b. Build the SKSE plugin.** The live debugger's game half ships in the same
+zip, and its source is **not in this repository** — it lives at
+`C:\SkyrimBehaviorDebugger\` and is not yet in version control (see *Live
+debugger* in `ROADMAP.md`). Build it from a machine that has it:
+
+```pwsh
+cmake --build C:\SkyrimBehaviorDebugger\build --config Release
+```
+
+Output: `C:\SkyrimBehaviorDebugger\build\Release\SkyrimBehaviorDebugger.dll`.
+Run its one test first — it exercises the connect / disconnect / reconnect cycle
+the editor depends on, which is otherwise only reachable by launching Skyrim:
+
+```pwsh
+# from a VS x64 developer prompt, in C:\SkyrimBehaviorDebugger
+cl /std:c++20 /EHsc /nologo /Fe:build\pipe_reconnect_test.exe /Fo:build\ `
+   test\pipe_reconnect_test.cpp /I src
+.\build\pipe_reconnect_test.exe      # exit code 0 = pass
+```
+
 **6. Build the zip** as `SageHavokEditor/SageHavokEditor_v<version>.zip` —
-gitignored by `SageHavokEditor_v*.zip`, so it never gets committed. Two entries,
-flat, no folder:
+gitignored by `SageHavokEditor_v*.zip`, so it never gets committed:
 
 ```
-SageHavokEditor.exe    the published single-file exe, ~156 MB
-LICENSE                repo root, GPL-3.0
+SageHavokEditor.exe                            the published single-file exe, ~156 MB
+LICENSE                                        repo root, GPL-3.0
+SKSE Plugin/INSTALL.txt                        docs/SKSE-Plugin-INSTALL.txt, renamed
+SKSE Plugin/SKSE/Plugins/SkyrimBehaviorDebugger.dll   from step 5b
 ```
+
+The plugin is optional — it is only needed for the Debugger tab, and the editor
+runs without it — so it goes in a subfolder rather than loose at the root, where
+it would look like something the editor needs. The nested `SKSE/Plugins/` path
+inside that folder is the layout a user drops into `Data`, and it is also what a
+mod manager expects if they zip the folder and install it as a mod. `INSTALL.txt`
+explains both.
 
 The publish directory also contains a stray `HKX2.pdb` — the vendored library
 doesn't set `DebugType None` the way the main project does. **Leave it out.**
 
 v0.4.0 and v0.5.0 shipped the exe alone; `LICENSE` was added in 0.6.0 because
-GPL-3.0 §4 asks for the licence text to travel with the binary.
+GPL-3.0 §4 asks for the licence text to travel with the binary. The SKSE plugin
+was added in 0.8.0 — before that the Debugger tab was documented but the plugin
+it needs was never distributed, so the feature worked on one machine only.
 
 ## Verify before handing it over
 
@@ -111,6 +141,8 @@ All of these, not a subset:
 - The published exe launches and the window responds.
 - **Extract the zip to a clean directory and launch that exe too** — this is the
   copy people download, and it is the one worth trusting.
+- The extracted `SKSE Plugin/SKSE/Plugins/SkyrimBehaviorDebugger.dll` is the one
+  step 5b built, not a stale copy — check its timestamp against the build.
 - Record `Get-FileHash -Algorithm SHA256` of the zip; the release notes quote it.
 
 ## Publish — each step asked for separately

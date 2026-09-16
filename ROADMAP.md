@@ -570,29 +570,47 @@ the port's own README.
 
 ## Live debugger
 
-**The game side exists but has never been released.** This is the thing to know
-before reading anything else here. `SkyrimBehaviorDebugger` is a working SKSE
-plugin — source at `C:\SkyrimBehaviorDebugger\` (CMake + vcpkg + CommonLibSSE-NG,
-one `src/Plugin.cpp`), built DLL installed locally under `Data/SKSE/Plugins/` —
-but it is in no repository, has no Nexus page, and is not bundled with the
-editor. So the feature works on the author's machine and nowhere else, and a user
-who reads the Guide and goes looking for the plugin finds nothing. Raised exactly
-that way on 2026-09-15. Documented in `docs/live-debugger-protocol.md`.
+**The game side ships with the editor from 0.8.0.** `SkyrimBehaviorDebugger` is
+an SKSE plugin — source at `C:\SkyrimBehaviorDebugger\` (CMake + vcpkg +
+CommonLibSSE-NG, `src/Plugin.cpp` plus `src/PipeServer.h`) — and until 0.8.0 it
+was not distributed at all, so the feature worked on the author's machine and
+nowhere else while the Guide told everyone else to install it. Raised exactly
+that way by a user on 2026-09-15. Both halves are documented in
+`docs/live-debugger-protocol.md`; the zip layout is in `RELEASING.md` step 6.
 
-- [ ] **Release the plugin.** The whole feature is gated on this and nothing
-  else. Needs, roughly: the source into version control, the two bugs below
-  fixed, a licence, and a decision about whether it rides along in the editor's
-  zip or gets its own Nexus page. Until then the Guide's job is to stop people
-  hunting for a download that does not exist.
+**The plugin source is still outside version control**, which is the remaining
+soft spot: the release process reaches for a path on one machine. Worth its own
+repository, and the licence question goes with it — the zip's `INSTALL.txt`
+currently states GPL-3.0, matching the editor.
 
-- [ ] **The plugin serves one editor session per game launch.** After a client
-  connects, the pipe thread parks in `while (_running) Sleep(100)` and never
-  observes the disconnect, so the pipe is never torn down and recreated —
-  ⏹ Stop Debug followed by a fresh 🎮 Live Debug waits forever against a game
-  that still thinks it has a client. Compounded by `Send` discarding the
-  `WriteFile` result, which is also where the thread would learn the pipe had
-  broken. Fixing the second fixes the first. The editor's own reconnect loop is
-  fine and needs no change.
+- [x] **Bundle the plugin in the release zip.** It goes under
+  `SKSE Plugin/SKSE/Plugins/` with an `INSTALL.txt`
+  (`docs/SKSE-Plugin-INSTALL.txt`), in a subfolder rather than loose at the
+  root because it is optional — the editor runs without it and only the Debugger
+  tab needs it. The nested path is both what a user drops into `Data` and what a
+  mod manager expects if they zip the folder.
+
+- [x] **The plugin served one editor session per game launch.** After a client
+  connected, the pipe thread parked in `while (_running) Sleep(100)` and never
+  observed the disconnect, so the pipe was never torn down and recreated —
+  ⏹ Stop Debug followed by a fresh 🎮 Live Debug waited forever against a game
+  that still thought it had a client. It survived because `Send` discarded the
+  `WriteFile` result, which is exactly where the thread would have learned the
+  pipe had broken; fixing the second fixed the first. `Send` now clears a
+  `_connected` flag when the write fails, the accept loop waits on that flag
+  rather than parking, and the pipe is recycled for the next connection. A
+  `std::mutex` guards `_pipe`, because teardown and the sender thread can now
+  both touch it.
+
+  **Verified without launching Skyrim.** The pipe server moved into
+  `src/PipeServer.h` — no SKSE or CommonLib in it — and
+  `test/pipe_reconnect_test.cpp` drives the real header through three client
+  sessions, doing what `BehaviorDebuggerClient` does. It passes on the fix; a
+  control build with the two lines reverted fails three assertions, second and
+  third session included, which is what makes the test worth having. The
+  disconnect surfaces as `WriteFile` returning FALSE with error 232
+  (`ERROR_NO_DATA`); with the return value discarded it instead looks like a
+  successful write of zero bytes, which is why nothing ever noticed.
 
 - [ ] **Read active state off the live graph instead of `syncVariableIndex`.**
   The protocol carries active states as a machine mirroring its state into a

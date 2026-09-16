@@ -25,11 +25,11 @@ without shipping modified behavior files.
 - YAML behavior import/export for diff-friendly source control of behaviors.
 - NIF skeleton import for bone-name resolution.
 - Undo / redo on object edits.
-- Live behavior debugger client (named-pipe protocol). Needs the
-  `SkyrimBehaviorDebugger` SKSE plugin, which is **written but not yet
-  released** — see
-  [`docs/live-debugger-protocol.md`](docs/live-debugger-protocol.md) for the
-  plugin and the wire format.
+- Live behavior debugger: watch a running actor's states and variables against
+  the open graph. Needs the `SkyrimBehaviorDebugger` SKSE plugin, which ships in
+  the release zip under `SKSE Plugin/` — see
+  [`docs/live-debugger-protocol.md`](docs/live-debugger-protocol.md) for how the
+  two halves talk.
 
 ## Requirements
 

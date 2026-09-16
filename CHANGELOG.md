@@ -7,7 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The live debugger's SKSE plugin now ships with the editor.** The Debugger
+  tab has always needed a game-side plugin, `SkyrimBehaviorDebugger`, and that
+  plugin has always existed — it was simply never distributed, so the feature
+  worked on one machine while the Guide told everyone else to install something
+  they could not obtain. It is now in the release zip under
+  `SKSE Plugin/SKSE/Plugins/`, with an `INSTALL.txt` beside it
+  (`docs/SKSE-Plugin-INSTALL.txt`) covering both the mod-manager and the
+  copy-into-`Data` routes, how to confirm it loaded from its SKSE log, and the
+  two things that surprise people — open the Nemesis/Pandora output the game is
+  running rather than the pre-patch source, and an empty Active States list is
+  usually normal rather than broken.
+
+  It sits in a subfolder rather than loose at the zip root because it is
+  optional: the editor runs without it and only the Debugger tab needs it. The
+  nested `SKSE/Plugins/` path inside that folder is both what a user drops into
+  `Data` and what a mod manager expects from a zipped folder. `RELEASING.md`
+  gains the build-and-test step and the new zip layout.
+
 ### Fixed
+
+- **The debugger plugin served one editor session per game launch.** After the
+  editor connected, the plugin's pipe thread parked in
+  `while (_running) Sleep(100)` and never observed the disconnect, so the pipe
+  was never torn down and recreated: ⏹ Stop Debug followed by a fresh
+  🎮 Live Debug waited forever against a game that still thought it had a
+  client, and the only way out was restarting Skyrim. It survived unnoticed
+  because `Send` discarded `WriteFile`'s result — which is precisely where the
+  thread would have learned the pipe had broken — so a dead pipe was
+  indistinguishable from a healthy one. Fixing the second fixed the first.
+
+  `Send` now clears a `_connected` flag when the write fails, the accept loop
+  waits on that flag instead of parking, and the pipe is recycled for the next
+  connection; a `std::mutex` guards the handle, since teardown and the sender
+  thread can now both reach it. The Guide's claim that the link "re-connects by
+  itself if the game exits or reloads" — true of the editor's client, never of
+  the plugin — is true of both halves now.
+
+  **Verified without launching Skyrim**, which is what makes this more than a
+  plausible-looking patch. The pipe server moved into its own header with no
+  SKSE or CommonLib in it, and a test drives that exact header through three
+  client sessions doing what `BehaviorDebuggerClient` does. It passes on the
+  fix; a control build with the two lines reverted fails three assertions,
+  including both later sessions. The disconnect turns out to surface as
+  `WriteFile` returning FALSE with error 232 (`ERROR_NO_DATA`) — with the return
+  value discarded it looks instead like a successful write of zero bytes, which
+  is exactly why nothing ever noticed.
 
 - **The Guide told users to install an SKSE plugin that has never been
   released.** The Debugger tab section read *"It needs the SkyrimBehaviorDebugger
@@ -23,16 +70,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wait rather than a failure. Without the plugin that line is the permanent
   steady state, and it looks exactly like a game not yet launched. Found by a
   user (Sleme, 2026-09-15) who went looking for the plugin on Nexus, could not
-  find it, and asked whether it was WIP or whether he was missing something. Both
-  Guide sections and the README feature list now say it is unreleased, and the
-  Guide names a missing plugin as the reason for a red status line that never
-  goes green.
+  find it, and asked whether it was WIP or whether he was missing something.
 
-  Two facts about the plugin also reached the Guide, because they change what a
-  user should do. It serves **one editor session per game launch** — Stop Debug
-  and start again and the second connection is never accepted, so Skyrim needs
-  restarting. And the "re-connects by itself if the game exits or reloads" claim
-  in the setup section was never true of the game half, so it is gone.
+  Superseded within the same release by bundling the plugin, above — the Guide
+  now points at the `SKSE Plugin` folder in the download and explains how to
+  install it, rather than explaining why there is nothing to install. Kept here
+  because the sequence is the point: the documentation described a feature nobody
+  outside this machine could use, and nothing in the editor could have revealed
+  that, since a missing plugin and an unlaunched game produce the identical red
+  status line.
 
 ### Added
 

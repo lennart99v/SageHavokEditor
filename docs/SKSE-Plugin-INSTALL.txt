@@ -1,0 +1,80 @@
+SkyrimBehaviorDebugger — SKSE plugin for Sage Havok Editor
+===========================================================
+
+This is optional. Sage Havok Editor runs fine without it. You only need it for
+the editor's Debugger tab, which shows what a running Skyrim actor's behaviour
+graph is actually doing — which states are active, which transition just fired,
+and what every behaviour variable is worth — against the file you have open.
+
+Without this plugin installed, the Debugger tab connects to nothing and sits on
+"Live debugger disconnected - retrying..." forever.
+
+
+What you need
+-------------
+
+  * Skyrim Special Edition (this is an SSE / x64 plugin)
+  * SKSE64, installed and working
+  * Sage Havok Editor, on the same PC as the game
+
+The editor and the game talk over a local named pipe, so they must be on the
+same machine. There is no network component and nothing listens on a port.
+
+
+Installing
+----------
+
+With a mod manager (Mod Organizer 2, Vortex) - recommended:
+
+  Zip the "SKSE Plugin" folder that came with this file, then install that zip
+  as a mod the normal way and enable it.
+
+By hand:
+
+  Copy the "SKSE" folder next to this file into your Skyrim Special Edition
+  "Data" folder, so that you end up with:
+
+    ...\Skyrim Special Edition\Data\SKSE\Plugins\SkyrimBehaviorDebugger.dll
+
+  If a Data\SKSE\Plugins folder already exists, merge into it rather than
+  replacing it - other mods keep their plugins there too.
+
+
+Checking it works
+-----------------
+
+  1. Launch Skyrim through SKSE and load a save.
+  2. In Sage Havok Editor, open the behaviour file the game is running, then
+     click "Live Debug" in the toolbar.
+  3. The status bar should reach "Live debugger connected" within a second or
+     two, and the variables list should start updating.
+
+If it stays disconnected, check for "SkyrimBehaviorDebugger.log" in:
+
+    Documents\My Games\Skyrim Special Edition\SKSE\
+
+A line reading "SkyrimBehaviorDebugger loaded!" means the game side is fine and
+the problem is elsewhere. No log file at all means SKSE did not load the plugin
+- usually the .dll is in the wrong folder.
+
+
+Two things that surprise people
+-------------------------------
+
+Open the file the game is actually running. State ids and variable positions
+are resolved against whatever file you have open in the editor. If the game is
+running a Nemesis- or Pandora-generated output, open that output rather than
+your pre-patch source, or you will see active states named "state 12" and
+variables that never change.
+
+An empty Active States list is usually normal. A state machine can only report
+its current state if its "syncVariableIndex" is set, and most of Skyrim's are
+not - only 11 of the 112 in vanilla 0_master.hkx. Variables still update. The
+editor's Guide explains how to enable tracking for a machine under
+"Why Active States Are Empty".
+
+
+Licence
+-------
+
+Same as Sage Havok Editor: GPL-3.0. See the LICENSE file in this download.
