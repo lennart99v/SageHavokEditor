@@ -119,7 +119,9 @@ Her merge work adds one check to the four in **Validation** above: reachability 
 
 **Licensing, settled 2026-09-07 by Cassie directly, and this section previously had it backwards.** The plan is **GPL-3.0**, with a possible exception covering Nexus publishing rights; the all-rights-reserved `LICENSE` applies to the monorepo, not to where the behaviour work is heading. What stood here before argued the opposite at length — that `sct-esm` being "first-party clean-room (no GPL) by design" meant the compiler sat on the GPL-free side of a line she was deliberately holding, so her code into this GPL-3.0 editor was the direction her own notes steered away from. That reasoning is dead; do not resurrect it from git history.
 
-The operating rule does not change yet, and the reason is narrower than it was. A message is not a licence file: until the repository's `LICENSE` actually says GPL-3.0, formats, findings, docs and measurements travel freely in both directions and code travels in neither. **Re-read at the source on 2026-09-07, once the repository went public: it still reads all-rights-reserved, and it pre-empts exactly this reading by declaring that its terms supersede any SPDX identifier or GPL marker found elsewhere in the repo or its tooling** — see the 2026-09-07 sweep below. The difference is that this is now a wait with an end, not a standing incompatibility — so anything blocked purely on licensing is worth *listing* rather than designing around.
+**The operating rule is narrower than "code travels in neither direction", which is what stood here and was too strong.** Cassie has personally given permission to work with her project (confirmed 2026-09-16); the all-rights-reserved `LICENSE` is an unfinished file, not a position against collaboration. Reading her code, building against it and contributing into it are all fine, and this section should not be read as forbidding them.
+
+What is still genuinely gated is **redistribution**. Shipping her code inside this editor's public GPL-3.0 release means granting every downstream user rights to it, and permission to use is not permission to sublicense — that needs her `LICENSE` to actually say GPL-3.0, which as of the 2026-09-07 sweep below it does not (it still reads all-rights-reserved, and pre-empts the obvious workaround by declaring that its terms supersede any SPDX identifier or GPL marker found elsewhere in the repo or its tooling). So: formats, findings, docs and measurements travel freely, as they always did; code can be worked on together today but cannot be *vendored here and published* until the licence lands. Where shared code is wanted before then, the way through is to contribute it **into her repo** rather than copy it out — no entanglement in either direction, and it ships under whatever licence she settles on. The live debugger below is the worked example.
 
 - [x] **`triggers:` is dropped on YAML import.** `YamlBehaviorImporter` has no case for a clip's inline trigger list, so the mapping collapses into a single mashed scalar (`-0.00899999961truefalsefalseclipEndnull`) instead of an `hkbClipTriggerArray`. It hits **202 of 289 clips** in vanilla `0_master` (31 of 36 in `chickenbehavior`), and it is what fails the conversion to `.hkx`. Needs the array plus its inline `hkbClipTrigger` elements built, with `event: 'clipEnd'` resolved to an `eventId` the way transition events already are — the clip preview's trigger editing knows the shape.
 
@@ -567,5 +569,40 @@ the port's own README.
 - [x] **Add/edit annotations on the clip timeline.** The preview already reads an animation's `annotationTracks` and draws each annotation as a timed, labeled tick (purple), but they're read-only. Let users add a new annotation, edit an existing one's time/text, and delete one — useful for mods that drive behavior off annotations (e.g. Precision, Animation Motion Revolution). Requires a write-back into the animation's `annotationTracks` array: create the annotation through Children/InnerObject (not `Value`), and wire it into the track in the same action so it isn't pruned on `.hkx` save. Should be undoable like other object edits. Requested by a user.
 
 ## Live debugger
+
+**The game side does not exist.** This is the thing to know before reading
+anything else here. The editor ships only the client —
+`Core/BehaviorDebuggerClient.cs` — and the `SkyrimBehaviorDebugger` SKSE plugin
+it connects to has never been written or released by anyone. Asked by a user on
+2026-09-15 who went looking for it on Nexus and could not find it, which is how
+long the Guide had been implying it was installable.
+
+- [x] **Say out loud that the plugin does not exist, and specify it.** The Guide
+  read "It needs the SkyrimBehaviorDebugger SKSE plugin installed in the game"
+  and "The game side is the SkyrimBehaviorDebugger SKSE plugin" — both phrased as
+  if you could go and get it. Now the Debugger tab, the setup section and the
+  README say the game half is unimplemented, and the protocol the client already
+  speaks is written down in `docs/live-debugger-protocol.md`: both pipe names and
+  directions, the newline-delimited snapshot JSON, the config JSON, the
+  connection lifecycle, and the fact that `value` is a float even for ints.
+
+- [ ] **Get the plugin written — most likely into Community Behaviors.** Cassie's
+  plugin is the natural host: it already sits on the behaviour graph at runtime,
+  and its `DebugOverlay.cpp` already reads locomotion variables off the player
+  through `GetGraphVariableFloat` for an in-game HUD. Generalising that read over
+  a config-supplied list, plus a named-pipe writer, is most of the work. Written
+  there rather than vendored here it carries no licensing entanglement at all
+  (see the Community Behaviors section) — and this editor needs no new code,
+  because the client already exists. The spec doc is written to be handed over as
+  the ask.
+
+  The design question to settle first is whether the plugin can read a state
+  machine's active state **directly** off the live graph. The protocol currently
+  goes through `syncVariableIndex`, which is what a client outside the process
+  can manage, and it is the feature's worst wart: only 11 of 112 state machines
+  in vanilla `0_master` are synced, none in `WeapEquip`, and enabling one means
+  editing the graph and re-running Nemesis/Pandora. A plugin holding the graph
+  could report every machine with none of that, and the client needs no change to
+  accept it — it keys on the machine name either way.
 
 - [x] **Document the live debugger in the in-app Guide.** The feature was one ten-line button list, so everything the panel raises in use was undocumented: the two named pipes and their direction, when the watch config is rebuilt and re-sent, that a state card reading `state 12` means the open file is not the graph the game is running (ids and variable indices resolve by position), the green edge flash marking the transition that actually fired, and that a recording survives the record button but not Stop Debug. Now three Advanced sections — Live Debugging: Setup & Connection, Reading a Live Session, Recording & Exporting a Session — plus a rewritten Debugger Tab section.

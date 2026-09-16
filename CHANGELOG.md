@@ -7,7 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Guide implied you could install the live debugger's SKSE plugin. You
+  cannot — it does not exist.** The Debugger tab section read *"It needs the
+  SkyrimBehaviorDebugger SKSE plugin installed in the game"* and the setup
+  section *"The game side is the SkyrimBehaviorDebugger SKSE plugin"*, both
+  written as statements about a thing you could go and download. Only the client
+  half was ever built: `Core/BehaviorDebuggerClient.cs` connects to
+  `\\.\pipe\SkyrimBehaviorDebugger`, and nothing has ever served that pipe. The
+  failure mode is the cruellest available — the client retries forever by design,
+  so a missing plugin is indistinguishable from a game that has not launched yet,
+  and the Guide told the user that red status line was a wait rather than an
+  error. Found by a user (Sleme, 2026-09-15) who went looking for the plugin on
+  Nexus, could not find it, and asked whether it was WIP or whether he was
+  missing something. Both Guide sections and the README feature list now say the
+  game half is unimplemented.
+
 ### Added
+
+- **The live-debugger wire protocol is written down.**
+  `docs/live-debugger-protocol.md` specifies what an SKSE plugin has to do to
+  drive the Debugger tab, derived from the shipping client rather than from
+  intent: the two pipe names and which end is the server, the newline-delimited
+  UTF-8 snapshot JSON with its `activeStates` / `variables` / optional mount
+  group, the config JSON the editor pushes on a fresh connection each time, the
+  connect timeouts and the retry loop, and the traps a reimplementer would
+  otherwise hit — `value` is a float even for int and bool variables, `stateName`
+  may be sent empty because the editor resolves it against the open file, and the
+  config is always whole rather than a delta.
+
+  It also records the design question the protocol is currently on the wrong side
+  of. Active states are read through `syncVariableIndex`, a machine mirroring its
+  state into a behaviour variable, because that is all a process outside the game
+  can reach — but only 11 of 112 state machines in vanilla `0_master` are synced
+  and none in `WeapEquip`, so tracking a machine means editing the graph and
+  re-running Nemesis/Pandora. A plugin holding the live graph could read the
+  state directly and report every machine with none of that, and the client would
+  need no change to accept it, since it keys on the machine name either way.
 
 - **The clip preview plays interleaved / uncompressed animations.** It used to
   refuse anything that wasn't spline-compressed — *"No

@@ -25,7 +25,10 @@ without shipping modified behavior files.
 - YAML behavior import/export for diff-friendly source control of behaviors.
 - NIF skeleton import for bone-name resolution.
 - Undo / redo on object edits.
-- Live behavior debugger client (named-pipe protocol).
+- Live behavior debugger client (named-pipe protocol) — **client half only**;
+  the game-side SKSE plugin it connects to does not exist yet. The wire format
+  is specified in [`docs/live-debugger-protocol.md`](docs/live-debugger-protocol.md)
+  for anyone who wants to write it.
 
 ## Requirements
 
