@@ -29,6 +29,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Opening `0_master.hkx` never finished, and ate the machine while it
+  didn't.** `BehaviorTreeBuilder` guarded its recursion with the path it was
+  currently walking — `path.Add` on the way down, `path.Remove` on the way back
+  up. That stops a cycle, and it was read as stopping repetition generally, but
+  a behaviour graph is a DAG: an object reachable by *n* distinct paths is
+  expanded *n* times, and each of those expansions re-expands everything under
+  it. On vanilla `0_master` that compounds into a combinatorial explosion.
+  `hkbClipGenerator "MRh_Unequip"` is reached **480,290 ways**; the walk passed
+  **20 million nodes in 8.2 s and was still going**, one allocated
+  `BehaviorNodeData` each, on the UI thread before the window could paint. Full
+  RAM, thrashing page file, no error — exactly the report (a user, 2026-09-16:
+  "it almost seems like trying to do this causes a memory leak").
+
+  **Size was never the predictor, which is why this looked arbitrary.**
+  `mt_behavior` is 5,115 objects to `0_master`'s 2,418 and always opened fine —
+  it tops out at 80 re-expansions and 21,234 nodes. What matters is how much of
+  the graph is shared and how deeply it nests, and `0_master` is the file that
+  wires everything else together.
+
+  Each object is now expanded once per tree. Later occurrences become a leaf
+  marked `↗`, still carrying the object, so clicking one opens in the property
+  editor exactly what the first occurrence opens. That is also the truer
+  picture: the repeats were never copies, they are one shared object, and an
+  edit through any of them edits all of them. `0_master` now builds **2,775
+  nodes in 3 ms** and the editor opens it in about two seconds, steady at
+  ~283 MB. `tools/hkx-treebuild-perf` runs the old walk and the real builder
+  side by side over a behaviour and fails if the node count ever climbs back
+  above a small multiple of the object count.
+
 - **The debugger plugin served one editor session per game launch.** After the
   editor connected, the plugin's pipe thread parked in
   `while (_running) Sleep(100)` and never observed the disconnect, so the pipe

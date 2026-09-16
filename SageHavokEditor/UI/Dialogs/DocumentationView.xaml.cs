@@ -123,6 +123,29 @@ namespace SageHavokEditor.UI.Dialogs
                 "5. Save with the Save button (or Ctrl+S). The file is serialised back to Havok XML.\n" +
                 "6. Use the Patch button to produce a Nemesis or Pandora-compatible patch folder.");
 
+            AddSection("behavior_tree", "The Behavior Tree (left panel)",
+                "The left panel shows the behavior as a tree: state machines, the states under them, " +
+                "each state's generator chain, and its transitions. Click any node to load that object " +
+                "into Object Data on the right. The filter box at the top searches node names and opens " +
+                "the path down to every match.\n\n" +
+                "A behavior is not really a tree. The same clip generator, modifier or nested machine is " +
+                "used from many places at once, so drawing it out in full under every one of them would " +
+                "repeat most of the file over and over — on vanilla 0_master, one clip is reachable " +
+                "480,290 different ways.\n\n" +
+                "↗ means \"shown somewhere else too\"\n" +
+                "• Each object is therefore drawn in full the first time it appears. Later appearances " +
+                "are a single line with a ↗ in front of the name, and no expander.\n" +
+                "• A ↗ line is still the object. Click it and Object Data shows exactly what the first " +
+                "appearance shows, and editing it there edits it everywhere it is used — because it is " +
+                "one object, not a copy. That is the point worth taking from the marker: if you change a " +
+                "generator that carries a ↗ anywhere in the tree, every state using it changes.\n" +
+                "• To see its contents expanded, use the filter box to find the name, or 🔍 Search All.\n\n" +
+                "How much opens at load\n" +
+                "• The tree opens breadth-first under a budget of about 500 visible nodes, so a small " +
+                "behavior comes up fully expanded and a large one opens as far as it can afford; the " +
+                "rest expands on click.\n" +
+                "• Filtering always opens the path to every match, however deep it is.");
+
             AddNavHeader("Tabs");
 
             AddSection("tab_graph", "Graph Tab",
