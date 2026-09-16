@@ -14,23 +14,27 @@ Warnings are tolerated (pre-existing nullable ones in the big UI files); don't
 add new categories. There is no automated UI test suite, so running the app and
 exercising the change is part of finishing it — and say which files you opened.
 
-## Git flow — branch and PR, never push to master
+## Git flow — commit straight to master
 
-`master` is protected by a ruleset: changes go through a pull request, squash
-merge, linear history. The repository-admin role bypasses it, so a direct push
-*appears* to succeed while printing `remote: Bypassed rule violations` — that is
-the rule being broken, not permission to break it. Don't push to `master`.
+**Changed 2026-09-16 by the maintainer; this section said the opposite before.**
+Work on `master`. No feature branches, no PRs.
 
-1. Branch off an up-to-date `master`:
-   `git switch -c feat/short-description` (also `fix/`, `docs/`, `chore/`).
+1. `git pull --ff-only origin master` before starting, and again before pushing —
+   more than one session works in this tree at a time.
 2. Commit per logical change, in the existing style: imperative subject, and a
    body that explains *why* and the mechanism rather than restating the diff.
-3. `git push -u origin <branch>`
-4. `gh pr create` — fill in the template, then leave it for review.
+   Each commit lands on `master` as itself, so the subject is what shows up in
+   `git log` and in a bisect — there is no squash to tidy it up any more.
+3. `git push origin master`.
 
-One feature per PR. The merge is **squash only**, so a PR carrying four features
-lands on `master` as one commit nobody can bisect; the PR title becomes that
-commit's subject.
+The ruleset on `master` was relaxed to match: the pull-request requirement is
+gone, and **deletion, force-push and non-linear history are still blocked**. So a
+push that is rejected is a real problem — normally that you are behind and need
+to pull — rather than the protection it used to be. Don't reach for `--force`;
+it is refused, and it is refused for a good reason.
+
+If you genuinely need a branch for something (a spike you may throw away), that
+is fine — just don't make one purely out of habit.
 
 ## Documentation duty
 
