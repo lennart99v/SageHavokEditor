@@ -1841,6 +1841,14 @@
                                    ToolTip="Pointer size of the .hkx this was opened from. Save defaults to the same edition; use the LE ⇄ SE button to convert."
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    VerticalAlignment="Center"/>
+                        <!-- Whether the animationdatasinglefile.txt clip checks are
+                             running, and against which project. Empty means no cache
+                             was found — which is not the same as nothing being wrong. -->
+                        <TextBlock Text="{Binding Stats.AnimationCacheLabel}" FontSize="11"
+                                   Margin="8,0,0,0"
+                                   ToolTip="animationdatasinglefile.txt stores the animIndex the runtime actually dereferences for each clip. When it is found, Validate checks every clip generator against it."
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock Grid.Column="1" Text="{Binding Stats.Summary}" FontSize="11"
                                Foreground="{DynamicResource TextSecondaryBrush}"

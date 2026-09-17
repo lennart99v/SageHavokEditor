@@ -85,6 +85,39 @@ namespace SageHavokEditor
             RebuildBehaviorReferenceIndex();
             SnapshotStructuralBaseline();
             _firstPersonReminded = false;
+            AnnounceAnimationData();
+        }
+
+        /// <summary>
+        /// Say whether the animation cache was found, and for which project.
+        ///
+        /// <para>Without this the check is indistinguishable from its own absence:
+        /// a graph with no cache warnings and a graph whose cache was never
+        /// located produce exactly the same clean report, and the second one is
+        /// not the reassurance it looks like. The same reasoning as the
+        /// behaviour-reference checks, which stay quiet rather than claim a file
+        /// isn't there when the truth is that nothing was searched.</para>
+        /// </summary>
+        private void AnnounceAnimationData()
+        {
+            var ws = Workspace;
+
+            // No cache anywhere above the open file: say nothing. Claiming the
+            // checks are off would be as misleading as implying they passed —
+            // most people editing a loose behaviour have no patched output here.
+            if (ws?.AnimationDataPath == null)
+            {
+                Stats.AnimationCacheLabel = "";
+                return;
+            }
+
+            if (ws.AnimationDataError != null)
+                Stats.AnimationCacheLabel = "⚠ animation cache unreadable";
+            else if (ws.AnimationDataProjects.Count == 0)
+                Stats.AnimationCacheLabel = "⚠ animation cache lists no project for this behaviour";
+            else
+                Stats.AnimationCacheLabel =
+                    "🎬 " + string.Join(", ", ws.AnimationDataProjects.Select(p => p.Stem));
         }
 
         // ── Project UI ────────────────────────────────────────────────────────
@@ -479,6 +512,49 @@ namespace SageHavokEditor
                             + "— remember to save the character file too";
         }
 
+        /// <summary>
+        /// The animation cache's opinion of a clip, as one line for the status
+        /// bar — or null when it has none, or nothing to complain about.
+        ///
+        /// <para>This is the third side of the trap
+        /// <see cref="OfferAnimationRegistration"/> covers the second of: the
+        /// graph names the animation, the character file has to list it, and
+        /// <c>animationdatasinglefile.txt</c> stores the <i>position in that
+        /// list</i> which the runtime actually dereferences. A clip can satisfy
+        /// both of the others and still be sent somewhere else by the cache.</para>
+        ///
+        /// <para>Deliberately not a dialog. The roster half gets one because it
+        /// comes with a button that fixes it; this half is fixed by re-running
+        /// Nemesis/Pandora, which this editor does not do — and a modal with no
+        /// action in it is a modal people learn to dismiss unread. It is said
+        /// here, and again in 🔎 Validate, which is where someone goes when they
+        /// want the whole list.</para>
+        /// </summary>
+        private string? ClipCacheNote(string? clipName, string? animPath)
+        {
+            var projects = Workspace?.AnimationDataProjects;
+            if (projects == null || projects.Count == 0) return null;
+
+            var verdict = new Core.AnimData.ClipCacheCheck(
+                projects, Workspace?.Character?.AnimationNames).Check(clipName, animPath);
+
+            return verdict.IsProblem ? "⚠ " + verdict.Explanation : null;
+        }
+
+        /// <summary>
+        /// The graph picked an animation for a new clip generator: offer to put it
+        /// in the character roster, then say what the animation cache makes of it.
+        /// Both halves of the same trap, at the one moment the user is thinking
+        /// about this animation.
+        /// </summary>
+        private void OnGraphAnimationChosen(string animPath, string clipName, string what)
+        {
+            OfferAnimationRegistration(animPath, what);
+
+            var note = ClipCacheNote(clipName, animPath);
+            if (note != null) StatusText.Text = note;
+        }
+
         private void SyncAnimNamesToModel(CharacterViewModel cvm)
         {
             if (cvm.CharacterStringDataObj == null) return;
@@ -553,7 +629,7 @@ namespace SageHavokEditor
             GraphView.ShowAnimationRequested -= OnShowAnimationRequested;
             GraphView.OpenBehaviorReferenceRequested -= OnOpenBehaviorReferenceRequested;
             GraphView.CompareBehaviorReferenceEventsRequested -= OnCompareBehaviorReferenceEvents;
-            GraphView.AnimationChosen -= OfferAnimationRegistration;
+            GraphView.AnimationChosen -= OnGraphAnimationChosen;
             GraphView.BehaviorReferenceCreated -= RemindAboutFirstPerson;
             GraphView.TransitionDeletedFromGraph += OnTransitionDeletedFromGraph;
             GraphView.NodeRenamedOnGraph += OnNodeRenamedOnGraph;
@@ -565,7 +641,7 @@ namespace SageHavokEditor
             GraphView.ShowAnimationRequested += OnShowAnimationRequested;
             GraphView.OpenBehaviorReferenceRequested += OnOpenBehaviorReferenceRequested;
             GraphView.CompareBehaviorReferenceEventsRequested += OnCompareBehaviorReferenceEvents;
-            GraphView.AnimationChosen += OfferAnimationRegistration;
+            GraphView.AnimationChosen += OnGraphAnimationChosen;
             GraphView.BehaviorReferenceCreated += RemindAboutFirstPerson;
             GraphView.GraphEditPerformed -= OnGraphEditPerformed;
             GraphView.GraphEditPerformed += OnGraphEditPerformed;

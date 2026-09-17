@@ -105,6 +105,7 @@ namespace SageHavokEditor.Core.Validation
         private readonly HavokManager _manager;
         private readonly List<string> _projectAnimations;
         private readonly Services.BehaviorReferenceIndex? _references;
+        private readonly List<AnimData.AnimDataProject> _animData;
 
         /// <param name="projectAnimations">
         /// The character's <c>animationNames</c>, when a character file is loaded.
@@ -115,12 +116,21 @@ namespace SageHavokEditor.Core.Validation
         /// reference checks — with no project on disk to search, "the file isn't
         /// there" would be a statement about the caller, not about the graph.
         /// </param>
+        /// <param name="animData">
+        /// The <c>animationdatasinglefile.txt</c> projects this graph belongs to,
+        /// when a cache was found. Empty skips the cache check — with no cache to
+        /// read, "the clip isn't registered" would again be a statement about the
+        /// caller. More than one is normal for a shared graph, and the check
+        /// requires all of them to complain before it reports.
+        /// </param>
         public GraphDoctor(HavokManager manager, IEnumerable<string>? projectAnimations = null,
-            Services.BehaviorReferenceIndex? references = null)
+            Services.BehaviorReferenceIndex? references = null,
+            IEnumerable<AnimData.AnimDataProject>? animData = null)
         {
             _manager = manager;
             _projectAnimations = projectAnimations?.ToList() ?? new List<string>();
             _references = references;
+            _animData = animData?.ToList() ?? new List<AnimData.AnimDataProject>();
         }
 
         public GraphDoctorReport Run()
@@ -139,6 +149,7 @@ namespace SageHavokEditor.Core.Validation
             issues.AddRange(NullGenerators());
             issues.AddRange(IndicesOutOfRange());
             issues.AddRange(UnregisteredAnimations());
+            issues.AddRange(ClipCache());
             issues.AddRange(UnreachableStates());
             issues.AddRange(SoftRefs(survives));
             issues.AddRange(BehaviorReferences());
@@ -284,6 +295,70 @@ namespace SageHavokEditor.Core.Validation
                 };
             }
         }
+
+        /// <summary>
+        /// What <c>animationdatasinglefile.txt</c> says about each clip generator.
+        ///
+        /// <para><see cref="UnregisteredAnimations"/> above checks that the
+        /// animation the graph names is in the character's roster. This checks the
+        /// third side: the cache stores a <b>position in that roster</b>, and that
+        /// position is what the runtime actually dereferences. A clip can pass
+        /// both of the other checks and still be pointed at a different animation
+        /// by the cache, which is the finding worth having this reader for.</para>
+        ///
+        /// <para>Everything here is a warning, never a structural refusal. The
+        /// cache is an external artifact that Nemesis/Pandora regenerate
+        /// <i>after</i> the graph is edited, so it is stale by design for exactly
+        /// as long as the normal workflow takes — refusing the save that comes
+        /// before the patcher runs would block the ordinary way of working.</para>
+        /// </summary>
+        private IEnumerable<ValidationIssue> ClipCache()
+        {
+            if (_animData.Count == 0) yield break;
+
+            var check = new AnimData.ClipCacheCheck(_animData, _projectAnimations);
+
+            foreach (var clip in _manager.ObjectMap.Values
+                .Where(o => o.ClassName == "hkbClipGenerator"))
+            {
+                var name = Name(clip);
+                if (string.IsNullOrWhiteSpace(name)) continue;
+
+                var anim = clip.Params.FirstOrDefault(p => p.Name == "animationName")?.Value;
+                var verdict = check.Check(name, anim);
+                if (!verdict.IsProblem) continue;
+
+                yield return new ValidationIssue
+                {
+                    Severity = "Warning",
+                    Category = ValidationIssue.CategoryAnimation,
+                    // Distinct from UnregisteredAnimations, which reports the same
+                    // category on the same object — without this the two collide
+                    // in Fingerprint and a baseline conflates them.
+                    Subject = "anim-cache",
+                    Cause = CauseFor(verdict.Status),
+                    ObjectId = clip.Id,
+                    ObjectClass = clip.ClassName,
+                    ObjectName = name,
+                    Description = verdict.Explanation,
+                };
+            }
+        }
+
+        private static string CauseFor(AnimData.ClipCacheStatus status) => status switch
+        {
+            AnimData.ClipCacheStatus.NotInCache =>
+                "the clip was added to the graph but Nemesis/Pandora hasn't been run since",
+            AnimData.ClipCacheStatus.AnimationMismatch =>
+                "the roster was reordered after the cache was generated, or the cache is another "
+                + "mod's — regenerating it realigns the index",
+            AnimData.ClipCacheStatus.IndexOutOfRange =>
+                "the cache was generated against a longer roster than the character file now has",
+            AnimData.ClipCacheStatus.NameAmbiguous =>
+                "two clips whose names differ only in case — rename one, or the runtime's choice "
+                + "between them is not something this editor can predict",
+            _ => "",
+        };
 
         /// <summary>
         /// A state nothing can enter. Transitions route by <c>stateId</c>, so a

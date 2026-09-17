@@ -2508,6 +2508,9 @@ namespace SageHavokEditor
                 var animIdx = full.IndexOf("Animations\\", StringComparison.OrdinalIgnoreCase);
                 clip.AnimationPath = animIdx >= 0 ? full.Substring(animIdx) : full;
                 OfferAnimationRegistration(clip.AnimationPath, $"Clip '{clip.Name}'");
+
+                var cache = ClipCacheNote(clip.Name, clip.AnimationPath);
+                if (cache != null) StatusText.Text = cache;
             }
         }
 
@@ -4156,10 +4159,13 @@ namespace SageHavokEditor
         /// The pre-save pass, run over the loaded graph and — when a character
         /// file is open — its animation list, which is what lets the doctor tell
         /// a clip naming an unregistered animation from one that is fine, plus the
-        /// behaviour-reference index, which lets it chase a reference to disk.
+        /// behaviour-reference index, which lets it chase a reference to disk, and
+        /// the animationdatasinglefile.txt projects this graph belongs to, which
+        /// are what let it see a clip the cache points at a different animation.
         /// </summary>
         private GraphDoctorReport RunGraphDoctor() =>
-            new GraphDoctor(manager, Workspace?.Character?.AnimationNames, _behaviorRefs).Run();
+            new GraphDoctor(manager, Workspace?.Character?.AnimationNames, _behaviorRefs,
+                Workspace?.AnimationDataProjects).Run();
 
         /// <summary>
         /// Resolves and reads the files this graph references. Rebuilt per load
@@ -5492,7 +5498,9 @@ namespace SageHavokEditor
 
             OfferAnimationRegistration(animPath, $"Clip generator '{clipName}'");
 
-            StatusText.Text = $"⚠ Clip generator '{clipName}' added ({clipId}) — not referenced yet";
+            var cacheNote = ClipCacheNote(clipName, animPath);
+            StatusText.Text = cacheNote
+                ?? $"⚠ Clip generator '{clipName}' added ({clipId}) — not referenced yet";
 
             MessageBox.Show(
                 $"'{clipName}' was created, but nothing references it yet.\n\n"

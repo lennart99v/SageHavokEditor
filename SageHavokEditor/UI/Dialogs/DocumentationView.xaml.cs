@@ -1063,6 +1063,21 @@ namespace SageHavokEditor.UI.Dialogs
                 "character file is open. The graph names the animation but the runtime loads it " +
                 "through the character — the usual outcome of adding an animation and forgetting " +
                 "the character file.\n" +
+                "• Clips the animation cache disagrees with, when an animationdatasinglefile.txt " +
+                "is found above the file you opened. That is the third side of the same trap: the " +
+                "graph names the animation, the character file has to list it, and the cache " +
+                "stores the position in that list which the runtime actually follows. A clip can " +
+                "pass both of the other checks and still be sent to a different animation, which " +
+                "the stats bar and this report both call out. Reported are a clip with no cache " +
+                "record at all (Nemesis/Pandora hasn't been re-run since it was added, so it has " +
+                "no root motion and none of its cache triggers), a cached index past the end of " +
+                "the roster, an index resolving to an animation the graph doesn't name, and two " +
+                "clips whose names differ only in case — which is not hypothetical: vanilla has " +
+                "CrossBow_IdleHeld and Crossbow_IdleHeld pointing at different animations. All of " +
+                "these are warnings and never block a save, because the cache is regenerated " +
+                "after you edit the graph, so it is stale by design in between. The stats bar at " +
+                "the bottom names the cache projects being checked against; nothing there means " +
+                "no cache was found, which is not the same as nothing being wrong.\n" +
                 "• States nothing can enter — not the machine's start state, and no transition's " +
                 "toStateId. A duplicated state that was never wired up looks exactly like this. " +
                 "Machines that pick a state some other way (a start-state chooser, a random or " +

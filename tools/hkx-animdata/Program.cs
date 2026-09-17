@@ -40,6 +40,27 @@ if (!File.Exists(path))
     return 2;
 }
 
+// --locate <openfile>: what the editor would find and resolve from a file on
+// disk. This is the diagnostic for "the check is silently off" — the one failure
+// mode a clean report cannot be told apart from.
+var locateArg = args.SkipWhile(a => a != "--locate").Skip(1).FirstOrDefault();
+if (locateArg != null)
+{
+    Console.WriteLine($"locating from: {locateArg}");
+    var found = AnimationDataLocator.LocateFrom(locateArg);
+    Console.WriteLine($"  cache: {found ?? "(none found)"}");
+    if (found != null)
+    {
+        var cache = AnimationDataFile.Load(found);
+        Console.WriteLine($"  parsed: {cache.Projects.Count} projects");
+        var resolved = AnimationDataLocator.ResolveProjects(cache, null, locateArg);
+        Console.WriteLine($"  projects for this behaviour: "
+            + (resolved.Count == 0 ? "(none)" : string.Join(", ", resolved.Select(p => p.Name))));
+    }
+    return 0;
+}
+
+
 var raw = File.ReadAllBytes(path);
 var text = Encoding.Latin1.GetString(raw);
 Console.WriteLine($"{path}\n  {raw.Length:N0} bytes\n");
@@ -239,6 +260,124 @@ Inject("a non-numeric count is named where it stands",
         return true;
     },
     "trigger count for clip 'MT_Jump'");
+
+// ── The verdict, against real cache records ──────────────────────────────────
+//
+// ClipCacheCheck resolves a clip's animIndex through the character's roster and
+// compares the result with the animationName the graph carries. The roster here
+// is synthetic — no vanilla character file ships loose, and inventing 2,520
+// animation paths would prove nothing about the parser anyway — but the CLIP
+// RECORDS are real, so what is under test is the resolution rule against the
+// indices vanilla actually stores.
+//
+// The pair that matters is CrossBow_IdleHeld / Crossbow_IdleHeld again. They sit
+// at different indices, so against one roster they name different animations —
+// the concrete bug a case-insensitive lookup causes, demonstrated end to end
+// rather than asserted about a helper.
+Console.WriteLine("\nClip cache verdicts");
+if (male is null)
+{
+    Console.WriteLine("  note no DefaultMale project; skipping");
+}
+else
+{
+    int rosterSize = male.Clips.Select(c => c.Index ?? -1).Max() + 1;
+    var roster = Enumerable.Range(0, rosterSize).Select(i => $@"Animations\slot_{i}.hkx").ToList();
+    string Slot(int i) => $@"Animations\slot_{i}.hkx";
+
+    var check = new ClipCacheCheck(male, roster);
+    var jump = male.FindClip("MT_Jump")!;
+    int jumpIdx = jump.Index!.Value;
+
+    Check(check.Check("MT_Jump", Slot(jumpIdx)).Status == ClipCacheStatus.Registered,
+        "a clip whose animationName matches its cached index is Registered");
+
+    var mismatch = check.Check("MT_Jump", Slot(jumpIdx + 1));
+    Check(mismatch.Status == ClipCacheStatus.AnimationMismatch,
+        "a clip whose animationName is not what the index resolves to is a mismatch",
+        $"got {mismatch.Status}");
+    Check(mismatch.CachedAnimation == Slot(jumpIdx),
+        "the mismatch names the animation the cache actually points at");
+
+    Check(check.Check("NoSuchClipAnywhere", Slot(0)).Status == ClipCacheStatus.NotInCache,
+        "a clip with no cache record is NotInCache");
+    Check(check.Check("tor_idle", Slot(0)).Status == ClipCacheStatus.NameAmbiguous,
+        "a case-only-ambiguous name is reported, not guessed");
+
+    // The whole point, end to end: ask about the lowercase-b spelling while
+    // naming the animation the uppercase-B one resolves to. A case-insensitive
+    // lookup would call this Registered.
+    int upperIdx = male.FindClip("CrossBow_IdleHeld")!.Index!.Value;
+    var crossed = check.Check("Crossbow_IdleHeld", Slot(upperIdx));
+    Check(crossed.Status == ClipCacheStatus.AnimationMismatch,
+        "the two CrossBow spellings do not satisfy each other's animation",
+        $"got {crossed.Status} — a case-insensitive FindClip would report Registered here");
+
+    // A roster shorter than the cache expects: the runtime would read past it.
+    var shortCheck = new ClipCacheCheck(male, roster.Take(10).ToList());
+    Check(shortCheck.Check("MT_Jump", Slot(jumpIdx)).Status == ClipCacheStatus.IndexOutOfRange,
+        "an animIndex past the end of the roster is caught, not dereferenced");
+
+    // No roster at all is a fact about us, not about the graph.
+    var blind = new ClipCacheCheck(male, Array.Empty<string>()).Check("MT_Jump", Slot(0));
+    Check(blind.Status == ClipCacheStatus.Registered && !blind.RosterChecked,
+        "with no character roster the weaker question is answered and said to be weaker");
+
+    Check(new ClipCacheCheck((AnimDataProject?)null).Check("MT_Jump", Slot(0)).Status
+              == ClipCacheStatus.Unknown,
+        "with no cache the verdict is Unknown rather than a clean bill of health");
+
+    // A graph shared by several projects: a clip registered in any of them is
+    // fine, and a complaint needs all of them to agree.
+    var female = file.FindProject("DefaultFemale");
+    if (female is not null)
+    {
+        var both = new ClipCacheCheck(new[] { female, male }, roster);
+        Check(!both.Check("MT_Jump", Slot(jumpIdx)).IsProblem,
+            "a clip registered in one of several candidate projects is not reported");
+        Check(both.Check("NoSuchClipAnywhere", Slot(0)).Status == ClipCacheStatus.NotInCache,
+            "a clip in none of them still is");
+    }
+}
+
+// ── Locator ──────────────────────────────────────────────────────────────────
+//
+// The cache sits at <Data>\meshes\ and a behaviour four levels below it, so the
+// walk has to cross actors\<race>\behaviors\ without being told the layout.
+Console.WriteLine("\nLocator");
+var tmp = Path.Combine(Path.GetTempPath(), "hkx-animdata-" + Guid.NewGuid().ToString("N"));
+try
+{
+    var meshes = Path.Combine(tmp, "Data", "meshes");
+    var behaviors = Path.Combine(meshes, "actors", "character", "behaviors");
+    Directory.CreateDirectory(behaviors);
+    File.WriteAllText(Path.Combine(meshes, AnimationDataLocator.FileName), "0\r\n");
+    var graph = Path.Combine(behaviors, "0_master.hkx");
+    File.WriteAllText(graph, "");
+
+    var found = AnimationDataLocator.LocateFrom(graph);
+    Check(found != null, "the cache is found four levels above an open behaviour");
+    Check(found != null && Path.GetFullPath(found)
+            == Path.GetFullPath(Path.Combine(meshes, AnimationDataLocator.FileName)),
+        "and it is the one in meshes\\, not something else");
+
+    Check(AnimationDataLocator.LocateFrom(Path.Combine(tmp, "Data", "x.hkx")) != null,
+        "being handed the Data folder finds the meshes\\ copy below it");
+
+    var orphan = Path.Combine(Path.GetTempPath(), "hkx-animdata-none-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(orphan);
+    Check(AnimationDataLocator.LocateFrom(Path.Combine(orphan, "x.hkx")) == null,
+        "no cache anywhere above returns null rather than reaching for a stray one");
+    Directory.Delete(orphan, true);
+
+    Check(AnimationDataLocator.StemForProjectFile(@"c:\x\defaultmale.hkx") == "defaultmale",
+        "a project file's stem drops one extension");
+}
+finally
+{
+    try { Directory.Delete(tmp, true); } catch { /* best effort */ }
+}
+
 
 Console.WriteLine($"\n{checks - failures}/{checks} checks passed");
 return failures == 0 ? 0 : 1;

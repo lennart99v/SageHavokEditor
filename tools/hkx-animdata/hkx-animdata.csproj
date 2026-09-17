@@ -16,6 +16,9 @@
          write it. -->
     <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimationDataFile.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimDataProject.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\ClipCacheCheck.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimationDataLocator.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxPathResolver.cs" />
   </ItemGroup>
 
 </Project>

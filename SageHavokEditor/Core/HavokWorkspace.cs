@@ -40,6 +40,66 @@ namespace SageHavokEditor.Core
 
         public HavokManager? ActiveBehavior => BehaviorFile?.Manager;
 
+        // ── animationdatasinglefile.txt ───────────────────────────────────────
+
+        /// <summary>The animation cache found beside the open files, if any.</summary>
+        public AnimData.AnimationDataFile? AnimationData { get; private set; }
+
+        /// <summary>Where it was read from, for the status line.</summary>
+        public string? AnimationDataPath { get; private set; }
+
+        /// <summary>
+        /// Why the cache could not be read, when one was found but wouldn't parse.
+        /// Held rather than thrown: a malformed cache must not stop a file opening,
+        /// but it is worth saying that the check is off and why.
+        /// </summary>
+        public string? AnimationDataError { get; private set; }
+
+        /// <summary>
+        /// The cache projects the open behaviour belongs to. More than one is
+        /// normal — <c>0_Master.hkx</c> belongs to <c>DefaultMale</c>,
+        /// <c>DefaultFemale</c> and <c>FirstPerson</c> — so this stays a list
+        /// rather than resolving to a guess.
+        /// </summary>
+        public IReadOnlyList<AnimData.AnimDataProject> AnimationDataProjects { get; private set; }
+            = Array.Empty<AnimData.AnimDataProject>();
+
+        /// <summary>
+        /// Look for <c>animationdatasinglefile.txt</c> at or above the open files
+        /// and resolve which of its projects this graph belongs to. Cheap enough
+        /// to do on every load (vanilla's 1.9 MB parses in a few ms) and entirely
+        /// best-effort: no cache, or an unreadable one, just turns the check off.
+        /// </summary>
+        public void RefreshAnimationData()
+        {
+            AnimationData = null;
+            AnimationDataPath = null;
+            AnimationDataError = null;
+            AnimationDataProjects = Array.Empty<AnimData.AnimDataProject>();
+
+            // Most specific first: the project file knows the whole layout, and
+            // the behaviour is the thing actually being edited.
+            var path = AnimData.AnimationDataLocator.Locate(
+                ProjectFile?.OriginalPath,
+                CharacterFile?.OriginalPath,
+                BehaviorFile?.OriginalPath);
+            if (path == null) return;
+
+            AnimationDataPath = path;
+            try
+            {
+                AnimationData = AnimData.AnimationDataFile.Load(path);
+            }
+            catch (Exception ex)
+            {
+                AnimationDataError = ex.Message;
+                return;
+            }
+
+            AnimationDataProjects = AnimData.AnimationDataLocator.ResolveProjects(
+                AnimationData, ProjectFile?.OriginalPath, BehaviorFile?.OriginalPath);
+        }
+
         public HavokWorkspace(HkxConversionService conv) { _conv = conv; }
 
         // ── Public auto-detect entry point ────────────────────────────────────
@@ -55,16 +115,19 @@ namespace SageHavokEditor.Core
                     Project = BuildProjectViewModel(file);
                     // Attempt to load children — but don't throw if they fail
                     await TryLoadProjectChildrenAsync(path, Project);
+                    RefreshAnimationData();
                     return HkFileType.Project;
 
                 case HkFileType.Character:
                     CharacterFile = file;
                     Character = BuildCharacterViewModel(file);
                     // Do NOT auto-load behavior — caller decides
+                    RefreshAnimationData();
                     return HkFileType.Character;
 
                 default:
                     BehaviorFile = file;
+                    RefreshAnimationData();
                     return file.FileType;
             }
         }
@@ -74,6 +137,7 @@ namespace SageHavokEditor.Core
         public async Task LoadBehaviorExplicitAsync(string path)
         {
             BehaviorFile = await LoadHkFileAsync(path);
+            RefreshAnimationData();
         }
 
         // ── Save helpers ──────────────────────────────────────────────────────
