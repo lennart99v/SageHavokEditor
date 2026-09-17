@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-animdata</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The editor's own parser, not a copy: a harness that re-implements the
+         thing it is testing proves nothing about what ships. The emitter it
+         round-trips through is the other way round on purpose — it lives in
+         Program.cs and nowhere else, because we read this format and never
+         write it. -->
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimationDataFile.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimDataProject.cs" />
+  </ItemGroup>
+
+</Project>
