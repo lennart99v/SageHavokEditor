@@ -1087,12 +1087,13 @@ namespace SageHavokEditor
                         Name = namesList[i],
                         Index = i,
                         RawValue = rawVal,
-                        Value = DecodeHavokValue(rawVal),
+                        Value = DecodeHavokValue(rawVal, typeStr),
                         VariableType = typeStr
                     };
 
                     pair.ValueChanged += (s, args) =>
                     {
+                        if (s is IdNamePair edited) edited.ValueEdited = true;
                         if (_suppressUndoRecord || s is not IdNamePair v) return;
                         var capturedOld = args.OldValue;
                         var capturedNew = args.NewValue;
@@ -2728,7 +2729,22 @@ namespace SageHavokEditor
                     {
                         var vp = wordValuesParam.Children[i].Params
                             .FirstOrDefault(p => p.Name == "value");
-                        if (vp != null) vp.Value = EncodeHavokValue(VariableList[i].Value);
+                        if (vp == null) continue;
+
+                        // Write back only what the user actually typed here. This
+                        // loop used to re-encode every word on every save, which
+                        // is how three untouched 1.0 floats in
+                        // SKYBSpiderDaedraBehavior became the integer 1 — and it
+                        // is also what reverted a value edited through Object
+                        // Data, since that writes the param directly and was then
+                        // overwritten from this list's stale copy. When the two
+                        // editors disagree there is nothing in the numbers that
+                        // says which one moved, so the flag records it rather than
+                        // letting either side guess.
+                        if (!VariableList[i].ValueEdited) continue;
+
+                        vp.Value = EncodeHavokValue(VariableList[i].Value ?? "",
+                                                    VariableList[i].VariableType);
                     }
             }
 
@@ -4128,32 +4144,13 @@ namespace SageHavokEditor
             }
         }
 
-        private string DecodeHavokValue(string rawValue)
-        {
-            if (string.IsNullOrWhiteSpace(rawValue)) return "0";
-
-            // Try to parse the integer bit pattern (handles negative too)
-            if (long.TryParse(rawValue, out long longVal))
-            {
-                int intVal = (int)longVal;
-
-                // Heuristic: Values like 1, 2, 3 are indices/bools. 
-                // Bit patterns for floats like 0.1, 1.0, etc., are huge (> 1 million).
-                if (Math.Abs(intVal) > 1000000 || intVal < 0)
-                {
-                    float f = BitConverter.Int32BitsToSingle(intVal);
-
-                    // Check if it's a valid float (not NaN or Infinity)
-                    if (!float.IsNaN(f) && !float.IsInfinity(f))
-                    {
-                        return f.ToString("0.###", CultureInfo.InvariantCulture);
-                    }
-                }
-                return intVal.ToString(); // It's a plain integer (0, 1, 2, etc.)
-            }
-
-            return rawValue; // Fallback
-        }
+        /// <summary>
+        /// The stored word as editable text. Whether it is a float bit pattern is
+        /// decided by the variable's declared type and nothing else — see
+        /// <see cref="Core.HavokVariableValue"/> for what guessing it cost.
+        /// </summary>
+        private string DecodeHavokValue(string rawValue, string variableType)
+            => Core.HavokVariableValue.Decode(rawValue, variableType);
 
         /// <summary>
         /// The pre-save pass, run over the loaded graph and — when a character
@@ -5294,20 +5291,10 @@ namespace SageHavokEditor
         }
 
 
-        private string EncodeHavokValue(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input)) return "0";
-
-            // If it looks like a float, encode as IEEE 754 bit pattern
-            if (input.Contains(".") && float.TryParse(input, NumberStyles.Float, CultureInfo.InvariantCulture, out float fVal))
-            {
-                byte[] bytes = BitConverter.GetBytes(fVal);
-                return BitConverter.ToUInt32(bytes, 0).ToString();
-            }
-
-            // Otherwise pass integers through as-is
-            return input;
-        }
+        /// <summary>Editable text back into the stored word — see
+        /// <see cref="Core.HavokVariableValue"/>.</summary>
+        private string EncodeHavokValue(string input, string variableType)
+            => Core.HavokVariableValue.Encode(input, variableType);
 
         private void VariablesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {

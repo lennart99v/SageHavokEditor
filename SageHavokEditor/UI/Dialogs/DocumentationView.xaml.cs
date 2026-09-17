@@ -265,7 +265,17 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Value editor — inline TextBox for numeric/string values; ComboBox for booleans.\n" +
                 "• + Add Variable — creates a new variable and wires it into all three backing objects.\n" +
                 "• − Delete Variable — removes the variable after checking for usages. You are warned if usages are found.\n" +
-                "• Search box — filters the list in real time.");
+                "• Search box — filters the list in real time.\n\n" +
+                "What the value actually is, because it matters here. Every variable's value is " +
+                "stored in one 32-bit integer slot, whatever the variable's type. A FLOAT keeps its " +
+                "value bit-cast into that slot — 1.0 is stored as 1065353216, -2.06 as -1073490166 " +
+                "— while bools, ints and pointer indices are stored as the number they look like. " +
+                "Nothing in the number says which it is; only the variable's declared type does, " +
+                "which is what the type badge shows. The editor shows you the value (1, -2.06) and " +
+                "converts using that type, so type the value you want and not the bit pattern.\n" +
+                "• Only variables you actually edit here are written back on save. A value you " +
+                "haven't touched is left exactly as the file had it, and a value you edited through " +
+                "Object Data instead is not overwritten from this list.");
 
             AddSection("tab_events", "Events Tab",
                 "Lists every behaviour event (hkbBehaviorGraphStringData.eventNames).\n\n" +

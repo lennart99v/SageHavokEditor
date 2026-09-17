@@ -44,6 +44,23 @@ namespace SageHavokEditor.Models.ViewModels
 
         public string RawValue { get; set; } = "";
 
+        /// <summary>
+        /// Whether the user has typed a new value into the Variables tab for this
+        /// entry since the file was loaded.
+        ///
+        /// <para>A save writes back only the entries this is true for. Two things
+        /// depend on that. A word nobody edited is left exactly as it is, rather
+        /// than being re-encoded from its display text — which is how three
+        /// untouched 1.0 floats in SKYBSpiderDaedraBehavior became the integer 1.
+        /// And a value edited through Object Data instead, which writes the param
+        /// directly, is no longer overwritten a moment later from this list's
+        /// stale copy; that is the "it reverts my change" the bug came in with.
+        /// The two editors can't both be inferred from the values alone — when
+        /// they disagree there is nothing in the numbers to say which one moved —
+        /// so this records it instead of guessing.</para>
+        /// </summary>
+        public bool ValueEdited { get; set; }
+
         private bool _boolValue;
         public bool BoolValue
         {

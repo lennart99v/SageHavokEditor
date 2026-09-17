@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-varvalues</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The editor's own codec, not a copy. The behaviour it replaced is
+         re-implemented in Program.cs on purpose, so the harness can show what
+         the old rules did to real data rather than only asserting the new ones
+         are self-consistent. -->
+    <Compile Include="..\..\SageHavokEditor\Core\HavokVariableValue.cs" />
+  </ItemGroup>
+
+</Project>

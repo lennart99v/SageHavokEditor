@@ -92,6 +92,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Float behaviour variables were corrupted on every save, and the one that
+  made noise was the least harmful of them.** Reported by Lenny (2026-09-17) as
+  "Sage converts the negative values in `hkbVariableValues` into unsigned
+  decimals and then errors out when you save as HKX", with
+  `SKYBSpiderDaedraBehavior`. That is real — but it was one of **four** words
+  the save changed in that file, and the other three changed silently.
+
+  Every variable's value lives in one `hkInt32` slot whatever the variable is. A
+  `VARIABLE_TYPE_REAL` keeps its float **bit-cast** into that slot; bools, ints
+  and pointer indices are stored as the number they look like. Nothing in the
+  value says which — `hkbVariableInfo.type` is the only thing that does — and
+  the editor was not reading it. It guessed, with two rules that disagreed:
+  decode treated a word as float bits when it was negative or over a million,
+  encode treated a string as a float when it contained a `'.'`. Every float
+  whose text has no decimal point fell through the gap. `1065353216` (`1.0f`)
+  decoded to `"1"` and re-encoded to the **integer 1** — a different value,
+  written without complaint, because `1` is a perfectly good `hkInt32` and
+  nothing downstream had grounds to object. In that file it hit
+  `weaponSpeedMult`, `turnSpeedMult` and `fMinTurnDelta`, all three of them 1.0.
+
+  The loud one is the same root cause: encode wrote the bit pattern **unsigned**
+  (`BitConverter.ToUInt32`), so `-2.06f` came back as `3221477130` — right bits,
+  outside `hkInt32`, and the HKX save refused it. **That refusal is the only
+  reason any of this was noticed**; the three silent ones would have shipped.
+
+  Three things changed. The codec is now type-driven and lives in
+  `Core/HavokVariableValue.cs` where it can be tested, and writes a **signed**
+  word. Floats format with .NET's shortest round-trippable form instead of
+  `"0.###"`, which had been truncating anything past three decimals. And a save
+  now writes back **only the variables actually edited in the Variables tab** —
+  re-encoding every word on every save is what let an untouched value drift at
+  all, and it is also the "it reverts my change" half of the report: a value
+  fixed in Object Data was overwritten a moment later from the tab's stale copy.
+  When the two editors disagree there is nothing in the numbers to say which one
+  moved, so `IdNamePair.ValueEdited` records it rather than letting either guess.
+
+  **A file an older save damaged is repaired on load**, as far as it can be:
+  `3221477130` and `-1073490166` are the same 32 bits, so reading the unsigned
+  form back as a signed word shows the right value and saves the right one. The
+  three `1.0f → 1` losses are *not* recoverable — those bits are gone — so a
+  file saved by an earlier version wants its float variables checked by eye.
+
+  `tools/hkx-varvalues` pins it: decode → encode is the identity for every word
+  under every type across a 399,164-word random sweep, plus the boundaries and
+  both infinities. The single documented gap is a NaN's payload, which no float
+  text carries — and nothing rewrites an unedited word, so an exotic NaN in a
+  real file is left alone. The harness also re-implements the old rules to show
+  what they did to Lenny's actual file (4 of 36 words changed), so it goes red if
+  either rule comes back. Verified in the editor end to end: his file opens,
+  saves as SE HKX without the Invalid Values dialog, and all 36 words come back
+  byte-identical; editing `turnSpeedMult` to 0.75 and saving changes exactly one
+  word, to `1061158912`.
+
 - **Opening `0_master.hkx` never finished, and ate the machine while it
   didn't.** `BehaviorTreeBuilder` guarded its recursion with the path it was
   currently walking — `path.Add` on the way down, `path.Remove` on the way back
