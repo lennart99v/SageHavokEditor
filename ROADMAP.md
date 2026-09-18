@@ -515,7 +515,7 @@ the port's own README.
 
   **What the round trip could not settle — the array being frame-major rather than track-major — is now measured, not assumed.** Sleme supplied four real interleaved imp attack animations the same day (37–59 frames, 50–54 tracks). They parse, and the layout falls out of the motion itself rather than out of documentation: an animation is smooth in time and not in bone index, so the reading that makes consecutive samples of a bone nearly identical is the real one. **Frame-major wins by 38–55×** (mean translation step 0.012–0.127 against 11.8–13.2). The files agree with the parse on every declared fact — frame counts exact, durations exact, and all four land on exactly **30.00 fps**, which a wrong reshape would not do — and 17–20 of 56 bones move between first and last frame, so it is real motion rather than coherent noise. `hkx-anim-interleaved` now runs those checks on any real interleaved file it is given, and says so when it is given none.
 
-- [ ] **Export an animation as FBX.** Read-only preview is half a bridge: you can
+- [x] **Export an animation as FBX.** Read-only preview is half a bridge: you can
   watch a clip but not take it anywhere. `tools/hkx-fbx-export` is the harness —
   it feeds `HavokSplineDecoder`'s `[frame][bone]` locals plus the project
   skeleton into a hand-written FBX writer, and `--selftest` drives a synthetic
@@ -523,7 +523,17 @@ the port's own README.
   without an animation on disk. Verified 2026-09-05 against the pddragon
   skeleton: Blender 4.5 imports it as an 84-bone armature with the right names,
   hierarchy, frame count and fps, and the spinning bone's total angular travel
-  measures 720.00°.
+  measures 720.00°. **Done 2026-09-06 and released in 0.7.0** — the box went
+  unticked while the work landed, and the two notes at the end of this entry were
+  written as it shipped. Found 2026-09-18 answering a user asking whether the
+  editor can modify animations, where the honest answer turns on this feature
+  being the only way motion leaves the editor.
+
+  **Still one-way.** There is no FBX import, so the bridge carries motion out and
+  nothing back in. Editing an animation in Blender and returning it is not a
+  thing this editor does; annotation and trigger editing are what it writes to an
+  animation file. Worth saying out loud because "export an animation as FBX"
+  reads like round-tripping to anyone who has not tried it.
 
   **Write the binary form, not ASCII.** The first cut wrote FBX 7.4 ASCII on the
   theory that it is readable and universally accepted; Blender answers "ASCII FBX
