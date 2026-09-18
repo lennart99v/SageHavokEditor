@@ -461,6 +461,14 @@ the port's own README.
   `LICENSE` actually says GPL-3.0 — and the linking exception's wording matters for the first, since
   a P/Invoke shim into a static library is the case such an exception exists to cover.
 
+  **Re-checked 2026-09-18: still blocked.** Her root `LICENSE` reads "Copyright (c) 2026
+  Cassieandstuff. All rights reserved. PROVISIONAL — the project license is not yet finalized",
+  granting no rights to use, copy, modify or distribute. It also records why the flip is not free
+  for her: the editor links `nifly` (GPL-3.0) via FetchContent, which constrains what she can
+  choose, while the SKSE plugins under `src/SKSE/` do not depend on it — so the two halves of her
+  tree need not land on the same licence, and this item should say which half it needs. The date is
+  here so the next check is a `git show HEAD:LICENSE` on a shallow clone rather than a rediscovery.
+
 ## Save / IO
 
 - [x] **Skyrim LE (32-bit) support, and LE ⇄ SE conversion.** LE and SE share the Havok schema (`hk_2010.2.0-r1`, class version 8) and differ only in packfile pointer size, so conversion is a pure repack — but the bundled HKX2Library had been de-generalised to SE, with 908 padding constants across its 588 generated classes baked to an 8-byte pointer. `tools/hkx-layout-gen` re-derives Havok's layout rules from each class's own metadata and re-emits the padding as `des.Padding(pad64, pad32)`, refusing to emit anything it can't first reproduce byte-for-byte at 64-bit (so SE output is unchanged by construction). Surfaced two real bugs: `hkUlong` members (`hkbNode.m_userData`) read as fixed 64-bit, and `ALIGN_16` members not honoured where the 64-bit layout was already 16-aligned. Validated on all 180 loose vanilla LE files — all parse, all round-trip LE→SE→LE with byte-identical Havok XML (`tools/hkx-roundtrip`). Nineteen classes remain 64-bit-only (`hkp*`, type-metadata classes, `hkbGeneratorSyncInfo`); none occur in behaviour/character/project/skeleton/animation files, and writing LE is refused with their names rather than producing a corrupt file. Done 2026-08-21.
