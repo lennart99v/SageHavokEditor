@@ -1,4 +1,4 @@
-Unreleased:
+0.8.0 Features:
 
 - The Guide has a text size control, and you can save it out as a Markdown file. If you have a large or high-resolution monitor the Guide was genuinely too small to read comfortably, and there was no way to do anything about it. There is now: − and + buttons at the top right of the Guide, Ctrl+scroll anywhere in the text, and a Reset back to normal. Whatever size you pick is remembered, so you set it once. The sidebar grows with the text rather than cutting the section names off. Asked for by Sk, who has a big monitor and pointed out that copying the text loses all the formatting, which was also true.
 

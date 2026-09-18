@@ -5,15 +5,16 @@ down after cutting 0.6.0; every command here is one that was actually run.
 
 Saying **"ready the release"** (or "ready the 0.7 zip") means: do everything in
 *Cut the release* below, stop before *Publish*, and hand back the zip plus the
-version-bump PR. Publishing steps are separate and each needs to be asked for —
-they are public and hard to walk back.
+version-bump commit. Publishing steps are separate and each needs to be asked
+for — they are public and hard to walk back.
 
 ## Before starting
 
-- Every feature PR for the version is merged; `master` is clean and up to date.
+- Every feature for the version is on `master`; the tree is clean and up to date.
 - `CHANGELOG.md` has an `## [Unreleased]` section holding this version's entries.
   Expect its `### Added` / `### Fixed` headings to be repeated rather than merged;
-  step 2 collapses them.
+  step 2 collapses them. This survives the move off PRs: each session still
+  prepends its own block.
 - `SageHavokEditor/Update-Info.md` has its paragraphs. Its heading is normally
   still `Unreleased:` and needs changing to `<version> Features:` — the form the
   in-app update dialog groups on. 0.7.0 found it unchanged.
@@ -22,7 +23,11 @@ they are public and hard to walk back.
 
 ## Cut the release
 
-Branch: `chore/release-<version>`.
+**On `master`, directly.** This document was written when releases went through
+`chore/release-<version>` and a PR; that flow was dropped on 2026-09-16 (see
+`CLAUDE.md`), and the ruleset on `master` was relaxed to match. The bump is an
+ordinary commit now. Nothing else about the sequence changes — the ordering
+constraint in step 3 is about the build seeing the bump, not about how it landed.
 
 **1. Bump the version.** It lives in exactly one place —
 `SageHavokEditor/SageHavokEditor.csproj`, three properties that move together:
@@ -38,11 +43,12 @@ Nothing else hard-codes a version. The single-file build takes its
 misreports itself in Explorer and in any version comparison. It was left at
 `0.5.0` for the whole 0.6 cycle — check it, don't assume.
 
-**2. Collapse the changelog sections, then stamp it.** A version assembled from
-more than a handful of squash merges arrives with its `### Added` / `### Fixed`
-headings repeated: each merge prepends its own block rather than merging into the
+**2. Collapse the changelog sections, then stamp it.** A version assembled over
+more than a handful of sessions arrives with its `### Added` / `### Fixed`
+headings repeated: each one prepends its own block rather than merging into the
 ones already there. 0.7.0 reached five — `Added`, `Fixed`, `Fixed`, `Added`,
-`Fixed` — across 22 PRs, with one feature filed under `Fixed`.
+`Fixed` — across 22 PRs, with one feature filed under `Fixed`. 0.8.0 reached four
+(`Added`, `Fixed`, `Added`, `Fixed`) over 22 entries, none misfiled.
 
 Group the section into one `### Added` and one `### Fixed`, keeping every entry's
 text exactly and moving only entries under the wrong heading. Check it by sorting
@@ -62,12 +68,12 @@ Then `## [Unreleased]` becomes `## [<version>] — <date>`
 [0.6.0]: https://github.com/lennart99v/SageHavokEditor/releases/tag/v0.6.0
 ```
 
-**3. Commit and open the PR**, then **merge it**. Do this *before* building:
-the build stamps the current commit into `ProductVersion` as
-`0.6.0+<sha>`, and that sha should be the commit the tag will point at. Build
-first and the artifact's provenance points at the commit *before* the bump.
+**3. Commit and push the bump.** Do this *before* building: the build stamps the
+current commit into `ProductVersion` as `0.6.0+<sha>`, and that sha should be the
+commit the tag will point at. Build first and the artifact's provenance points at
+the commit *before* the bump.
 
-**4. Tag the merge commit**, annotated (`-a`), message
+**4. Tag that commit**, annotated (`-a`), message
 `Sage Havok Editor v<version>` plus a short summary of the release:
 
 ```sh

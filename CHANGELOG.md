@@ -5,7 +5,7 @@ All notable changes to Sage Havok Editor are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] — 2026-09-18
 
 ### Added
 
@@ -127,6 +127,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nested `SKSE/Plugins/` path inside that folder is both what a user drops into
   `Data` and what a mod manager expects from a zipped folder. `RELEASING.md`
   gains the build-and-test step and the new zip layout.
+
+
+- **The live debugger's plugin and wire protocol are documented.**
+  `docs/live-debugger-protocol.md` writes down both halves as built, read out of
+  the plugin source and `Core/BehaviorDebuggerClient.cs` rather than out of
+  intent: where the plugin lives and what it is built from, the two pipe names
+  and which end is the server, the 500 ms snapshot cadence, the exact snapshot
+  JSON — `formId` as bare uppercase hex, `actorName` hardcoded to `Player`,
+  `behaviorFile` being the graph's name rather than a filename, `stateName`
+  always empty because the editor resolves it positionally, absent variables
+  skipped rather than zeroed, `bIsRiding` appended whether or not it was asked
+  for, and the mount group's key absent rather than null — plus the config JSON
+  and the fact that its parser is hand-rolled substring scanning, so the config
+  must stay flat and key order within an entry is load-bearing.
+
+  It also records the design question the protocol is on the wrong side of.
+  Active states are read through `syncVariableIndex`, a machine mirroring its
+  state into a behaviour variable, which is all a process *outside* the game
+  could manage — but the plugin runs inside it and already holds an animation
+  graph manager. Only 11 of 112 state machines in vanilla `0_master` are synced
+  and none in `WeapEquip`, so tracking a machine currently means editing the
+  graph and re-running Nemesis/Pandora. Reading the graph directly would report
+  every machine with none of that, and the client would need no change to accept
+  it, since it keys on the machine name either way.
+
+- **The clip preview plays interleaved / uncompressed animations.** It used to
+  refuse anything that wasn't spline-compressed — *"No
+  hkaSplineCompressedAnimation found"* — which is the packed form Bethesda ships.
+  Interleaved is the uncompressed form, every track's transform written out
+  verbatim for every frame, and authoring and conversion tools emit it freely.
+  `HavokAnimationParser` now picks a decoder rather than assuming one; the
+  interleaved decoder needs no decompression at all, because the transforms
+  already are the frames. Everything after decoding — track-to-bone mapping, the
+  reference-pose overlay, annotations, the viewport — was already shared.
+
+  Worth recording because it was mis-scoped in the report and probably will be
+  again: this only ever blocked the **3D preview**. `HavokAnimationParser.Parse`
+  has one caller, `ClipPreviewService`; annotation and trigger editing read the
+  annotations straight off the model and worked on these files all along.
+
+  **Written without a sample, then confirmed against four.** It first shipped
+  verified only as far as a synthetic round trip could reach:
+  `tools/hkx-anim-interleaved` decodes a real animation with the trusted spline
+  decoder, re-emits those exact frames as an
+  `hkaInterleavedUncompressedAnimation`, parses it back through the new branch and
+  requires a match — **62 animations, worst transform delta 9.5e-07**, the
+  precision the text itself carries.
+
+  What that could not settle was whether real files store the array frame-major
+  rather than track-major. Sleme supplied four real interleaved imp attack
+  animations the same day, and the layout now falls out of the motion rather than
+  out of documentation: an animation is smooth in time and not in bone index, so
+  the reading that makes consecutive samples of a bone nearly identical is the
+  real one. **Frame-major wins by 38–55×.** The files also agree with the parse on
+  every declared fact — frame counts and durations exact, all four landing on
+  exactly **30.00 fps** — which a wrong reshape would not produce. Requested by
+  Sleme [SKYB], and settled with his files.
+
+- **The graph doctor now checks the references reachability can't protect.**
+  Saving an `.hkx` writes what the walk from the file root reaches and drops the
+  rest, which is a total guarantee for a `#ref` and none at all for the
+  references Havok spells as bare integers: a transition's `toStateId` and
+  `toNestedStateId`, and a clip's `animationBindingIndex`. Delete the state one of
+  those names and the collector does its job perfectly — the state is
+  unreachable, so it isn't written — while the transition that still names it
+  survives, pointing at a number that now means nothing. The file converts, the
+  game loads it, and the actor T-poses with nothing in any log.
+
+  **The gap was the common case, not an exotic one.** `HavokValidator`'s
+  `toStateId` check reads only the transition arrays hanging off a machine's own
+  states, and inside those it steps over anything flagged `WILDCARD` or
+  `TO_NESTED` — so a machine's `wildcardTransitions` array was never looked at at
+  all, and neither was any nested destination. Wildcard transitions are how most
+  Skyrim machines are actually entered. Reproduced before writing anything:
+  delete a state a wildcard transition enters, exactly as 🗑 Delete Node does it,
+  and the doctor reported **nothing** and the save went ahead.
+
+  A `TO_NESTED` destination is resolved by following `generator` down from the
+  destination state to the machine it starts. Over the 540 nested transitions in
+  the corpus below that resolves 515 — 412 through an `hkbModifierGenerator`, 101
+  straight to the machine, 2 through two wrappers — and the 25 it declines all
+  end at an `hkbBehaviorReferenceGenerator`, where the nested machine is in
+  another file and this one has nothing to say about it. Declining is deliberate:
+  a check that refuses saves has to be over-forgiving wherever it can't see.
+
+  **Measured before it was allowed to refuse anything.** Across vanilla
+  `0_master`, `mt_behavior`, the sixteen other character behaviours,
+  `trollbehavior` and a modded dragon graph: 844 wildcard transitions, 540 nested
+  destinations and 3,552 clips, and the doctor's findings on all twenty files are
+  byte-identical to what it reported before this change. It adds nothing to
+  content that works.
+
+  **It is not silent on Bethesda's dragon, though, and that was the surprise.**
+  `dragonbehavior` carries fifteen of these for real — nine dangling `toStateId`
+  at the wildcard and nested sites the old check skipped, and six dangling
+  `toNestedStateId`, mostly states renumbered with the transitions into them left
+  behind. All fifteen are re-derived independently from the raw XML in
+  `tools/hkx-graph-doctor`, because a check allowed to refuse a save should not
+  be the only witness to its own findings. Being inherited, they go into the
+  load-time baseline and refuse nothing.
+
+  `animationBindingIndex` is bounds-checked against the character's registered
+  animations, and only when a character file is open. `-1` means "bind by
+  `animationName` instead" and is what all 3,552 clips in the corpus carry, so it
+  fires only on a value somebody set by hand. It is a warning, like the
+  clip-registration check beside it: the character file is a second file the
+  editor doesn't write, and it may be about to gain the animations that would
+  make the index good.
+
+- **Export a behaviour as Community Behaviors `.hky` source.** 📤 Export now asks
+  which — the CSV summary it always wrote, or the graph itself, written back into
+  the YAML source format it can be edited and shared in. Pick a folder and the
+  unit is written at `<graph>.hkx/`, one file per node under `clips/ states/
+  generators/ modifiers/ transitions/ selectors/ data/`.
+
+  It refuses a file with no `hkbBehaviorGraph` and says why: only the behaviour
+  classes have moved to her schema, and an exporter must not emit a class the
+  schema it read does not describe.
+
+  **A graph loaded from a packfile warns before writing, because that path is not
+  faithful yet.** Vanilla `dragonbehavior` comes back with 1501 of 1502 objects,
+  483 of 483 events, 153 of 153 variables and all 845 names — but will not
+  convert, because a numeric array is written the way `HkParam` holds it,
+  space-separated, rather than as a list. A unit opened from YAML source and
+  written back does convert. Saying so before writing beats letting someone find
+  a unit that looks right and is not.
 
 ### Fixed
 
@@ -263,134 +389,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that, since a missing plugin and an unlaunched game produce the identical red
   status line.
 
-### Added
-
-- **The live debugger's plugin and wire protocol are documented.**
-  `docs/live-debugger-protocol.md` writes down both halves as built, read out of
-  the plugin source and `Core/BehaviorDebuggerClient.cs` rather than out of
-  intent: where the plugin lives and what it is built from, the two pipe names
-  and which end is the server, the 500 ms snapshot cadence, the exact snapshot
-  JSON — `formId` as bare uppercase hex, `actorName` hardcoded to `Player`,
-  `behaviorFile` being the graph's name rather than a filename, `stateName`
-  always empty because the editor resolves it positionally, absent variables
-  skipped rather than zeroed, `bIsRiding` appended whether or not it was asked
-  for, and the mount group's key absent rather than null — plus the config JSON
-  and the fact that its parser is hand-rolled substring scanning, so the config
-  must stay flat and key order within an entry is load-bearing.
-
-  It also records the design question the protocol is on the wrong side of.
-  Active states are read through `syncVariableIndex`, a machine mirroring its
-  state into a behaviour variable, which is all a process *outside* the game
-  could manage — but the plugin runs inside it and already holds an animation
-  graph manager. Only 11 of 112 state machines in vanilla `0_master` are synced
-  and none in `WeapEquip`, so tracking a machine currently means editing the
-  graph and re-running Nemesis/Pandora. Reading the graph directly would report
-  every machine with none of that, and the client would need no change to accept
-  it, since it keys on the machine name either way.
-
-- **The clip preview plays interleaved / uncompressed animations.** It used to
-  refuse anything that wasn't spline-compressed — *"No
-  hkaSplineCompressedAnimation found"* — which is the packed form Bethesda ships.
-  Interleaved is the uncompressed form, every track's transform written out
-  verbatim for every frame, and authoring and conversion tools emit it freely.
-  `HavokAnimationParser` now picks a decoder rather than assuming one; the
-  interleaved decoder needs no decompression at all, because the transforms
-  already are the frames. Everything after decoding — track-to-bone mapping, the
-  reference-pose overlay, annotations, the viewport — was already shared.
-
-  Worth recording because it was mis-scoped in the report and probably will be
-  again: this only ever blocked the **3D preview**. `HavokAnimationParser.Parse`
-  has one caller, `ClipPreviewService`; annotation and trigger editing read the
-  annotations straight off the model and worked on these files all along.
-
-  **Written without a sample, then confirmed against four.** It first shipped
-  verified only as far as a synthetic round trip could reach:
-  `tools/hkx-anim-interleaved` decodes a real animation with the trusted spline
-  decoder, re-emits those exact frames as an
-  `hkaInterleavedUncompressedAnimation`, parses it back through the new branch and
-  requires a match — **62 animations, worst transform delta 9.5e-07**, the
-  precision the text itself carries.
-
-  What that could not settle was whether real files store the array frame-major
-  rather than track-major. Sleme supplied four real interleaved imp attack
-  animations the same day, and the layout now falls out of the motion rather than
-  out of documentation: an animation is smooth in time and not in bone index, so
-  the reading that makes consecutive samples of a bone nearly identical is the
-  real one. **Frame-major wins by 38–55×.** The files also agree with the parse on
-  every declared fact — frame counts and durations exact, all four landing on
-  exactly **30.00 fps** — which a wrong reshape would not produce. Requested by
-  Sleme [SKYB], and settled with his files.
-
-- **The graph doctor now checks the references reachability can't protect.**
-  Saving an `.hkx` writes what the walk from the file root reaches and drops the
-  rest, which is a total guarantee for a `#ref` and none at all for the
-  references Havok spells as bare integers: a transition's `toStateId` and
-  `toNestedStateId`, and a clip's `animationBindingIndex`. Delete the state one of
-  those names and the collector does its job perfectly — the state is
-  unreachable, so it isn't written — while the transition that still names it
-  survives, pointing at a number that now means nothing. The file converts, the
-  game loads it, and the actor T-poses with nothing in any log.
-
-  **The gap was the common case, not an exotic one.** `HavokValidator`'s
-  `toStateId` check reads only the transition arrays hanging off a machine's own
-  states, and inside those it steps over anything flagged `WILDCARD` or
-  `TO_NESTED` — so a machine's `wildcardTransitions` array was never looked at at
-  all, and neither was any nested destination. Wildcard transitions are how most
-  Skyrim machines are actually entered. Reproduced before writing anything:
-  delete a state a wildcard transition enters, exactly as 🗑 Delete Node does it,
-  and the doctor reported **nothing** and the save went ahead.
-
-  A `TO_NESTED` destination is resolved by following `generator` down from the
-  destination state to the machine it starts. Over the 540 nested transitions in
-  the corpus below that resolves 515 — 412 through an `hkbModifierGenerator`, 101
-  straight to the machine, 2 through two wrappers — and the 25 it declines all
-  end at an `hkbBehaviorReferenceGenerator`, where the nested machine is in
-  another file and this one has nothing to say about it. Declining is deliberate:
-  a check that refuses saves has to be over-forgiving wherever it can't see.
-
-  **Measured before it was allowed to refuse anything.** Across vanilla
-  `0_master`, `mt_behavior`, the sixteen other character behaviours,
-  `trollbehavior` and a modded dragon graph: 844 wildcard transitions, 540 nested
-  destinations and 3,552 clips, and the doctor's findings on all twenty files are
-  byte-identical to what it reported before this change. It adds nothing to
-  content that works.
-
-  **It is not silent on Bethesda's dragon, though, and that was the surprise.**
-  `dragonbehavior` carries fifteen of these for real — nine dangling `toStateId`
-  at the wildcard and nested sites the old check skipped, and six dangling
-  `toNestedStateId`, mostly states renumbered with the transitions into them left
-  behind. All fifteen are re-derived independently from the raw XML in
-  `tools/hkx-graph-doctor`, because a check allowed to refuse a save should not
-  be the only witness to its own findings. Being inherited, they go into the
-  load-time baseline and refuse nothing.
-
-  `animationBindingIndex` is bounds-checked against the character's registered
-  animations, and only when a character file is open. `-1` means "bind by
-  `animationName` instead" and is what all 3,552 clips in the corpus carry, so it
-  fires only on a value somebody set by hand. It is a warning, like the
-  clip-registration check beside it: the character file is a second file the
-  editor doesn't write, and it may be about to gain the animations that would
-  make the index good.
-
-- **Export a behaviour as Community Behaviors `.hky` source.** 📤 Export now asks
-  which — the CSV summary it always wrote, or the graph itself, written back into
-  the YAML source format it can be edited and shared in. Pick a folder and the
-  unit is written at `<graph>.hkx/`, one file per node under `clips/ states/
-  generators/ modifiers/ transitions/ selectors/ data/`.
-
-  It refuses a file with no `hkbBehaviorGraph` and says why: only the behaviour
-  classes have moved to her schema, and an exporter must not emit a class the
-  schema it read does not describe.
-
-  **A graph loaded from a packfile warns before writing, because that path is not
-  faithful yet.** Vanilla `dragonbehavior` comes back with 1501 of 1502 objects,
-  483 of 483 events, 153 of 153 variables and all 845 names — but will not
-  convert, because a numeric array is written the way `HkParam` holds it,
-  space-separated, rather than as a list. A unit opened from YAML source and
-  written back does convert. Saying so before writing beats letting someone find
-  a unit that looks right and is not.
-
-### Fixed
 
 - **A generated patch could anchor its edits to the wrong object.** A patch says
   which object it means by name rather than by id, because the file it is applied
@@ -1890,6 +1888,7 @@ place, and editing modifiers directly in the graph.
 - The executable now carries proper version metadata (it previously reported itself
   as 1.0.0 regardless of the build).
 
+[0.8.0]: https://github.com/lennart99v/SageHavokEditor/releases/tag/v0.8.0
 [0.7.0]: https://github.com/lennart99v/SageHavokEditor/releases/tag/v0.7.0
 [0.6.0]: https://github.com/lennart99v/SageHavokEditor/releases/tag/v0.6.0
 [0.5.0]: https://github.com/lennart99v/SageHavokEditor/releases/tag/v0.5.0

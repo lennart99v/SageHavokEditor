@@ -1,6 +1,6 @@
 # Sage Havok Editor — Guide
 
-This is the same Guide as the in-app **📖 Guide** tab, from version 0.7.0.
+This is the same Guide as the in-app **📖 Guide** tab, from version 0.8.0.
 It is generated from the app, so it cannot drift from what the app shows.
 
 ## Contents
