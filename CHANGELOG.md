@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The Guide has a text size, and can be saved as Markdown.** Asked for by Sk
+  (2026-09-17), who has a large monitor: "the text is showing up really small,
+  and it doesn't seem like I can zoom in within the app" — then, when told the
+  text could be copied, "I know you can copy paste it but then you lose the
+  formatting". Both halves were true. The Guide's sizes were hard-coded (18pt
+  headings, 13pt body), and selecting the text yields plain characters.
+
+  The request was for "the readme.MD that you used to make the guide", and
+  **there isn't one** — the Guide is ~40 `AddSection` calls in
+  `DocumentationView`, and the repo's `README.md` is a different and much shorter
+  document. So rather than hand over a file that doesn't exist, the app now
+  produces it: `GuideMarkdown` renders the same items the view renders, reached
+  from **⭳ Save as Markdown** in the Guide, and `tools/hkx-guide-export` runs the
+  real `DocumentationView` headlessly to regenerate **`docs/GUIDE.md`**, which is
+  now published in the repo — 41 sections, 72,587 characters. Generating it from
+  the app rather than maintaining a parallel copy is the whole point: the two
+  cannot drift.
+
+  Text size is − / + / Reset in the Guide's own toolbar, Ctrl+scroll anywhere in
+  the text, and is remembered between sessions (`AppSettings.GuideZoom`,
+  0.7–3.0). Re-scaling happens in place rather than by rebuilding, so zooming
+  keeps your scroll position — the reason to zoom is usually that you are in the
+  middle of reading something.
+
+  Three things came out of building it. **The sidebar clipped at any real zoom**:
+  it is a fixed 200px column, so "What Are Behavior Files?" became "What Are
+  Behavior File" — it now widens with the text. **A restored zoom rendered
+  correctly but read "100%"**, because `Build()` uses the zoom as it goes while
+  the toolbar's readout stays XAML text until something sets it. And the
+  **sub-heading rule was wrong, in the app, all along**: "any non-bullet line in a
+  block that has bullets" is right for a heading and wrong for a paragraph that
+  happens to sit above a list, so five paragraphs of prose across the Guide — one
+  of them 568 characters — were being rendered bold as though they were headings.
+  A heading is short, so length is the discriminator; the rule now lives in one
+  place that both the view and the exporter call, which is also what stops the
+  rendered and exported Guides disagreeing about what a heading is. 62 genuine
+  sub-headings are unaffected.
+
 - **The animation cache is read, and every clip generator checked against it.**
   `animationdatasinglefile.txt` is the third side of a trap the editor already
   watched two sides of. The graph names an animation by path; the character

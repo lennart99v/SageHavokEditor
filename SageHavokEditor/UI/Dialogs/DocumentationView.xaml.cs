@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -17,6 +19,40 @@ namespace SageHavokEditor.UI.Dialogs
 
         private readonly Dictionary<string, Block> _anchors = new();
         private RichTextBox _docBox = null!;
+
+        /// <summary>
+        /// Every group heading and section, in the order they were added. The
+        /// Guide has no source document — it is these calls — so this is what
+        /// <see cref="GuideMarkdown"/> writes out, which keeps the exported file
+        /// and the rendered one the same thing by construction.
+        /// </summary>
+        private readonly List<GuideItem> _items = new();
+
+        /// <summary>The sizes every other size is derived from.</summary>
+        private const double HeadingSize = 18;
+        private const double BodySize = 13;
+        private const double NavSize = 11;
+        private const double NavHeaderSize = 9;
+        private const double NavWidth = 200;
+
+        private const double MinZoom = 0.7;
+        private const double MaxZoom = 3.0;
+
+        private double _zoom = AppSettings.GuideZoom;
+
+        /// <summary>The Guide's text scale, persisted across sessions.</summary>
+        public double Zoom
+        {
+            get => _zoom;
+            set
+            {
+                var z = Math.Clamp(Math.Round(value, 2), MinZoom, MaxZoom);
+                if (Math.Abs(z - _zoom) < 0.001) return;
+                _zoom = z;
+                AppSettings.GuideZoom = z;
+                ApplyZoom();
+            }
+        }
 
         public void ScrollToSection(string key)
         {
@@ -55,6 +91,8 @@ namespace SageHavokEditor.UI.Dialogs
         {
             NavPanel.Children.Clear();
             _anchors.Clear();
+            _items.Clear();
+            if (NavColumn != null) NavColumn.Width = new GridLength(NavWidth * _zoom);
 
             _docBox = new RichTextBox
             {
@@ -73,13 +111,25 @@ namespace SageHavokEditor.UI.Dialogs
             ContentPanel.Children.Clear();
             ContentPanel.Children.Add(_docBox);
 
+            // Build() reads _zoom as it goes, but the toolbar's readout is XAML
+            // text until something sets it — so a restored zoom rendered
+            // correctly while the label still claimed 100%.
+            Dispatcher.InvokeAsync(ApplyZoom, System.Windows.Threading.DispatcherPriority.Loaded);
+
             AddNavHeader("Overview");
             AddSection("overview", "Overview",
                 "Sage Havok Editor is a WPF-based desktop editor for Skyrim " +
                 "Havok behaviour files (.hkx / .xml). It lets you view, edit, and export behaviour graphs " +
                 "without hand-editing XML. The editor parses the Havok object graph into a typed data model " +
                 "and lets you navigate every object, edit parameters, manage variables and events, and " +
-                "visualise state-machine transitions as an interactive node graph.");
+                "visualise state-machine transitions as an interactive node graph.\n\n" +
+                "Reading this Guide\n" +
+                "• Text size — the − and + buttons above, or Ctrl+scroll anywhere in the text. " +
+                "The size is remembered between sessions. Reset puts it back to 100%.\n" +
+                "• ⭳ Save as Markdown — writes this whole Guide to a .md file with its formatting " +
+                "intact, for reading outside the app or at your own size. There is no separate " +
+                "source document to ask for: the Guide is generated from the app, and so is that " +
+                "file. A copy of it is also published in the repository as docs/GUIDE.md.");
 
             AddSection("behavior_files", "What Are Behavior Files?",
     "Havok Behavior files (.hkx) are the animation logic layer that sits between Skyrim's " +
@@ -1173,13 +1223,118 @@ namespace SageHavokEditor.UI.Dialogs
                 "producing a silently corrupt file.");
         }
 
+        /// <summary>
+        /// Every group and section of the Guide, building it first if the tab has
+        /// never been shown. Exposed so the same content can be written out
+        /// without a window — <c>tools/hkx-guide-export</c> regenerates
+        /// <c>docs/GUIDE.md</c> from it, which is what stops the published copy
+        /// drifting from the one in the app.
+        /// </summary>
+        public IReadOnlyList<GuideItem> GetItems()
+        {
+            if (_items.Count == 0) Build();
+            return _items;
+        }
+
+        // ── Reading controls ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// Re-scale everything from its base size. Done in place rather than by
+        /// rebuilding, so zooming keeps your scroll position — which matters,
+        /// because the reason to zoom is usually that you are in the middle of
+        /// reading something.
+        /// </summary>
+        private void ApplyZoom()
+        {
+            if (_docBox == null) return;
+
+            foreach (var block in _docBox.Document.Blocks)
+            {
+                if (block is not Paragraph p || p.Tag is not double baseSize) continue;
+                p.FontSize = baseSize * _zoom;
+                if (baseSize == BodySize) p.LineHeight = 20 * _zoom;
+            }
+
+            foreach (var child in NavPanel.Children)
+            {
+                switch (child)
+                {
+                    case Button b when b.Tag is double bs: b.FontSize = bs * _zoom; break;
+                    case TextBlock t when t.Tag is double ts: t.FontSize = ts * _zoom; break;
+                }
+            }
+
+            // The sidebar is a fixed column, so its labels clip once the text
+            // grows unless it grows with them.
+            if (NavColumn != null) NavColumn.Width = new GridLength(NavWidth * _zoom);
+
+            if (GuideZoomLabel != null)
+                GuideZoomLabel.Text = $"{_zoom * 100:0}%";
+        }
+
+        private void BtnGuideZoomIn_Click(object sender, RoutedEventArgs e) => Zoom += 0.1;
+        private void BtnGuideZoomOut_Click(object sender, RoutedEventArgs e) => Zoom -= 0.1;
+        private void BtnGuideZoomReset_Click(object sender, RoutedEventArgs e) => Zoom = 1.0;
+
+        /// <summary>Ctrl+scroll, the gesture people try first.</summary>
+        private void ContentScroller_PreviewMouseWheel(object sender,
+            System.Windows.Input.MouseWheelEventArgs e)
+        {
+            if (System.Windows.Input.Keyboard.Modifiers
+                != System.Windows.Input.ModifierKeys.Control) return;
+            Zoom += e.Delta > 0 ? 0.1 : -0.1;
+            e.Handled = true;
+        }
+
+        /// <summary>
+        /// Write the Guide out as Markdown. It is the only way to read it at your
+        /// own size outside the app, and there is no source document to hand over
+        /// instead — the Guide is these <c>AddSection</c> calls and nothing else.
+        /// </summary>
+        private void BtnGuideExport_Click(object sender, RoutedEventArgs e)
+        {
+            if (_items.Count == 0) Build();
+
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save the Guide as Markdown",
+                Filter = "Markdown|*.md|All files|*.*",
+                FileName = "SageHavokEditor-Guide.md"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            try
+            {
+                var version = System.Reflection.Assembly.GetEntryAssembly()?
+                    .GetName().Version?.ToString(3);
+                // UTF-8 with no BOM — Encoding.UTF8 writes one, and a BOM on a
+                // .md shows up as a stray character in some readers. This has to
+                // match what tools/hkx-guide-export writes, or the two copies of
+                // the same Guide differ in their first three bytes.
+                System.IO.File.WriteAllText(dlg.FileName,
+                    GuideMarkdown.Render(_items, version),
+                    new System.Text.UTF8Encoding(false));
+
+                MessageBox.Show(
+                    $"Saved {_items.Count(i => !i.IsGroup)} sections to\n{dlg.FileName}",
+                    "Guide exported", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show("Could not write the file:\n" + ex.Message,
+                    "Guide export failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void AddNavHeader(string text)
         {
             var hasResource = TryFindResource("AccentBlueBrush") != null;
+            _items.Add(new GuideItem { IsGroup = true, Title = text });
             NavPanel.Children.Add(new TextBlock
             {
+                Tag = NavHeaderSize,
                 Text = text.ToUpperInvariant(),
-                FontSize = 9,
+                FontSize = NavHeaderSize * _zoom,
                 FontWeight = FontWeights.Bold,
                 Foreground = hasResource
                     ? (Brush)FindResource("AccentBlueBrush")
@@ -1198,11 +1353,14 @@ namespace SageHavokEditor.UI.Dialogs
                 ? bo : new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x55));
 
             // Nav button (sidebar — not part of the selectable document)
+            _items.Add(new GuideItem { Key = key, Title = title, Body = body });
+
             var navBtn = new Button
             {
+                Tag = NavSize,
                 Content = title,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
-                FontSize = 11,
+                FontSize = NavSize * _zoom,
                 Padding = new Thickness(12, 4, 8, 4),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
@@ -1215,7 +1373,8 @@ namespace SageHavokEditor.UI.Dialogs
             // Heading paragraph — doubles as the scroll anchor
             var heading = new Paragraph(new Run(title))
             {
-                FontSize = 18,
+                Tag = HeadingSize,
+                FontSize = HeadingSize * _zoom,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = primaryBrush,
                 Margin = new Thickness(0, 16, 0, 6)
@@ -1234,15 +1393,22 @@ namespace SageHavokEditor.UI.Dialogs
             // Body paragraphs
             foreach (var para in body.Split("\n\n"))
             {
-                var pg = new Paragraph { Margin = new Thickness(0, 0, 0, 10), LineHeight = 20, FontSize = 13 };
+                var pg = new Paragraph
+                {
+                    Tag = BodySize,
+                    Margin = new Thickness(0, 0, 0, 10),
+                    LineHeight = 20 * _zoom,
+                    FontSize = BodySize * _zoom
+                };
                 bool first = true;
                 foreach (var line in para.Split('\n'))
                 {
                     if (!first) pg.Inlines.Add(new LineBreak());
                     first = false;
                     bool isBullet = line.StartsWith("•");
-                    bool isSub = !isBullet && !char.IsDigit(line.FirstOrDefault()) &&
-                                 para.Contains("•") && line.Length > 0;
+                    // Shared with the Markdown export so the two renderings of the
+                    // Guide cannot disagree about what counts as a heading.
+                    bool isSub = GuideMarkdown.IsSubHeading(line, para);
                     pg.Inlines.Add(new Run(isBullet ? "    " + line : line)
                     {
                         FontWeight = isSub ? FontWeights.SemiBold : FontWeights.Normal,

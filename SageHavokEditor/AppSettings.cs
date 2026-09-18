@@ -56,6 +56,21 @@ namespace SageHavokEditor
 
         // ── Public properties ────────────────────────────────────────────
 
+        /// <summary>
+        /// Text scale for the in-app Guide, 0.7–3.0. The Guide's sizes were fixed,
+        /// which reads very small on a high-resolution monitor with no way to
+        /// change it — reported by a user with a large display, 2026-09-17.
+        /// </summary>
+        public static double GuideZoom
+        {
+            get => double.TryParse(Get("GuideZoom", "1.0"),
+                       System.Globalization.NumberStyles.Float,
+                       System.Globalization.CultureInfo.InvariantCulture, out var z)
+                   && z >= 0.7 && z <= 3.0 ? z : 1.0;
+            set => Set("GuideZoom",
+                value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         /// <summary>Root Skyrim install folder (contains Data/).</summary>
         public static string GamePath
         {

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>hkx-guide-export</AssemblyName>
+    <!-- The editor is self-contained, and a non-self-contained exe may not
+         reference one (NETSDK1151). -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The real DocumentationView, not a copy of its text: the whole point is
+         that docs/GUIDE.md cannot say something different from the Guide tab. -->
+    <ProjectReference Include="..\..\SageHavokEditor\SageHavokEditor.csproj" />
+  </ItemGroup>
+
+</Project>
