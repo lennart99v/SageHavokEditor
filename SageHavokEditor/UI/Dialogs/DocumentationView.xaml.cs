@@ -173,6 +173,35 @@ namespace SageHavokEditor.UI.Dialogs
                 "5. Save with the Save button (or Ctrl+S). The file is serialised back to Havok XML.\n" +
                 "6. Use the Patch button to produce a Nemesis or Pandora-compatible patch folder.");
 
+            AddSection("yaml_source", "Opening YAML Source (Community Behaviors)",
+                "Community Behaviors authors behaviors as YAML rather than as Havok binaries, and its " +
+                "compiler names each source after the file it will produce. That has one consequence " +
+                "worth knowing before you go looking for a bug that isn't there: a .hkx path over there " +
+                "is a build target, not a promise about the bytes.\n\n" +
+                "Two shapes\n" +
+                "• A folder named <name>.hkx is a unit — behavior.yaml at the top, with clips/, states/, " +
+                "generators/, modifiers/ and the rest beneath it. This is what a behavior is.\n" +
+                "• A file named <name>.hkx may be a single-document unit whose contents are YAML. " +
+                "Animations are authored this way, so an animation sitting at the path its clip names " +
+                "is not a compiled animation at all.\n\n" +
+                "What the editor does with them\n" +
+                "• Behavior units open: Load → 📂 Open YAML behavior folder…, or drag the <name>.hkx " +
+                "folder onto the window. Opening the behavior.yaml inside one opens the whole unit, " +
+                "because a unit only means anything whole.\n" +
+                "• The editor decides what a file is by reading it, never by its name. A real .hkx " +
+                "binary, Havok XML and YAML source are all told apart the same way whatever they are " +
+                "called, so nothing has to be renamed before it will open.\n" +
+                "• Character, project and animation sources are recognised and named, but not yet " +
+                "editable here — you get a box saying which of the three it is and what to do instead, " +
+                "rather than a complaint that a perfectly valid file is corrupt.\n" +
+                "• A behavior reference (see Referencing Another Behavior File) resolves into a unit " +
+                "folder as happily as into a .hkx, so the event tables of a referenced graph still line " +
+                "up when the graph on the other side is source rather than a binary. Where both a " +
+                "compiled binary and its source sit at the same path, the binary wins — that is what " +
+                "the game loads.\n\n" +
+                "To get an animation into the clip preview, compile it first (havok-core-cli compile) " +
+                "and point the clip at the .hkx that produces.");
+
             AddSection("behavior_tree", "The Behavior Tree (left panel)",
                 "The left panel shows the behavior as a tree: state machines, the states under them, " +
                 "each state's generator chain, and its transitions. Click any node to load that object " +

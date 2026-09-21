@@ -14,6 +14,7 @@ It is generated from the app, so it cannot drift from what the app shows.
 **Getting Started**
 
 - [Getting Started](#getting-started)
+- [Opening YAML Source (Community Behaviors)](#opening-yaml-source-community-behaviors)
 - [The Behavior Tree (left panel)](#the-behavior-tree-left-panel)
 
 **Tabs**
@@ -107,6 +108,29 @@ File layout A typical character has three files: a project file (.hkx) that ties
 ## Getting Started
 
 1. Open a file — use Load or drag a .hkx/.xml onto the window. (Starting a mod from scratch? Load → ✨ New behavior file… scaffolds a valid empty behavior; see Creating a New Behavior File.) 2. The editor loads all Havok objects and populates every tab. 3. Navigate to the Graph tab first for a visual overview of the state machines. 4. Edit any value directly in the Variables, Events, or Transitions tabs. 5. Save with the Save button (or Ctrl+S). The file is serialised back to Havok XML. 6. Use the Patch button to produce a Nemesis or Pandora-compatible patch folder.
+
+
+
+## Opening YAML Source (Community Behaviors)
+
+Community Behaviors authors behaviors as YAML rather than as Havok binaries, and its compiler names each source after the file it will produce. That has one consequence worth knowing before you go looking for a bug that isn't there: a .hkx path over there is a build target, not a promise about the bytes.
+
+
+
+**Two shapes**
+
+- A folder named <name>.hkx is a unit — behavior.yaml at the top, with clips/, states/, generators/, modifiers/ and the rest beneath it. This is what a behavior is.
+- A file named <name>.hkx may be a single-document unit whose contents are YAML. Animations are authored this way, so an animation sitting at the path its clip names is not a compiled animation at all.
+
+
+**What the editor does with them**
+
+- Behavior units open: Load → 📂 Open YAML behavior folder…, or drag the <name>.hkx folder onto the window. Opening the behavior.yaml inside one opens the whole unit, because a unit only means anything whole.
+- The editor decides what a file is by reading it, never by its name. A real .hkx binary, Havok XML and YAML source are all told apart the same way whatever they are called, so nothing has to be renamed before it will open.
+- Character, project and animation sources are recognised and named, but not yet editable here — you get a box saying which of the three it is and what to do instead, rather than a complaint that a perfectly valid file is corrupt.
+- A behavior reference (see Referencing Another Behavior File) resolves into a unit folder as happily as into a .hkx, so the event tables of a referenced graph still line up when the graph on the other side is source rather than a binary. Where both a compiled binary and its source sit at the same path, the binary wins — that is what the game loads.
+
+To get an animation into the clip preview, compile it first (havok-core-cli compile) and point the clip at the .hkx that produces.
 
 
 

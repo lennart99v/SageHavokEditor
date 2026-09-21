@@ -5,6 +5,63 @@ All notable changes to Sage Havok Editor are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **A `.hkx` is opened by what it contains, not by what it is called.** Community
+  Behaviors' compiler treats a `.hkx` path as a *build target*: a `<stem>.hkx`
+  **folder** is a multi-file unit, and a `<stem>.hkx` **file** may be YAML —
+  which is how her animations are authored, discovered by that suffix, with the
+  relative path serving as the roster entry (`Resolver.cpp`: "the `.hkx` path IS
+  the output name", stated 2026-09-20). Our load path dispatched on the
+  extension throughout, so one of those assets went straight into
+  `PackFileDeserializer` and came back as a corrupt packfile — about a file that
+  is perfectly well formed.
+
+  `YamlSourceProbe` now reads the head instead. A packfile is its magic
+  (`57 E0 E0 57`), Havok XML is its first `<`, and YAML is a top-level mapping;
+  `HkxFormat` gains a third value and every caller handles it. Which of the four
+  documents it is comes from the keys written **at column 0** — `behavior:`,
+  `character:`, `project:`, and for an animation either an `animation:` wrapper
+  or its bare `tracks:` / `floatTracks:`, the wrapper being optional per her
+  `AnimationYamlLoader.h`.
+
+  **Column 0 is doing more work than it looks.** The obvious test — "does the
+  word `behavior:` appear" — misreads her own `character.yaml`, which names the
+  behaviour it points at (`behavior: "Behaviors\DragonBehavior.hkx"`) one level
+  in. Every character unit in the vanilla corpus would have opened as a
+  behaviour. Removing the indentation guard turns two of the harness's checks
+  red, and one of them is exactly that file.
+
+  What this buys: a behaviour unit now opens from a **file** inside it — opening
+  `behavior.yaml` loads the whole unit, because a unit only means anything whole
+  — and `BehaviorReferenceIndex` resolves a `behaviorName` to a unit folder as
+  well as to a file, so a referenced graph's event table still lines up when the
+  graph on the other side is source. A binary sitting at the same path still
+  wins, since that is what the game loads. Character, project and animation
+  sources are recognised and named rather than mis-parsed: the box says which of
+  the three it is and what to do instead.
+
+  Two things came out of building it. **A unit's write time is not the folder's
+  write time** — Windows moves a directory's stamp when a file is created,
+  renamed or deleted and *not* when one is edited, so the cached read of a
+  referenced unit would never have noticed the clip you just changed in the
+  other window, which is the one case that cache exists for; `UnitWriteTimeUtc`
+  takes the newest of the documents under it, off the directory walk itself. And
+  **`HkxPathResolver` could only find files**, so the case-insensitive walk that
+  exists for VFS and case-sensitive archives had no directory half — a unit
+  whose casing differed from the reference that named it was simply not there.
+
+  Pinned by `tools/hkx-yaml-sniff` (33 checks: the rule itself, then 19 real
+  behaviour units, 3 character units and 501 YAML documents of her vanilla
+  corpus, against 101 real packfiles and 23 Havok XML files from
+  `hkxworking_64` — both counts asserted non-zero, so a green run can't be green
+  by emptiness) and by `tools/hkx-yaml-open-ui`, which drives the real
+  `MainWindow.LoadFileAsync`. Two faults were re-introduced on purpose: dropping
+  the column-0 rule reddens 2 checks, and going back to extension dispatch
+  reddens 3.
+
 ## [0.8.0] — 2026-09-18
 
 ### Added
