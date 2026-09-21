@@ -332,10 +332,45 @@ namespace SageHavokEditor.Core
                 // id is not carried over: ours is unit-local and reassigned.
                 if (string.IsNullOrEmpty(p.Name) || p.Name == "name" || p.Name == "id") continue;
                 if (!written.Add(p.Name)) continue;
-                Emit(sb, o, p, "", "");
+                Emit(sb, o, Best(o, p.Name), "", "");
             }
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Which of several params sharing a name to write.
+        ///
+        /// An object the importer rebuilt from an HKX2 default carries every member
+        /// Havok declares, and the source's own value is appended beside it rather
+        /// than over it — so a name can appear twice, once empty and once meaning
+        /// something. Taking the first dropped 40 of vanilla <c>0_master</c>'s
+        /// binding sets: every <c>BSBoneSwitchGeneratorBoneData</c> holds a null
+        /// <c>variableBindingSet</c> ahead of the one that binds
+        /// <c>spBoneWeight</c> to a character property, so the export wrote the
+        /// null, the re-import built no binding set, and the bone switch came back
+        /// unbound — which in the game is a switch that never switches.
+        ///
+        /// The first *with content* wins rather than the last, because the case the
+        /// de-duplication was written for is a transition holding both the eventId
+        /// the source wrote and the one resolution produced, and there the earlier
+        /// is the one to keep.
+        /// </summary>
+        private static HkParam Best(HkObject o, string name)
+        {
+            HkParam? first = null;
+            foreach (var p in o.Params)
+            {
+                if (!string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)) continue;
+                first ??= p;
+                if (HasContent(p)) return p;
+            }
+            return first!;
+        }
+
+        private static bool HasContent(HkParam p) =>
+            (p.Children?.Count ?? 0) > 0
+            || (p.Strings?.Count ?? 0) > 0
+            || !(string.IsNullOrEmpty(p.Value) || p.Value == "null");
 
         /// <summary>
         /// One param. <paramref name="firstPrefix"/> opens the line — a list item
@@ -421,6 +456,26 @@ namespace SageHavokEditor.Core
             {
                 var elementClass = HavokTypeCatalog.Lookup(owner.ClassName, p.Name)?.ElementClassName;
 
+                // A clip trigger is the one place her format writes the
+                // hkbEventProperty *flat*: `event:` and `payload:` sit beside
+                // localTime on the trigger, where every other owner keeps the
+                // struct nested under its member name (BSEventOnDeactivateModifier
+                // writes `event:` then `event: attackStop` inside it). Writing the
+                // trigger nested produced a shape neither her compiler nor this
+                // importer reads — BuildClipTrigger looks for a flat `event`, found
+                // a param with children instead, and fell through to its -1. Every
+                // clip trigger in an exported unit came back firing nothing: 298 in
+                // vanilla dragonbehavior, 1,049 in mt_behavior. Nothing said so, the
+                // object count being right and every name still there; only the two
+                // hkbStringEventPayload that went missing with them showed up at all.
+                if (p.Children.Count == 1
+                    && IsEventProperty(p, elementClass)
+                    && owner.ClassName.Equals("hkbClipTrigger", StringComparison.OrdinalIgnoreCase))
+                {
+                    EmitEventProperty(sb, p.Children[0], open, pad);
+                    return;
+                }
+
                 // A single nested struct is not an array of one, and from a packfile
                 // both arrive as Children with one element. numelements is what tells
                 // them apart. Written as a list, a transition's triggerInterval opened
@@ -475,6 +530,61 @@ namespace SageHavokEditor.Core
                   .Append(Quote(readable.Value.Value)).Append(Lf);
         }
 
+        /// <summary>
+        /// Is this single inline child an <c>hkbEventProperty</c>? An element read
+        /// from a packfile carries its own class; one rebuilt by the importer sits
+        /// bare under the member, so the declared element class answers for it.
+        /// </summary>
+        private static bool IsEventProperty(HkParam p, string? elementClass)
+        {
+            var child = p.Children[0];
+            var cls = !string.IsNullOrEmpty(child.ClassName) ? child.ClassName : elementClass;
+            return string.Equals(cls, "hkbEventProperty", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// An <c>hkbEventProperty</c> written into whatever holds it: the event's
+        /// index, the name that index means, and the payload's text.
+        ///
+        /// Both spellings of the event go out, for the reason every other symbol
+        /// reference writes both — the index is what the runtime reads, the name is
+        /// what survives a table that moved. The payload is an
+        /// <c>hkbStringEventPayload</c> on the other side of a pointer; her format
+        /// writes its text in place, and the importer rebuilds the object.
+        /// </summary>
+        private void EmitEventProperty(StringBuilder sb, HkObject ev, string open, string pad)
+        {
+            var first = open;
+            bool wrote = false;
+
+            var id = ev.Params.FirstOrDefault(x => x.Name == "id")?.Value ?? "";
+            if (id.Length > 0)
+            {
+                sb.Append(first).Append("id: ").Append(id).Append(Lf);
+                first = pad; wrote = true;
+
+                if (int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
+                    && i >= 0 && i < _eventNames.Count)
+                    sb.Append(pad).Append("event: ").Append(Quote(_eventNames[i])).Append(Lf);
+            }
+
+            var payloadRef = ev.Params.FirstOrDefault(x => x.Name == "payload")?.Value ?? "";
+            foreach (var r in payloadRef.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!r.StartsWith("#", StringComparison.Ordinal)) continue;
+                if (!_byId.TryGetValue(r, out var payload)) continue;
+                var text = payload.Params.FirstOrDefault(x => x.Name == "data")?.Value ?? "";
+                if (text.Length == 0) continue;
+                sb.Append(first).Append("payload: ").Append(Quote(text)).Append(Lf);
+                first = pad; wrote = true;
+                break;
+            }
+
+            // An event property that wrote nothing would leave a list item with no
+            // keys, which is not a trigger any more — say the id is none, out loud.
+            if (!wrote) sb.Append(open).Append("id: -1").Append(Lf);
+        }
+
         private void Flatten(StringBuilder sb, HkParam p, HkObject target, string open, string pad)
         {
             if (!FlattenPayload.TryGetValue(target.ClassName, out var fold)) return;
@@ -507,7 +617,7 @@ namespace SageHavokEditor.Core
             foreach (var ip in item.Params)
             {
                 if (string.IsNullOrEmpty(ip.Name) || !seen.Add(ip.Name)) continue;
-                Emit(sb, owner, ip, "", pad);
+                Emit(sb, owner, Best(item, ip.Name), "", pad);
             }
         }
 
@@ -556,7 +666,7 @@ namespace SageHavokEditor.Core
 
                     lastGroup = "";
                     var before = sb.Length;
-                    Emit(sb, owner, ip, wrote ? pad + "  " : pad + "- ", pad + "  ");
+                    Emit(sb, owner, Best(item, ip.Name), wrote ? pad + "  " : pad + "- ", pad + "  ");
                     if (sb.Length > before) wrote = true;
                 }
                 if (!wrote) sb.Append(pad).Append("- {}").Append(Lf);

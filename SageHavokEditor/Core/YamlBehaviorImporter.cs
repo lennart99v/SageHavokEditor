@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using SageHavokEditor.Core.Services;
@@ -154,6 +155,7 @@ namespace SageHavokEditor.Core
             string behaviorName = LoadAllYaml(folderPath);
             AttachDataSidecars();         // data/<owner>_*.yaml → the owner's null member
             NormalizeEmptyArrays();       // boneIndices: [] → numelements="0"
+            WireNodeBoneWeights();        // a node's own boneWeights: → hkbBoneWeightArray
             ResolveTransitionFields();    // event: Name → eventId: N, toState: Name → toStateId: N
             WireStateTransitions();       // wrap inline transition lists → TransitionInfoArray objects
             WireNotifyEvents();           // wrap inline notify lists → EventPropertyArray objects
@@ -401,6 +403,54 @@ namespace SageHavokEditor.Core
         /// ordering would be wrong invisibly.
         /// </summary>
         /// <summary>
+        /// A node's own <c>boneWeights:</c>, built the same way an array element's
+        /// is.
+        ///
+        /// Bone weights were only ever rebuilt inside <see cref="BuildElement"/>,
+        /// which runs for the elements of a pointer array — a blender's children, a
+        /// bone switch's. A class that carries the member directly had nowhere to be
+        /// built: vanilla <c>dragonbehavior</c>'s <c>hkbPoweredRagdollControlsModifier</c>
+        /// holds one, and it was the single object the .hky round trip lost on the
+        /// packfile path, silently, because a dropped weight map leaves a graph that
+        /// still loads and a ragdoll that is powered over the whole body.
+        /// </summary>
+        private void WireNodeBoneWeights()
+        {
+            foreach (var obj in _allObjects.ToList())
+            {
+                if (string.IsNullOrEmpty(obj.ClassName)) continue;
+
+                // By the member's declared type, not its name. The source calls the
+                // map boneWeights wherever it writes one, but the member behind it
+                // is spBoneWeight on a bone switch's child data and boneWeights
+                // everywhere else — reading the name alone left every
+                // BSBoneSwitchGeneratorBoneData.spBoneWeight behind: 16 of vanilla
+                // magicbehavior's 45 weight maps, 5 of magicmountedbehavior's 7.
+                //
+                // The member being written at all is the signal, not it having
+                // weights in it: vanilla dragonbehavior's is an hkbBoneWeightArray
+                // of length zero, and an empty array is a different thing from a
+                // null pointer to one.
+                var values = obj.Params.FirstOrDefault(p =>
+                    p.Name.EndsWith(".values", StringComparison.OrdinalIgnoreCase)
+                    && HavokTypeCatalog.Lookup(obj.ClassName,
+                           p.Name[..^".values".Length])?.ElementClassName == "hkbBoneWeightArray");
+                if (values == null) continue;
+
+                var member = values.Name[..^".values".Length];
+
+                // Already a reference — nothing to build.
+                if (obj.Params.Any(p => p.Name.Equals(member, StringComparison.OrdinalIgnoreCase)
+                                        && (p.Value ?? "").StartsWith("#", StringComparison.Ordinal)))
+                    continue;
+
+                AttachPositionalBoneWeights(obj, obj.ClassName, values.Value ?? "");
+                obj.Params.RemoveAll(p =>
+                    p.Name.StartsWith(member + ".", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        /// <summary>
         /// Weights already in the skeleton's own order, straight from the source.
         /// Nothing to resolve, so unlike the name-keyed form this needs no
         /// skeleton and never reports an unbuilt map.
@@ -502,10 +552,20 @@ namespace SageHavokEditor.Core
             {
                 var info = HavokTypeCatalog.Lookup(ownerClass ?? "", param.Name);
 
+                // …unless the value names an object this unit defines, in which
+                // case it is a reference for ResolveAllReferences to chase and not
+                // an expression at all. hkbExpressionCondition is the only
+                // condition her format writes in place; the others are objects —
+                // vanilla horsebehavior has four hkbStringCondition, which the
+                // exporter gives files of their own. Read as text, `condition: 53`
+                // became an hkbExpressionCondition whose expression was the literal
+                // string "53": a condition that evaluates nothing, on a transition
+                // that used to test whether the right hand was empty.
                 if (info is { ArrayKind: HkArrayKind.None, ElementClassName: "hkbCondition" }
                     && !string.IsNullOrEmpty(param.Value)
                     && param.Value != "null"
-                    && !param.Value.StartsWith("#", StringComparison.Ordinal))
+                    && !param.Value.StartsWith("#", StringComparison.Ordinal)
+                    && !_byName.ContainsKey(param.Value))
                 {
                     var condition = new HkObject
                     {
@@ -798,8 +858,19 @@ namespace SageHavokEditor.Core
             string Read(string name) =>
                 source.Params.FirstOrDefault(p => p.Name == name)?.Value ?? "";
 
+            // Both generations, the same way WrapNotifyList takes them: the
+            // name-keyed corpus writes `event: FlightActionGrab`, the id-keyed one
+            // writes `id: 295`. An explicit id wins where both are present, because
+            // that is the one the runtime would have read — and they only disagree
+            // when a table moved under a name that was left behind.
+            var explicitId = Read("id");
             var eventName = Read("event");
-            eventIndex.TryGetValue(eventName, out var eventId);
+            string? eventId = null;
+            if (explicitId.Length > 0
+                && int.TryParse(explicitId, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                eventId = explicitId;
+            else
+                eventIndex.TryGetValue(eventName, out eventId);
 
             var payloadText = Read("payload");
             var payloadRef = "null";
@@ -1222,6 +1293,60 @@ namespace SageHavokEditor.Core
             {
                 if (k == "class") continue;
                 obj.Params.Add(new HkParam { Name = k, Value = v });
+            }
+
+            // Members written as a nested mapping. The reader has always parsed
+            // these into sections and nothing ever asked it for one, so a node's
+            // struct members were read and thrown away: vanilla dragonbehavior's
+            // hkbPoweredRagdollControlsModifier arrived without controlData,
+            // worldFromModelModeData or boneWeights, and the .hky round trip came
+            // back one hkbBoneWeightArray short because of the last of them. Only
+            // list items ever got this treatment, through BuildElement.
+            //
+            // A section is taken only when the class declares a member of that
+            // name, so a key her writer invents cannot become a param Havok has no
+            // room for — and it does invent them: 0_master's PoweredRagdollMatching
+            // writes `controlData:` holding an `event:`, which that struct has no
+            // such member for.
+            foreach (var sectionName in doc.SectionNames.ToList())
+            {
+                if (obj.Params.Any(p => p.Name.Equals(sectionName, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                if (HavokTypeCatalog.Lookup(className, sectionName) == null) continue;
+
+                var section = doc.GetSection(sectionName);
+                if (section == null || section.Scalars.Count == 0) continue;
+
+                // A bone weight map is a pointer to an hkbBoneWeightArray rather
+                // than a struct, so it keeps the dotted spelling BuildElement
+                // already reads and WireNodeBoneWeights turns into the object.
+                // Gated on the declared type, so an ordinary struct that happens to
+                // have a `count` member is not mistaken for one.
+                if (HavokTypeCatalog.Lookup(className, sectionName)?.ElementClassName
+                        == "hkbBoneWeightArray"
+                    && (section.HasScalar("values") || section.HasScalar("count")))
+                {
+                    obj.Params.Add(new HkParam
+                    {
+                        Name = sectionName + ".values",
+                        Value = section.GetScalar("values") ?? ""
+                    });
+                    continue;
+                }
+
+                obj.Params.Add(new HkParam
+                {
+                    Name = sectionName,
+                    Children = new List<HkObject>
+                    {
+                        new HkObject
+                        {
+                            Params = section.Scalars
+                                .Select(kv => new HkParam { Name = kv.Key, Value = kv.Value })
+                                .ToList()
+                        }
+                    }
+                });
             }
 
             // String list params (eventNames, variableNames, etc.)
@@ -1963,6 +2088,9 @@ namespace SageHavokEditor.Core
 
         public YamlDocument? GetSection(string name) =>
             _sections.TryGetValue(name, out var s) ? s : null;
+
+        /// <summary>Every nested mapping this document holds, by name.</summary>
+        public IEnumerable<string> SectionNames => _sections.Keys;
 
         public List<string> GetStringList(string name) =>
             _stringLists.TryGetValue(name, out var l) ? l : new List<string>();

@@ -2922,23 +2922,14 @@ namespace SageHavokEditor
                 return;
             }
 
-            // What is left on the packfile path is two objects out of 1502 on vanilla
-            // dragonbehavior, so this is a note rather than a warning: the graph links,
-            // converts at 353 KB against an original of 370, and every event, variable
-            // and name comes back.
-            if (_sourceWasHkx)
-            {
-                var go = MessageBox.Show(
-                    "This graph was loaded from a packfile rather than from YAML source, and " +
-                    "the export is not quite exact yet.\n\nOn vanilla dragonbehavior two " +
-                    "objects out of 1502 do not survive the trip — an event payload and one bone " +
-                    "weight list reached from an unusual place. Everything else does: the graph " +
-                    "links up, every event, variable and name comes back, and it converts.\n\n" +
-                    "Exporting a behaviour folder that was opened from YAML source loses " +
-                    "nothing.\n\nWrite it?",
-                    "Export .hky source", MessageBoxButton.OKCancel, MessageBoxImage.Information);
-                if (go != MessageBoxResult.OK) return;
-            }
+            // The packfile path used to lose two objects out of 1502 on vanilla
+            // dragonbehavior — an event payload and a bone weight list reached from
+            // an unusual place — and warned about it here. Both are fixed
+            // (2026-09-21), and the round trip is now gated over all 20 Havok files
+            // in hkxworking_64 as well as her 57 YAML units, so there is nothing
+            // left to warn about and the dialog is gone. What an export still drops
+            // is anything the graph cannot reach, which an .hkx save drops too; the
+            // status line says how many that was.
 
             var dlg = new Microsoft.Win32.SaveFileDialog
             {

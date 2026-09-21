@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every clip trigger in an exported `.hky` unit came back firing nothing.** A
+  trigger's `event` is an `hkbEventProperty` — an event index and a payload
+  pointer — and her format writes it *flat* on the trigger (`event:` and
+  `payload:` beside `localTime`), which is the one place it does; every other
+  owner keeps it nested under its member name, as `BSEventOnDeactivateModifier`
+  writing `event:` with `event: attackStop` inside. The exporter wrote Havok's
+  nested shape everywhere, so `BuildClipTrigger` looked for a flat `event`, found
+  a param with children, and fell through to its `-1`. **298 triggers in vanilla
+  `dragonbehavior`, 1,049 in `mt_behavior`, 572 in `0_master` — all of them.**
+
+  Nothing said so, and that is the part worth keeping. The object count was
+  right, every node name was still there, and the graph still converted: a
+  trigger with event id `-1` is a perfectly well-formed trigger that fires
+  nothing. The only visible trace was the two `hkbStringEventPayload` that went
+  missing with them, and they were sitting inside three other failures that had
+  been red on every large unit for so long that they read as background noise.
+
+- **Three more silent losses, found by widening the same round trip.** A binding
+  set on a `BSBoneSwitchGeneratorBoneData` (40 of them in `0_master`): the object
+  the importer rebuilds from an HKX2 default carries a null `variableBindingSet`
+  ahead of the real one, and the exporter's one-key-per-object rule took the
+  first, so the bone switch came back unbound. A bone weight map reached through
+  a member *not* called `boneWeights` — `spBoneWeight` on a bone switch's child
+  data, 16 of vanilla `magicbehavior`'s 45 maps, 5 of `magicmountedbehavior`'s 7
+  — because weight maps were only ever rebuilt for the elements of a pointer
+  array, never for a node's own member. And a `condition:` that names an object
+  rather than holding an expression: vanilla `horsebehavior` has four
+  `hkbStringCondition`, and reading the reference as text turned each into an
+  `hkbExpressionCondition` whose expression was the literal string `53` — a
+  transition that used to test whether the right hand was empty, testing nothing.
+
+  Also fixed on the way: a node file's nested mappings were read and thrown away.
+  The reader had always parsed them into sections and nothing ever asked it for
+  one, so `hkbPoweredRagdollControlsModifier` arrived without `controlData`,
+  `worldFromModelModeData` or `boneWeights`. Only members the class declares are
+  taken, so a key her writer invents cannot become a param Havok has no room for
+  — and it does invent them: `0_master`'s `PoweredRagdollMatching` writes
+  `controlData:` holding an `event:`.
+
+  The export is now gated over **57 of her YAML units** (all 19 vanilla character
+  behaviours, the dragon, and 37 from the two modded corpora) and **all 20 Havok
+  files in `hkxworking_64`**, up from the four units anyone had run. The warning
+  the export put up about the packfile path — "two objects out of 1502 do not
+  survive the trip" — described exactly these and is gone.
+
+- **`tools/hkx-hky-export` was measuring the wrong thing, which is why none of
+  this surfaced.** It compared the round trip against *all* of the source graph,
+  including objects the root cannot reach — and the exporter deliberately drops
+  those, because an `.hkx` save drops them too. Vanilla `mt_behavior` carries 54:
+  a whole dead `IdleChisel` subtree, two blend effects and a modifier, none of
+  them named by anything. So three checks were permanently red on every large
+  unit, and the one line among them that meant something
+  (`hkbStringEventPayload 282→254`, where all 282 *were* reachable) read like
+  more of the same. It now compares against the reachable subgraph, reports the
+  orphan count as a note, asks about dangling references as a difference rather
+  than an absolute (her vanilla dragon unit names 13 modifiers it never defines),
+  and — the check that was missing — asserts that every clip trigger still fires
+  the event it fired. An object census cannot see inside an inline struct.
+
 ### Added
 
 - **A `.hkx` is opened by what it contains, not by what it is called.** Community
