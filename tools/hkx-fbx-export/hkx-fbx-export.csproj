@@ -16,6 +16,7 @@
     <Compile Include="..\..\SageHavokEditor\Core\Animation\FbxDocument.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Animation\FbxAnimationScene.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\YamlSourceProbe.cs" />
     <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
   </ItemGroup>
 

@@ -58,7 +58,7 @@ namespace SageHavokEditor.Core.Services
             get
             {
                 if (Path == null) return true;   // retry: it may have been created since
-                try { return File.GetLastWriteTimeUtc(Path) != LastWriteUtc; }
+                try { return BehaviorReferenceIndex.WriteTime(Path) != LastWriteUtc; }
                 catch { return true; }
             }
         }
@@ -161,9 +161,18 @@ namespace SageHavokEditor.Core.Services
             }
         }
 
-        private static DateTime WriteTime(string path)
+        /// <summary>
+        /// When the thing at <paramref name="path"/> was last written — a file's own
+        /// stamp, or, for a YAML unit, the newest document inside it.
+        /// </summary>
+        internal static DateTime WriteTime(string path)
         {
-            try { return File.GetLastWriteTimeUtc(path); }
+            try
+            {
+                return Directory.Exists(path)
+                    ? YamlSourceProbe.UnitWriteTimeUtc(path)
+                    : File.GetLastWriteTimeUtc(path);
+            }
             catch { return DateTime.MinValue; }
         }
 
@@ -189,6 +198,14 @@ namespace SageHavokEditor.Core.Services
                     tried.Add(candidate);
                     var found = HkxPathResolver.FindFileCaseInsensitive(candidate);
                     if (found != null) return found;
+
+                    // The same path may name a Community Behaviors unit, which is a
+                    // folder called <stem>.hkx rather than a file. Chased second so
+                    // a compiled binary sitting beside its source still wins — the
+                    // binary is what the game loads.
+                    var unit = HkxPathResolver.FindDirectoryCaseInsensitive(candidate);
+                    if (unit != null && YamlSourceProbe.ProbeUnit(unit) == YamlSourceKind.Behavior)
+                        return unit;
                 }
 
             return null;
@@ -203,7 +220,22 @@ namespace SageHavokEditor.Core.Services
         {
             HkPackfile packfile;
 
-            if (HkxConversionService.DetectFormat(path) == HkxFormat.HKX)
+            // A unit is a folder, and the importer is the only thing that reads one.
+            if (Directory.Exists(path))
+            {
+                var imported = new HavokManager();
+                new YamlBehaviorImporter().Import(path, imported);
+                return imported;
+            }
+
+            var format = HkxConversionService.DetectFormat(path);
+
+            if (format == HkxFormat.Yaml)
+                throw new InvalidDataException(
+                    $"{Path.GetFileName(path)} is Community Behaviors YAML source, " +
+                    "not a Havok file — a behaviour unit is the folder, not one document in it.");
+
+            if (format == HkxFormat.HKX)
             {
                 using var fs = File.OpenRead(path);
                 var des = new PackFileDeserializer();

@@ -162,6 +162,17 @@ namespace SageHavokEditor.Core
             var platform = HkxPlatform.Unknown;
 
             var fmt = HkxConversionService.DetectFormat(path);
+            if (fmt == HkxFormat.Yaml)
+            {
+                // The caller should have routed this to the YAML importer. Refuse
+                // by name rather than handing a source document to the XML reader,
+                // which would report it as malformed Havok XML.
+                var kind = Services.YamlSourceProbe.ProbeFile(path);
+                throw new InvalidDataException(
+                    $"{Path.GetFileName(path)} is Community Behaviors YAML source " +
+                    $"({Services.YamlSourceProbe.Describe(kind)}), not a Havok file.");
+            }
+
             if (fmt == HkxFormat.HKX)
             {
                 var result = await _conv.PrepareXmlAsync(path);

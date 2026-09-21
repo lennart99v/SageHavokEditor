@@ -18,10 +18,20 @@ namespace SageHavokEditor.Core.Services
         /// Walk a path segment by segment, matching each case-insensitively, and
         /// return the real path on disk — or null if any segment is missing.
         /// </summary>
-        public static string? FindFileCaseInsensitive(string path)
+        public static string? FindFileCaseInsensitive(string path) => Walk(path, wantFile: true);
+
+        /// <summary>
+        /// The directory version of <see cref="FindFileCaseInsensitive"/>. A
+        /// Community Behaviors behaviour unit is a <b>folder</b> named
+        /// <c>&lt;stem&gt;.hkx</c>, so a path naming no file may still name a graph.
+        /// </summary>
+        public static string? FindDirectoryCaseInsensitive(string path) => Walk(path, wantFile: false);
+
+        private static string? Walk(string path, bool wantFile)
         {
             if (string.IsNullOrEmpty(path)) return null;
-            if (File.Exists(path)) return path; // fast path on Windows
+            if (wantFile ? File.Exists(path) : Directory.Exists(path))
+                return path;                    // fast path on Windows
 
             try
             {
@@ -34,7 +44,7 @@ namespace SageHavokEditor.Core.Services
                     var target = parts[i];
                     var isLast = i == parts.Length - 1;
 
-                    var entries = isLast
+                    var entries = isLast && wantFile
                         ? Directory.GetFiles(current).Select(Path.GetFileName).ToArray()
                         : Directory.GetDirectories(current).Select(Path.GetFileName).ToArray();
 
@@ -44,7 +54,8 @@ namespace SageHavokEditor.Core.Services
                     if (match == null) return null;
                     current = Path.Combine(current, match);
                 }
-                return File.Exists(current) ? current : null;
+                return (wantFile ? File.Exists(current) : Directory.Exists(current))
+                    ? current : null;
             }
             catch { return null; }
         }

@@ -5,18 +5,19 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>hkx-array-kinds</AssemblyName>
+    <AssemblyName>hkx-yaml-sniff</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The editor's own catalog, not a copy: the whole point is to check the
-         answer the property editor will get. -->
+    <!-- The editor's own probe and its format detection, not a copy: this asks
+         what the real load path will decide about a file on disk. -->
     <Compile Include="..\..\SageHavokEditor\Models\HavokModels.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\HavokManager.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HavokArrayKinds.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\HkxPathResolver.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\YamlSourceProbe.cs" />
     <ProjectReference Include="..\..\libs\HKX2Library\HKX2\HKX2.csproj" />
   </ItemGroup>

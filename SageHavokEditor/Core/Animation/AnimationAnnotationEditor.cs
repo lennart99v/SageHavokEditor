@@ -98,7 +98,14 @@ namespace SageHavokEditor.Core.Animation
                 if (!File.Exists(animFullPath))
                     return Fail($"Animation not found: {animFullPath}");
 
-                bool binary = HkxConversionService.DetectFormat(animFullPath) == HkxFormat.HKX;
+                var format = HkxConversionService.DetectFormat(animFullPath);
+                if (format == HkxFormat.Yaml)
+                    return Fail(
+                        $"{Path.GetFileName(animFullPath)} is Community Behaviors YAML source, " +
+                        "not a compiled animation — annotations there are the source's own " +
+                        "`annotations:`, edited with the animation, not patched into a packfile.");
+
+                bool binary = format == HkxFormat.HKX;
                 string xml = binary
                     ? await _conv.HkxToXmlAsync(animFullPath)
                     : await File.ReadAllTextAsync(animFullPath);

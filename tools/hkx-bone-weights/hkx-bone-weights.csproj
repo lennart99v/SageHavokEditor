@@ -16,6 +16,7 @@
     <Compile Include="..\..\SageHavokEditor\Core\Services\HavokTypeCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\ModifierCatalog.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Services\YamlSourceProbe.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Skeletons\NifSkeletonReader.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Skeletons\SkeletonRegistry.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Skeletons\HkxSkeletonReader.cs" />

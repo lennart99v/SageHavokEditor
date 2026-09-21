@@ -685,8 +685,8 @@ namespace SageHavokEditor
                 if (dlg.ShowDialog() != true) return;
 
                 var folder = Path.GetDirectoryName(dlg.FileName)!;
-                if (IsYamlBehaviorFolder(folder))
-                    await LoadFileAsync(folder);
+                if (YamlSourceProbe.ProbeUnit(folder) != YamlSourceKind.None)
+                    await LoadFileAsync(folder);   // opens it, or names what it is instead
                 else
                     MessageBox.Show("That folder doesn't look like a YAML behavior folder.\n" +
                                     "It should contain a behavior.yaml or subdirectories like clips/, generators/, etc.");
@@ -797,16 +797,47 @@ namespace SageHavokEditor
 
         private async Task LoadFileAsync(string path)
         {
-            // ── Handle YAML behavior folders ─────────────────────────────────────────
-            if (IsYamlBehaviorFolder(path))
+            // ── Community Behaviors YAML source ──────────────────────────────────────
+            // A ".hkx" name is a compile target over there, not a promise about the
+            // bytes, so what this path holds has to be read rather than inferred: a
+            // folder may be a multi-file unit, a file may be a single-file one, and
+            // either may be a behaviour we open or one of the three kinds we don't.
+            if (Directory.Exists(path))
             {
-                await LoadYamlFolderAsync(path);
-                return;
+                var unit = YamlSourceProbe.ProbeUnit(path);
+                if (unit == YamlSourceKind.Behavior)
+                {
+                    await LoadYamlFolderAsync(path);
+                    return;
+                }
+                if (unit != YamlSourceKind.None)
+                {
+                    ShowUnopenableYaml(path, unit);
+                    return;
+                }
             }
 
             if (!File.Exists(path))
             {
                 MessageBox.Show($"File not found:\n{path}");
+                return;
+            }
+
+            var yamlKind = YamlSourceProbe.ProbeFile(path);
+            if (yamlKind != YamlSourceKind.None)
+            {
+                // A loose document inside a unit means the unit: behavior.yaml is
+                // the root declaration and the nodes it names live in the sibling
+                // folders, so opening it alone would load a graph with nothing in it.
+                var owningUnit = YamlSourceProbe.OwningUnit(path);
+                if (owningUnit != null &&
+                    YamlSourceProbe.ProbeUnit(owningUnit) == YamlSourceKind.Behavior)
+                {
+                    await LoadYamlFolderAsync(owningUnit);
+                    return;
+                }
+
+                ShowUnopenableYaml(path, yamlKind);
                 return;
             }
 
@@ -1996,13 +2027,56 @@ namespace SageHavokEditor
         /// <summary>Set by the last YAML import; empty when there is nothing to say.</summary>
         private string _yamlSkeletonNote = "";
 
-        private static bool IsYamlBehaviorFolder(string path)
-        {
-            if (!Directory.Exists(path)) return false;
-            if (File.Exists(Path.Combine(path, "behavior.yaml"))) return true;
+        private static bool IsYamlBehaviorFolder(string path) =>
+            YamlSourceProbe.ProbeUnit(path) == YamlSourceKind.Behavior;
 
-            var yamlSubdirs = new[] { "clips", "generators", "states", "modifiers", "transitions" };
-            return yamlSubdirs.Any(sub => Directory.Exists(Path.Combine(path, sub)));
+        /// <summary>
+        /// Name a YAML source and say why it isn't open, instead of letting it reach
+        /// a deserializer that would call a perfectly well-formed file corrupt. The
+        /// three kinds we can't open are worth telling apart, because what to do
+        /// about each of them differs.
+        /// </summary>
+        private void ShowUnopenableYaml(string path, YamlSourceKind kind)
+        {
+            MessageBox.Show(UnopenableYamlMessage(path, kind),
+                "YAML source", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            StatusText.Text = $"YAML source — {YamlSourceProbe.Describe(kind)}";
+        }
+
+        /// <summary>
+        /// The text <see cref="ShowUnopenableYaml"/> puts on screen. Split out so a
+        /// harness can read what the user would be told without a modal dialog
+        /// standing in front of it.
+        /// </summary>
+        internal static string UnopenableYamlMessage(string path, YamlSourceKind kind)
+        {
+            var what = YamlSourceProbe.Describe(kind);
+            var name = Path.GetFileName(path.TrimEnd('\\', '/'));
+
+            var advice = kind switch
+            {
+                YamlSourceKind.Character =>
+                    "Character units aren't editable here yet. The behaviour it points at is — " +
+                    "open the matching unit under the project's behaviors\\ folder.",
+                YamlSourceKind.Project =>
+                    "Project units aren't editable here yet. The behaviours it ships are — " +
+                    "open a unit under the project's behaviors\\ folder.",
+                YamlSourceKind.Animation =>
+                    "Animation sources aren't editable here yet. Compile it " +
+                    "(havok-core-cli compile) and open the .hkx that produces, or preview " +
+                    "the clip from the behaviour that plays it.",
+                YamlSourceKind.Behavior =>
+                    "A behaviour unit opens whole: open the <name>.hkx folder this document " +
+                    "sits in, rather than the document on its own.",
+                _ =>
+                    "It's YAML, but not one of the four documents this editor knows " +
+                    "(behavior, character, project, animation).",
+            };
+
+            return $"{name} is Community Behaviors YAML source — {what}, not a Havok packfile.\n\n" +
+                   "Over there a .hkx path names the binary the compiler will emit, which is " +
+                   "why this one isn't a binary.\n\n" + advice;
         }
 
         private void BtnApplyPatch_Click(object sender, RoutedEventArgs e)

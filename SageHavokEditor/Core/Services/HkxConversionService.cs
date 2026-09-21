@@ -13,7 +13,12 @@ using HKX2;
 
 namespace SageHavokEditor.Core
 {
-    public enum HkxFormat { HKX, XML }
+    /// <summary>
+    /// What a file actually is, read from its contents. <see cref="Yaml"/> is a
+    /// Community Behaviors YAML source — a <c>.hkx</c> name no longer implies a
+    /// packfile, so nothing here may dispatch on the extension.
+    /// </summary>
+    public enum HkxFormat { HKX, XML, Yaml }
 
     /// <summary>Which Skyrim edition's packfile layout a file uses.</summary>
     public enum HkxPlatform
@@ -69,17 +74,23 @@ namespace SageHavokEditor.Core
 
         public static HkxFormat DetectFormat(string path)
         {
-            using var fs = File.OpenRead(path);
-            Span<byte> magic = stackalloc byte[4];
-            fs.Read(magic);
+            using (var fs = File.OpenRead(path))
+            {
+                Span<byte> magic = stackalloc byte[4];
+                fs.Read(magic);
 
-            // Havok packfile magic: 57 E0 E0 57
-            if (magic[0] == 0x57 && magic[1] == 0xE0 &&
-                magic[2] == 0xE0 && magic[3] == 0x57)
-                return HkxFormat.HKX;
+                // Havok packfile magic: 57 E0 E0 57
+                if (Services.YamlSourceProbe.IsPackfile(magic))
+                    return HkxFormat.HKX;
+            }
 
-            // XML starts with '<' or BOM
-            return HkxFormat.XML;
+            // Not a packfile, and the extension can't be trusted to say what it is:
+            // her compiler names a YAML source <stem>.hkx after the binary it will
+            // emit. Read it. Anything that isn't a YAML document falls through to
+            // XML exactly as it did before.
+            return Services.YamlSourceProbe.ProbeFile(path) != Services.YamlSourceKind.None
+                ? HkxFormat.Yaml
+                : HkxFormat.XML;
         }
 
         /// <summary>
@@ -359,6 +370,22 @@ namespace SageHavokEditor.Core
                 {
                     // Already XML — pass straight through
                     return new HkxConversionResult { Success = true, XmlPath = inputPath };
+                }
+
+                if (fmt == HkxFormat.Yaml)
+                {
+                    // A source, not a binary. There is nothing to convert here and
+                    // no deserializer that would survive being handed it, so say so
+                    // rather than letting PackFileDeserializer report a corrupt
+                    // packfile about a file that is perfectly well formed.
+                    var kind = Services.YamlSourceProbe.ProbeFile(inputPath);
+                    return new HkxConversionResult
+                    {
+                        Success = false,
+                        Error = $"{Path.GetFileName(inputPath)} is Community Behaviors YAML source " +
+                                $"({Services.YamlSourceProbe.Describe(kind)}), not a Havok packfile — " +
+                                "the .hkx name is the binary its compiler will emit."
+                    };
                 }
 
                 // Binary HKX (either edition) → convert to temp XML
