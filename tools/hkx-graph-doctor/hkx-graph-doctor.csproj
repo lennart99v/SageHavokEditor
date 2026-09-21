@@ -20,7 +20,20 @@
     <Compile Include="..\..\SageHavokEditor\Core\Services\FirstPersonProject.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\HkxConversionService.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\YamlSourceProbe.cs" />
+    <!-- The reference index resolves a behaviorName to a YAML unit folder as well
+         as to a file, so it brings the importer with it — and the skeleton reader
+         the importer needs to build bone weights. -->
+    <Compile Include="..\..\SageHavokEditor\Core\YamlBehaviorImporter.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Skeletons\NifSkeletonReader.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Skeletons\SkeletonRegistry.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\Skeletons\HkxSkeletonReader.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\BehaviorReferenceIndex.cs" />
+    <!-- GraphDoctor's clip-cache check reads animationdatasinglefile.txt, so the
+         doctor does not compile without the AnimData reader behind it. -->
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimationDataFile.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimDataProject.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\ClipCacheCheck.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimationDataLocator.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\HkRefWalk.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\ValidationIssue.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\HavokValidator.cs" />

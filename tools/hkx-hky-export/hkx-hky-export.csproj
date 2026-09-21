@@ -23,6 +23,12 @@
     <Compile Include="..\..\SageHavokEditor\Core\Services\HkxPathResolver.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\FirstPersonProject.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Services\BehaviorReferenceIndex.cs" />
+    <!-- GraphDoctor's clip-cache check reads animationdatasinglefile.txt, so the
+         doctor does not compile without the AnimData reader behind it. -->
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimationDataFile.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimDataProject.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\ClipCacheCheck.cs" />
+    <Compile Include="..\..\SageHavokEditor\Core\AnimData\AnimationDataLocator.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\HkRefWalk.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\ValidationIssue.cs" />
     <Compile Include="..\..\SageHavokEditor\Core\Validation\HavokValidator.cs" />

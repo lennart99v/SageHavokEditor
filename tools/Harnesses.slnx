@@ -1,0 +1,42 @@
+<!-- Every .NET research harness in one place, so that `dotnet build
+     tools/Harnesses.slnx` answers the question nothing else asks: does the code
+     these compile against still compile?
+
+     Most harnesses pull individual files out of SageHavokEditor with <Compile
+     Include>, rather than referencing the app, because that is what lets a
+     console harness exercise WPF-adjacent code. The cost is that adding a
+     dependency to a shared file in Core silently breaks every csproj that lists
+     that file and not its new neighbour — which is how three of them sat
+     unbuildable from 0.8.0 (GraphDoctor gained the AnimData reader) until
+     2026-09-21. Building the app does not catch it; this does.
+
+     hkx-layout-gen is Python and is not listed here. -->
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Project Path="hkx-anim-interleaved/hkx-anim-interleaved.csproj" />
+  <Project Path="hkx-animdata/hkx-animdata.csproj" />
+  <Project Path="hkx-array-kinds/hkx-array-kinds.csproj" />
+  <Project Path="hkx-bone-weights/hkx-bone-weights.csproj" />
+  <Project Path="hkx-duplicate-state/hkx-duplicate-state.csproj" />
+  <Project Path="hkx-fbx-export/hkx-fbx-export.csproj" />
+  <Project Path="hkx-graph-doctor/hkx-graph-doctor.csproj" />
+  <Project Path="hkx-graph-doctor-ui/hkx-graph-doctor-ui.csproj" />
+  <Project Path="hkx-guide-export/hkx-guide-export.csproj" />
+  <Project Path="hkx-hky-export/hkx-hky-export.csproj" />
+  <Project Path="hkx-idalign/hkx-idalign.csproj" />
+  <Project Path="hkx-idorder/hkx-idorder.csproj" />
+  <Project Path="hkx-idpreserve/hkx-idpreserve.csproj" />
+  <Project Path="hkx-inline-array-ui/hkx-inline-array-ui.csproj" />
+  <Project Path="hkx-patch-anchors/hkx-patch-anchors.csproj" />
+  <Project Path="hkx-roundtrip/hkx-roundtrip.csproj" />
+  <Project Path="hkx-service-test/hkx-service-test.csproj" />
+  <Project Path="hkx-transition-blend/hkx-transition-blend.csproj" />
+  <Project Path="hkx-treebuild-perf/hkx-treebuild-perf.csproj" />
+  <Project Path="hkx-varvalues/hkx-varvalues.csproj" />
+  <Project Path="hkx-yaml-import/hkx-yaml-import.csproj" />
+  <Project Path="hkx-yaml-open-ui/hkx-yaml-open-ui.csproj" />
+  <Project Path="hkx-yaml-sniff/hkx-yaml-sniff.csproj" />
+</Solution>

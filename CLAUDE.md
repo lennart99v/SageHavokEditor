@@ -14,6 +14,21 @@ Warnings are tolerated (pre-existing nullable ones in the big UI files); don't
 add new categories. There is no automated UI test suite, so running the app and
 exercising the change is part of finishing it — and say which files you opened.
 
+**If you touched anything under `SageHavokEditor/Core/`, build the harnesses too:**
+
+```pwsh
+dotnet build tools/Harnesses.slnx -c Debug                     # must be 0 errors
+```
+
+Most harnesses reach into the app with `<Compile Include>` on individual files
+rather than referencing it, which is what lets a console harness exercise
+WPF-adjacent code — and means a new dependency in a shared `Core` file breaks
+every csproj that lists that file and not its new neighbour. The app still
+builds, so nothing tells you. `hkx-graph-doctor`, `hkx-hky-export` and
+`hkx-yaml-import` sat unbuildable from 0.8.0 (when `GraphDoctor` picked up the
+`AnimData` reader) until 2026-09-21 for exactly that reason. `hkx-layout-gen` is
+Python and isn't in the solution.
+
 ## Git flow — commit straight to master
 
 **Changed 2026-09-16 by the maintainer; this section said the opposite before.**
