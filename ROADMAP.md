@@ -154,6 +154,78 @@ Measured against Cassie's checkout at `f5ddbaa` on 2026-09-20 — the same commi
 
 **Ship `.hkx`; `.hky` is worth more for a creature than it is for patching.** The standing rule below — `.hky` is a supported format and never a dependency — is unchanged, and her compilers are offline CLIs, so a creature authored this way needs no SKSE plugin from anyone. But the usual calculus inverts. Patching vanilla is where the runtime compiler's merge machinery earns its keep and where the installed base argues for Nemesis/Pandora output; a new creature has nothing to merge and everything to *register*, and registration is precisely what the runtime route makes free. So `.hky` export moves from "later, maybe" to the thing that makes a creature mod installable without a cache war — after RC1 stamps a schema version, per the exact-match gate below.
 
+## Sister projects — the toolchain and the IDE
+
+Settled 2026-09-22 in conversation about where both projects are heading, and
+recorded here because it decides what is worth building on this side rather than
+only what is allowed to cross.
+
+**The framing that fits what each half already is: hers is a toolchain, this is
+an IDE.** `havok-core-cli` compiles and gates; the runtime compiler serves the
+bytes to the game. This editor is where a human opens a project, sees it as a
+graph, changes it, and watches it run against a live actor — `SkyrimBehaviorDebugger`
+is the only debugger this domain has. Build and run are hers, **edit and debug
+are ours**, and the contract between them is **the source tree, not the binaries**.
+That last clause is what has to stay true while `havok-core` dissolves into the
+schema-driven stack: drive the CLI as a child process, read and write her YAML
+units, never link her headers (**Not ours to build**, below).
+
+**We are both committers in the other's repo.** Permission given directly
+2026-09-16; the all-rights-reserved `LICENSE` is an unfinished file, not a
+position (see the licensing note below). So the question stopped being *what may
+cross* and became *what is worth building where*. Two rules survive, and only
+two: contribute **into** her tree rather than vendoring **out** of it, so neither
+project takes on the other as a dependency; and code may flow **editor-ward, not
+lib-ward**, because her editor already links nifly (GPL-3.0) while her libs and
+SKSE plugins are deliberately kept clear of it.
+
+**This side's direction — be the front end of her compiler, explicitly.** All
+three already exist as items above; what is new is the order and the reason:
+
+1. **Scaffold a whole creature project, emitting her unit layout alongside the
+   `.hkx`.** This is the single decision that makes the editor her IDE instead of
+   a parallel universe.
+2. **Validate across a project's files, not one file at a time.** Worth more to
+   her than to us: an independent reader deserialising her compiler's output is a
+   second implementation checking the first, and this domain's failure mode is
+   silent. Her own `.hky` filename-collision case is the proof — her compiler
+   accepted the graph and every offline gate stayed green.
+3. **An authoring surface for `animationsetdata`**, once its home settles. Every
+   format her compiler derives into being is a format somebody has to be able to
+   look at and change, and this one has never had a UI in any tool.
+
+**Her direction, as far as it touches ours: candidate 2 for the DCC hole.** An
+`fbx_to_animyaml` in her tree is the smallest total work across both projects —
+`ufbx` is already vendored and already sampled in-process — and it closes the one
+gap neither project has. Nothing here should start a C# FBX importer against it.
+
+- [ ] **Four seam questions to settle before either side builds against them.**
+  Each one is cheap to agree now and expensive to discover later:
+  - **Where root motion lives**, and whether the compiler *strips* the root track
+    once the record derives. Leaving both is how an actor moves twice, and a
+    front end cannot emit keyframes until this is fixed (**Creature pipeline**).
+  - **A schema version stamped on the YAML units.** Once this editor writes her
+    sources, drift between the two is a silent corruption; stamped, the editor
+    can refuse a mismatch loudly. Same gate as the `.hky` exact-match rule.
+  - **Machine-readable diagnostics from the CLI** — `compile --diagnostics=json`
+    with file, object and field anchors. One output format on her side turns her
+    gate failures into click-to-jump issues here, which is the cheapest thing
+    either project can hand the other.
+  - **The `animationsetdata` config schema**, before either side builds against
+    it. She is inventing it; this is what will render it.
+
+- [ ] **Share the corpus, not just the formats.** `tools/hkx-yaml-sniff` already
+  runs 33 checks over her 19 vanilla behaviour units, 3 character units and 501
+  YAML documents. Two independent implementations gated against one corpus is
+  worth more than either project's own suite, and it is the natural shape for
+  work from here to land in her tree.
+
+**And the creature angle is a division of labour too.** Her attention sits on
+humanoid combat and cinematics, which is exactly where assumptions like the
+hardcoded `meshes\actors\character\` roster CRC hide. This project is the only
+one driving the pipeline with a creature on the far end, so what it owes her is
+not opinions but the bug reports nothing else produces.
+
 ## Community Behaviors (ex-Behavior Relay) / `.hky` interop
 
 Cassie's [Skyrim Content Tools](https://github.com/Cassieandstuff/Skyrim-Content-Tools) is building a **runtime behaviour compiler**: an SKSE plugin that compiles behaviour graphs from YAML in-process at load time and serves the bytes to the game, replacing the Nemesis/Pandora offline patch step. Mods ship `.hky` bundles — packed YAML source trees — resolved over a master DAG the way the engine resolves `.esp`s. Measured there: `CompileBehavior` on full `0_master` (~1,200 objects, 590 KB) is ~8 ms and validation ~4 ms; the transport is a trampoline on `LoadBehaviorGraph`, upstream of the `BShkbHkxDB` cache, proven in a live session — the smoke-test graph compiled in 4.6 ms and was served to 41/41 humanoid loads with zero fallbacks, every graph it doesn't own passing through untouched. Spec: `docs/behavior-relay/runtime-compiler-spec.md`.
@@ -281,7 +353,7 @@ What is still genuinely gated is **redistribution**. Shipping her code inside th
 
 ### Division of labour — what crosses, and what doesn't
 
-The two projects are halves of one pipeline that happen to share a data model: Community Behaviors owns **compile → merge → serve**, this editor owns **see → edit → validate → preview**. Her behaviour graph panel is still a literal `"Behavior Editor — not yet implemented"` ImGui stub at `f5ddbaa`, 354 commits in — the authoring GUI is the half she isn't building, and it is the half this is. So the collaboration has a shape without either project absorbing the other, and while her licence is provisional (see above) what crosses is **formats, findings and data — never code, in either direction**.
+The two projects are halves of one pipeline that happen to share a data model: Community Behaviors owns **compile → merge → serve**, this editor owns **see → edit → validate → preview**. Her behaviour graph panel is still a literal `"Behavior Editor — not yet implemented"` ImGui stub at `f5ddbaa`, 354 commits in — the authoring GUI is the half she isn't building, and it is the half this is. So the collaboration has a shape without either project absorbing the other, and the rule that stood here — "formats, findings and data, never code, in either direction" — was too strong and is superseded by **Sister projects** above: we are both committers in the other's repo, and what is actually gated is redistribution, not reading, building against or contributing.
 
 - [ ] **Offer `pad32` / `size32` to her class schema.** Her 187 descriptors under `Community Behaviors/Havok/` carry 64-bit `size:`/`pad:` only, and she cannot derive the 32-bit column: SSE/AE is her stated target and she has no LE corpus. We do — `tools/hkx-layout-gen` re-derives the layout rules per class and emits `des.Padding(pad64, pad32)`, refusing anything it can't first reproduce byte-for-byte at 64-bit, validated over all 180 loose vanilla LE files. Emitting that as a column in her YAML descriptor shape is data, not GPL code, so it clears the licence problem, and it is the one contribution here she structurally can't make herself. It also buys a say in the schema both projects would then be reading.
 
