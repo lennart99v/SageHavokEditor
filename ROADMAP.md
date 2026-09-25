@@ -216,6 +216,54 @@ gap neither project has. Nothing here should start a C# FBX importer against it.
   - **The `animationsetdata` config schema**, before either side builds against
     it. She is inventing it; this is what will render it.
 
+- [ ] **Source gets its own extensions — `.hkb`, `.hkp`, `.hka`, `.hks`.** Hers,
+  proposed 2026-09-22 and agreed the same day: discovery keys on the extension
+  instead of sniffing for a `behavior.yaml` header, so a behaviour unit is
+  `0_master.hkb/` and a project is `defaultmale.hkp`, and the compile puts the
+  binaries beside them as `.hkx`. The sniffing cost is the smaller half of the
+  reason. The larger one is that a `.hkx` folder of YAML compiling to a `.hkx`
+  binary is one name meaning two things with Explorer showing you both, where
+  `0_master.hkb → 0_master.hkx` reads as source and output; and it is what the
+  Havok tools themselves used for project/character/behaviour sources, so it is a
+  convention rather than an invention.
+
+  **Two conditions went back with the agreement.** The header check is *demoted,
+  not deleted* — extension picks the loader, header confirms it, a mismatch is a
+  hard error naming both — because someone will rename a compiled `.hkx` to
+  `.hkb` or point a save at the wrong target, and the failure mode here is a
+  silent T-pose rather than an error. And the extension match is
+  case-insensitive: `0_Master.HKB` off a Windows machine into a Linux build.
+
+  **It costs this side nothing, which is the payoff for how discovery was built.**
+  `YamlSourceProbe` classifies by reading top-level keys and never by name, so the
+  extension arrives as a free confirmation rather than a migration. What will want
+  updating once she lands it: the open dialog's filters, the "which of the three
+  source kinds is this" message, and whatever the project scaffold emits.
+
+  **Unanswered, and needed before the scaffold writes a unit:** whether a
+  `behavior.yaml` still sits at the top inside `0_master.hkb/`, or the folder
+  extension replaces it. Asked 2026-09-22; she moved on to the linker before
+  answering. Either shape is fine here — the scaffold just cannot emit a unit
+  without knowing which.
+
+  **The thing to watch is hers, not ours.** Bundles currently store units at their
+  real serve path, `meshes/actors/…/<graph>.hkx/`, which is also what the "ignore
+  anything not starting at the meshes root" rule keys on to tell a behaviour
+  bundle from a cinematics archive in the same container. With `.hkb` the source
+  tree stops being the deploy tree verbatim, so the rename has to exist in the
+  packer and the resolver too, not only in the compiler.
+
+- [ ] **Bone weights keyed by name instead of a flat index-ordered list.** Her
+  linker refactor, in progress 2026-09-22. Worth tracking here because an
+  index-ordered weight array is the same hazard as every other parallel array in
+  this domain, and both projects have already been bitten by it from opposite
+  ends: the `.hky` exporter lost 16 of vanilla `magicbehavior`'s 45 weight maps to
+  a member name, and `tools/hkx-bone-weights` exists because a dragon's NIF and
+  its animation skeleton agree on *nothing* — 84 bones against 89, every shared
+  one at a different index. Keying by name removes the class rather than the
+  instance, and it matches the root bone already being found by its `[Root]` tag
+  rather than by position.
+
 - [ ] **Share the corpus, not just the formats.** `tools/hkx-yaml-sniff` already
   runs 33 checks over her 19 vanilla behaviour units, 3 character units and 501
   YAML documents. Two independent implementations gated against one corpus is
