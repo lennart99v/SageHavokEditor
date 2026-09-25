@@ -81,7 +81,7 @@ namespace SageHavokEditor.UI
         private readonly TextBlock _status = new() { Foreground = Brushes.Gainsboro, Margin = new Thickness(6), FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly Canvas _tickOverlay = new() { IsHitTestVisible = true, Height = 24 };
         private readonly Grid _scrubArea = new();
-        private readonly TextBlock _legend = new() { Foreground = Brushes.Gray, Margin = new Thickness(6, 0, 6, 4), FontSize = 11 };
+        private readonly TextBlock _legend = new() { Foreground = Brushes.Gray, Margin = new Thickness(6, 0, 6, 4), FontSize = 11, TextWrapping = TextWrapping.Wrap };
         private readonly DataGrid _annGrid = new();
         private readonly DockPanel _annPanel = new() { Width = 300, Visibility = Visibility.Collapsed };
         private readonly Button _annAddBtn = new()
@@ -292,27 +292,24 @@ namespace SageHavokEditor.UI
             for (int f = 0; f < clip.NumFrames; f++)
                 world[f] = HkTransform.ComputeWorld(clip.Frames[f], skeleton.ParentIndices);
 
-            // Which bones the clip actually drives: a bone is "animated" if any frame
-            // differs from the reference pose translation (cheap, robust enough for coloring).
-            var animated = new bool[skeleton.ReferencePose.Length];
-            for (int b = 0; b < animated.Length; b++)
-            {
-                var refT = skeleton.ReferencePose[b].Translation;
-                for (int f = 0; f < clip.NumFrames; f++)
-                    if ((clip.Frames[f][b].Translation - refT).LengthSquared() > 1e-6f)
-                    { animated[b] = true; break; }
-            }
+            // Which bones the clip actually drives. The parser knows that exactly — it is the
+            // set of bones some transform track wrote to — so use it when it is there, and fall
+            // back to comparing frames against the reference pose when it is not.
+            var animated = clip.DrivenBones is { } driven && driven.Length == skeleton.ReferencePose.Length
+                ? driven
+                : DeriveDriven(clip, skeleton);
 
             _skel.SetData(world, skeleton.ParentIndices, animated);
             ApplyView();
 
             int animCount = animated.Count(a => a);
             _status.Text = $"{clip.NumFrames} frames · {clip.Duration:F2}s · {clip.NumTracks} tracks · "
-    + $"{animCount}/{animated.Length} bones animated"
+    + $"{animCount}/{animated.Length} bones driven"
     + (clip.TrackCountExceedsBones ? "  ⚠ more tracks than bones (wrong skeleton?)" : "");
-            _legend.Text = OnAnnotationEdit != null
+            const string skelLegend = "blue = bones this clip drives   ·   grey = held at the skeleton's reference pose   ·   green = root\n";
+            _legend.Text = skelLegend + (OnAnnotationEdit != null
                 ? "purple = animation annotations   ·   orange = clip triggers   ·   Ctrl+click a tick to jump   ·   double-click timeline to add, a tick to edit   ·   drag a tick to move (Alt = no snap)"
-                : "purple = animation annotations   ·   orange = clip triggers   ·   Ctrl+click a tick to jump";
+                : "purple = animation annotations   ·   orange = clip triggers   ·   Ctrl+click a tick to jump");
             _graphBtn.IsEnabled = OnShowInGraph != null;
             _addBtn.IsEnabled = OnAnnotationEdit != null;
 
@@ -338,6 +335,30 @@ namespace SageHavokEditor.UI
             if (keepT >= 0) HighlightTicks(keepT);
             // Don't restart playback on an in-place reload — keep the paused pose.
             if (AppSettings.PreviewAutoplay && keepT < 0) TogglePlay();
+        }
+
+        /// <summary>Fallback for a clip with no track binding: a bone counts as driven when some
+        /// frame puts it anywhere other than its reference pose. Rotation has to count as much as
+        /// translation — nearly every bone in a Skyrim clip only rotates, so comparing positions
+        /// alone left a fully animated skeleton reading as two or three moving bones.</summary>
+        private static bool[] DeriveDriven(AnimationClip clip, Skeleton skeleton)
+        {
+            var driven = new bool[skeleton.ReferencePose.Length];
+            int bones = Math.Min(driven.Length, clip.NumFrames > 0 ? clip.Frames[0].Length : 0);
+            for (int b = 0; b < bones; b++)
+            {
+                var r = skeleton.ReferencePose[b];
+                for (int f = 0; f < clip.NumFrames; f++)
+                {
+                    var t = clip.Frames[f][b];
+                    // |dot| because q and -q are the same rotation; 1e-6f is about a sixth of a degree.
+                    if ((t.Translation - r.Translation).LengthSquared() > 1e-6f
+                        || Math.Abs(Quaternion.Dot(t.Rotation, r.Rotation)) < 1f - 1e-6f
+                        || Math.Abs(t.Scale - r.Scale) > 1e-4f)
+                    { driven[b] = true; break; }
+                }
+            }
+            return driven;
         }
 
         private void TogglePlay()

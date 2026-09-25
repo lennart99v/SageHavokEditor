@@ -504,6 +504,13 @@ namespace SageHavokEditor.UI.Dialogs
                 "• Ctrl+click a timeline tick to seek straight to it.\n" +
                 "• The window remembers the size you resize it to.\n" +
                 "• Export FBX writes the clip out for Blender/Max/Maya — see Export FBX.\n\n" +
+                "The skeleton\n" +
+                "• Blue bones are the ones the clip drives — the animation has a transform track " +
+                "writing to them. Grey bones are held at the skeleton's reference pose because " +
+                "nothing in the clip touches them, and the green dot is the root.\n" +
+                "• The bones driven count in the status line is the same thing counted. Far fewer " +
+                "driven bones than the skeleton has is normal for a partial animation, and a good " +
+                "warning that a clip is being previewed against the wrong skeleton.\n\n" +
                 "Timeline markers\n" +
                 "• Purple pentagons pointing up are annotations — timed text markers stored inside the " +
                 "animation file itself (the hkanno kind).\n" +

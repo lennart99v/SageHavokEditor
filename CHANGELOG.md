@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The clip preview drew almost every animated bone as if nothing touched it.**
+  A bone was painted blue only when its *translation* left the reference pose;
+  everything else got the grey "held" pen. Nearly all animation is rotation — the
+  joint stays where it is and turns — so a fully animated troll clip showed **3 of
+  56 bones**, with 49 rotating bones drawn as held. `h2hattackcomboa` and
+  `bleedoutidle` both, and the status line agreed with the picture: `3/56 bones
+  animated` under a skeleton visibly swinging its arms.
+
+  The colour no longer comes from comparing values. `HavokAnimationParser` already
+  knows exactly which bones a clip drives — it lays each transform track over the
+  reference pose, so the set of bones it writes to *is* the answer — and now records
+  it as a skeleton-sized `DrivenBones`. Blue means a track in this clip writes this
+  bone: 54/56 for those two clips, the two grey ones being bones the 54 tracks never
+  reach. The status line says `bones driven`, and the legend under the timeline
+  explains the skeleton colours, which it never did.
+
+  Found by Sk on Discord 2026-09-23, who had assumed blue meant keyed bones and
+  could not make that reading fit what he was looking at. A clip built by hand rather
+  than parsed (`hkx-fbx-export`'s synthetic spin) carries no binding, so the preview
+  keeps a fallback: the same reference-pose comparison, but counting rotation and
+  scale as well as translation.
+
 - **Every clip trigger in an exported `.hky` unit came back firing nothing.** A
   trigger's `event` is an `hkbEventProperty` — an event index and a payload
   pointer — and her format writes it *flat* on the trigger (`event:` and

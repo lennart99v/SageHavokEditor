@@ -28,6 +28,11 @@ namespace SageHavokEditor.Core.Animation
         public List<string> AnnotationTrackNames = new();           // one entry per annotation track ("" when unnamed)
         public bool TrackCountExceedsBones;                         // real warning (vs. benign "fewer tracks")
 
+        /// <summary>Skeleton-sized: true where some transform track wrote to the bone, i.e.
+        /// the bones this clip actually drives. Null when a clip is built by hand instead of
+        /// parsed (the harnesses do that), which is why callers keep a fallback.</summary>
+        public bool[]? DrivenBones;
+
         public int FrameAt(double timeSeconds)
         {
             if (NumFrames <= 1) return 0;
@@ -209,6 +214,7 @@ namespace SageHavokEditor.Core.Animation
             int boneCount = skeleton.ReferencePose.Length;
 
             var frames = new HkTransform[numFrames][];
+            var driven = new bool[boneCount];
             for (int f = 0; f < numFrames; f++)
             {
                 // Every bone starts at its reference pose; animated tracks override.
@@ -219,7 +225,7 @@ namespace SageHavokEditor.Core.Animation
                 {
                     int bone = (trackToBone != null && t < trackToBone.Length) ? trackToBone[t] : t;
                     if (bone >= 0 && bone < boneCount)
-                        local[bone] = decoded[t];
+                    { local[bone] = decoded[t]; driven[bone] = true; }
                 }
                 frames[f] = local;
             }
@@ -232,6 +238,7 @@ namespace SageHavokEditor.Core.Animation
                 NumFrames = numFrames,
                 NumTracks = numTracks,
                 Frames = frames,
+                DrivenBones = driven,
                 TrackCountExceedsBones = numTracks > boneCount
             };
 
