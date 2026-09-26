@@ -103,6 +103,24 @@ cmake --build C:\SkyrimBehaviorDebugger\build --config Release
 ```
 
 Output: `C:\SkyrimBehaviorDebugger\build\Release\SkyrimBehaviorDebugger.dll`.
+
+**The generator has to name the same MSVC toolset vcpkg builds CommonLibSSE
+with**, because both link the static CRT and the STL's internal `__std_*`
+helpers are not stable across versions. vcpkg picks the newest toolset
+installed; `CMakePresets.json` names one explicitly. When the two drift apart
+the link fails on an unresolved `__std_*` symbol across dozens of CommonLibSSE
+objects — which is what a Visual Studio upgrade looks like from here. Re-point
+the preset, delete `build/CMakeCache.txt` and `build/CMakeFiles/` (leave
+`build/vcpkg_installed/` alone, or the dependencies rebuild from scratch), and
+configure again:
+
+```pwsh
+cmake -S C:\SkyrimBehaviorDebugger -B C:\SkyrimBehaviorDebugger\build `
+      -G "Visual Studio 18 2026" -A x64 `
+      -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+      -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+```
+
 Run its one test first — it exercises the connect / disconnect / reconnect cycle
 the editor depends on, which is otherwise only reachable by launching Skyrim:
 
