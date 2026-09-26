@@ -58,6 +58,24 @@ the problem is elsewhere. No log file at all means SKSE did not load the plugin
 - usually the .dll is in the wrong folder.
 
 
+Watching something other than yourself
+--------------------------------------
+
+The Debugger panel has a FOLLOW box at the top. "Player" is the default and is
+all this plugin could do before version 1.1.0. "Crosshair target" follows
+whatever actor you are pointing at in game, which is what you want when the file
+you are working on is a creature behaviour - the one kind of file you cannot
+debug by watching yourself move. A reference you have selected in the console
+counts as a target too.
+
+Once it has a target it keeps it, so alt-tabbing to read the editor does not
+throw the target away. Point at a different actor to change it. With nothing to
+point at, the panel reads "(no target)" rather than falling back to you.
+
+If the editor says the running plugin predates target following, the .dll in
+your Data folder is older than this one - install this folder over it.
+
+
 Two things that surprise people
 -------------------------------
 

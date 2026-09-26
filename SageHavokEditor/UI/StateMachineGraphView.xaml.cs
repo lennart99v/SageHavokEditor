@@ -96,6 +96,11 @@ namespace SageHavokEditor.UI
         private bool _debugPaused;
         private bool _debugRecording;
         private BehaviorDebuggerClient _debugger = null!;
+        // The actor the last snapshot was about, so a change of subject can clear the
+        // panel; and the two counters behind the "your plugin is too old" warning.
+        private string? _debugSubjectFormId;
+        private int _snapshotsWithoutSource;
+        private bool _targetModeUnsupportedWarned;
         private Dictionary<(string smName, int stateId), string> _stateLookup = new();
         public string LoadedFileName { get; set; } = "";
         private GraphVisualHost _visualHost = null!;
@@ -300,6 +305,21 @@ namespace SageHavokEditor.UI
                 _panToActive = !_panToActive;
                 DebugVM.PanToOpacity = _panToActive ? 1.0 : 0.5;
                 StatusText_?.Invoke(_panToActive ? "🎯 Pan-to-active ON" : "🎯 Pan-to-active OFF");
+            };
+
+            // The subject lives in the config, so switching it is a config re-send.
+            DebugVM.OnActorSourceChanged = index =>
+            {
+                _debugSubjectFormId = null;
+                _snapshotsWithoutSource = 0;
+                _targetModeUnsupportedWarned = false;
+
+                if (_debugger != null)
+                    _debugger.SendConfig(BuildDebugConfigFromLoadedFile());
+
+                StatusText_?.Invoke(index == 1
+                    ? "🎯 Following the crosshair target — point at an actor in game"
+                    : "👤 Following the player");
             };
             _visualHost = new GraphVisualHost();
             _visualHost.Width = 50000;
@@ -1740,6 +1760,34 @@ namespace SageHavokEditor.UI
 
             _debugger.SnapshotReceived += snap => Dispatcher.Invoke(() =>
             {
+                // ── Step 0: whose snapshot is this? ─────────────────────────────
+                // A plugin from before 1.1.0 knows no 'actorSource' and keeps reporting
+                // the player. It also sends no 'source', and that silence is the only
+                // way to tell it apart from a new plugin whose target happens to be the
+                // player — so the warning waits for a few snapshots rather than one.
+                if (DebugVM.ActorSourceIndex == 1 && snap.Source == null)
+                {
+                    if (++_snapshotsWithoutSource >= 4 && !_targetModeUnsupportedWarned)
+                    {
+                        _targetModeUnsupportedWarned = true;
+                        StatusText_?.Invoke(
+                            "⚠ The running SkyrimBehaviorDebugger.dll predates target following "
+                            + "— it reports the player only. Update it from the release zip.");
+                    }
+                }
+                else _snapshotsWithoutSource = 0;
+
+                // A different actor brings a different variable table and a different
+                // graph. The variable list only ever grows, so without this the wolf
+                // you switched to would keep showing the player's rows beside its own.
+                if (snap.FormId != _debugSubjectFormId)
+                {
+                    _debugSubjectFormId = snap.FormId;
+                    DebugVM.LiveVariables.Clear();
+                    DebugVM.HistoryEntries.Clear();
+                    _lastActiveStateKeys.Clear();
+                }
+
                 // ── Step 1: resolve all state names first ─────────────────────────
                 foreach (var state in snap.ActiveStates)
                 {
@@ -1848,6 +1896,10 @@ namespace SageHavokEditor.UI
             _debugger.Stop();
             _debugger = null;
 
+            _debugSubjectFormId = null;
+            _snapshotsWithoutSource = 0;
+            _targetModeUnsupportedWarned = false;
+
             _visualHost.SetLiveStates(new List<string>(), new List<VariableValue>());
             DebugVM.ActiveStates.Clear();
             DebugVM.LiveVariables.Clear();
@@ -1918,7 +1970,10 @@ namespace SageHavokEditor.UI
 
         public DebugConfig BuildDebugConfigFromLoadedFile()
         {
-            var config = new DebugConfig();
+            var config = new DebugConfig
+            {
+                ActorSource = DebugVM.ActorSourceIndex == 1 ? "target" : "player"
+            };
             if (_manager == null) return config;
 
             foreach (var v in _loadedVariables)

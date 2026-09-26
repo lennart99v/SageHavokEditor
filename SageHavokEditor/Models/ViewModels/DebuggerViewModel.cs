@@ -32,6 +32,23 @@ namespace SageHavokEditor.UI
         private string _actorLabel = "Live Debugger";
         public string ActorLabel { get => _actorLabel; set { _actorLabel = value; OnProp(); } }
 
+        // ── Subject ───────────────────────────────────────────────────────────
+        // 0 = the player, 1 = whatever the player is pointing at in game. Kept on
+        // the view model rather than on the panel because the panel is rebuilt when
+        // the debugger undocks into its own window.
+        private int _actorSourceIndex;
+        public int ActorSourceIndex
+        {
+            get => _actorSourceIndex;
+            set
+            {
+                if (_actorSourceIndex == value) return;
+                _actorSourceIndex = value;
+                OnProp();
+                OnActorSourceChanged?.Invoke(value);
+            }
+        }
+
         // ── Behavior mode badge ───────────────────────────────────────────────
         private Brush _accentBrush = new SolidColorBrush(Color.FromRgb(0x00, 0xAA, 0x55));
         public Brush AccentBrush { get => _accentBrush; set { _accentBrush = value; OnProp(); } }
@@ -67,5 +84,6 @@ namespace SageHavokEditor.UI
         public Action? OnRecordToggle { get; set; }
         public Action? OnExportRecording { get; set; }
         public Action? OnPanToActiveToggle { get; set; }
+        public Action<int>? OnActorSourceChanged { get; set; }
     }
 }

@@ -835,6 +835,23 @@ currently states GPL-3.0, matching the editor.
   (`ERROR_NO_DATA`); with the return value discarded it instead looks like a
   successful write of zero bytes, which is why nothing ever noticed.
 
+- [x] **Follow the crosshair target, not only the player.** `BuildSnapshot` read
+  everything through `RE::PlayerCharacter::GetSingleton()` and wrote a hardcoded
+  `"Player"` for `actorName`, so debugging a creature behaviour meant watching the
+  one actor in the cell that does not run it. The plugin now resolves a subject —
+  crosshair `targetActor`, then `target`, then the console's selected ref, then
+  the last one it found, held — selected by a flat `actorSource` key in the config
+  JSON and echoed back as `source` on every snapshot. That echo is what lets the
+  editor tell an out-of-date plugin (which ignores the key, keeps sending the
+  player and sends no `source`) from a new one whose target happens to be the
+  player, and say so in the status bar instead of looking broken.
+
+  Raised by Sleme on Discord 2026-09-25, who read it exactly right: no spawn
+  method made another actor appear, because nothing in the plugin ever looked at
+  one. The editor side needed the picker, and it needed to clear the panel when
+  the subject changes — the variable list only ever grew, so the new actor would
+  have shown the old one's rows beside its own.
+
 - [ ] **Read active state off the live graph instead of `syncVariableIndex`.**
   The protocol carries active states as a machine mirroring its state into a
   behaviour variable, read back with `GetGraphVariableInt`. That is all a process

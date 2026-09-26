@@ -7,7 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The live debugger can follow the actor you are pointing at.** The Debugger
+  panel gains a FOLLOW picker — 👤 Player or 🎯 Crosshair target — and
+  everything downstream of the snapshot follows it: the variable list, the active
+  states, the graph's live highlight and the transition history.
+
+  The plugin only ever knew one actor. `BuildSnapshot` opened with
+  `RE::PlayerCharacter::GetSingleton()` and read every value through that single
+  pointer, and `actorName` was the string literal `"Player"` in the assembled
+  JSON; nothing in the file enumerated the cell, the crosshair or the follower
+  list, so no way of spawning an actor could make one appear. The only non-player
+  it could report was the player's own mount. It now resolves a *subject* first:
+  `CrosshairPickData`'s `targetActor`, then its `target` when that is an actor,
+  then the console's selected reference, and failing all three the last actor it
+  resolved — held deliberately, because otherwise turning your head or alt-tabbing
+  to read the editor would drop the subject on the frame you wanted to read it.
+  With target following on and nothing resolved, the snapshot says so
+  (`actorName` of `(no target)`, empty states) rather than quietly falling back to
+  the player, which would light up the wrong file in the editor.
+
+  The editor asks for it with one flat `actorSource` key in the config JSON, which
+  the plugin's hand-rolled parser reads without disturbing its array scanning, and
+  every snapshot now carries the `source` it was resolved from. That echo is what
+  detects an out-of-date game side: a plugin older than 1.1.0 ignores the request,
+  keeps sending the player and sends no `source`, and four such snapshots in
+  target mode put a line in the status bar saying so. The panel also clears when
+  the subject's form id changes, because the variable list only ever grew — a wolf
+  would otherwise have shown the player's rows beside its own.
+
+  Raised by Sleme on Discord 2026-09-25: *"it seems to only recognize and show the
+  player. No other actor gets logged no matter how they're spawned."* He was
+  reading it correctly; it was written down as known limitation 3 in
+  `docs/live-debugger-protocol.md` and was nothing to do with his install.
+
 ### Fixed
+
+- **The SKSE plugin had stopped linking, and nothing in this repository would
+  have said so.** `cmake --build` died on `__std_replace_copy_2`, unresolved
+  across 40-odd CommonLibSSE objects. vcpkg had rebuilt `CommonLibSSE.lib` with
+  the MSVC 14.51 toolset that came with Visual Studio 18, while
+  `CMakePresets.json` still named the *Visual Studio 17 2022* generator — and
+  14.44's static STL, which that generator links against, does not define that
+  symbol. Two STL versions, one link. The preset now names the toolset vcpkg
+  actually builds with, `RELEASING.md` says why it has to match, and
+  `src/RegexStub.cpp` is gone: it existed to stub one symbol missing from the
+  *older* STL, 14.51 declares that symbol itself with a different signature, and
+  a no-op stub silently replacing a real STL function was never a good state to
+  leave behind. Found while building the change above; it predates it.
 
 - **The clip preview drew almost every animated bone as if nothing touched it.**
   A bone was painted blue only when its *translation* left the reference pose;

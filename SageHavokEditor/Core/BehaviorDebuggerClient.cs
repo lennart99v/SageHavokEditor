@@ -30,6 +30,14 @@ namespace SageHavokEditor.Core
         [JsonPropertyName("variables")] public List<VariableValue> Variables { get; set; } = new();
         [JsonPropertyName("dragon")] public DragonSnapshot? Dragon { get; set; }
 
+        /// <summary>
+        /// Which actor the plugin resolved this snapshot from: "player", "crosshair",
+        /// "console", "held", or "none" when target following found nobody. Null from a
+        /// plugin older than 1.1.0, which followed the player and said nothing about it —
+        /// that null is the only way to tell an old plugin from a new one.
+        /// </summary>
+        [JsonPropertyName("source")] public string? Source { get; set; }
+
         // Set by editor — not from plugin
         [JsonIgnore] public DateTime Timestamp { get; set; }
     }
@@ -58,6 +66,9 @@ namespace SageHavokEditor.Core
     {
         public List<DebugVarEntry> Variables { get; set; } = new();
         public List<DebugSMEntry> StateMachines { get; set; } = new();
+
+        /// <summary>"player" or "target" — which actor the plugin should report on.</summary>
+        public string ActorSource { get; set; } = "player";
     }
 
     public class BehaviorDebuggerClient
@@ -135,7 +146,8 @@ namespace SageHavokEditor.Core
                         variables = config.Variables.Select(v => new
                         { name = v.Name, type = v.Type }),
                         stateMachines = config.StateMachines.Select(s => new
-                        { variableName = s.VariableName, smName = s.SmName })
+                        { variableName = s.VariableName, smName = s.SmName }),
+                        actorSource = config.ActorSource
                     });
 
                     var bytes = System.Text.Encoding.UTF8.GetBytes(json);

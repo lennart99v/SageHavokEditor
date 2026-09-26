@@ -361,6 +361,7 @@ The same panel lives in two places. Docked it is the 🎮 Debugger tab; ⧉ Pop 
 **What the panel shows, top to bottom**
 
 - Header — a status dot (grey before you start, green while connected, dark red when the pipe drops and the client is retrying), the detected actor's icon and name, and the panel buttons.
+- FOLLOW — which actor the game side reports on: 👤 Player, or 🎯 Crosshair target to follow whatever you are pointing at in game. See Live Debugging: Setup & Connection.
 - ACTIVE STATES — one card per tracked state machine: the machine name in blue above its current state's name in green. An empty list here is the usual first-run surprise and almost never a broken connection; see Why Active States Are Empty.
 - TRANSITION HISTORY — a timestamped log, newest first, of every state entry as it happens, written as machine → state. It keeps the last 50 entries; a state that is merely still active is not repeated, so every line is a real entry into that state.
 - VARIABLES — the actor's live variable values, with a second collapsible 🐉 group underneath for the mount whenever the actor is riding. Both group headers collapse, which is worth doing on 0\_master's ~120 variables.
@@ -402,6 +403,12 @@ A skeleton-aware animation player in its own window. Open it with the ▶ button
 - Ctrl+click a timeline tick to seek straight to it.
 - The window remembers the size you resize it to.
 - Export FBX writes the clip out for Blender/Max/Maya — see Export FBX.
+
+
+**The skeleton**
+
+- Blue bones are the ones the clip drives — the animation has a transform track writing to them. Grey bones are held at the skeleton's reference pose because nothing in the clip touches them, and the green dot is the root.
+- The bones driven count in the status line is the same thing counted. Far fewer driven bones than the skeleton has is normal for a partial animation, and a good warning that a clip is being previewed against the wrong skeleton.
 
 
 **Timeline markers**
@@ -737,10 +744,19 @@ Live debugging pairs the editor with a running game. The game side is the Skyrim
 - This was not distributed at all before 0.8.0.
 
 
+**Choosing which actor to follow**
+
+- The FOLLOW picker at the top of the panel says whose graph you are watching. 👤 Player is the default, and is all any version before this one could do.
+- 🎯 Crosshair target follows whatever actor you are pointing at in game. Put the crosshair on a wolf and the variables, the active states, the graph highlight and the transition history are all the wolf's — which is the point, because a creature behaviour is a file you cannot debug by watching yourself. A reference selected in the console counts too, and that is the way to reach something you cannot easily put a crosshair on.
+- The target is held once it is found, so looking away, opening a menu or alt-tabbing to read the editor does not drop it. It changes when you point at a different actor, and clears when that actor unloads — the panel then reads (no target) until you point at something again.
+- Switching the picker empties the panel. Variables and states belong to the actor they came from, and mixing two actors' rows in one list would be worse than losing the old ones.
+- This needs SkyrimBehaviorDebugger 1.1.0 or newer. An older plugin does not know the setting, ignores it and carries on reporting the player; the status bar says so after a second or two rather than leaving you to wonder why the wolf looks exactly like you.
+
+
 **What flows over which pipe**
 
 - SkyrimBehaviorDebugger — game → editor. One JSON snapshot per line: the actor's name and behaviour file, its active states as machine name plus numeric state id, every watched variable's value, and the same again for the mount when riding.
-- SkyrimBehaviorDebugger\_Config — editor → game. Tells the plugin what to watch: the loaded file's variables with each one's type (float for REAL, VECTOR and QUATERNION variables, int for everything else), plus one entry per state machine that can report its state, giving the machine's name and the variable to read it from.
+- SkyrimBehaviorDebugger\_Config — editor → game. Tells the plugin what to watch: the loaded file's variables with each one's type (float for REAL, VECTOR and QUATERNION variables, int for everything else), plus one entry per state machine that can report its state, giving the machine's name and the variable to read it from, and which actor to follow.
 
 
 **Starting a session**

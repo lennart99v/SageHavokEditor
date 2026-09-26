@@ -5,19 +5,27 @@ pair of local named pipes. This document describes both halves as built.
 
 ## Status
 
-The plugin **exists and works**. It is not in this repository, not in version
-control anywhere, and has never been released — so anybody who reads the Guide,
-goes looking for it on Nexus and finds nothing is not doing anything wrong. Until
-it is published, the Debugger tab is effectively author-only.
+The plugin **ships in the release zip from 0.8.0**, under
+`SKSE Plugin/SKSE/Plugins/`. It is still **not in this repository and not in
+version control anywhere** — the release process reaches for a path on one
+machine, which is the remaining soft spot and is tracked in `ROADMAP.md`. Nothing
+in this repo builds or tests it, so a change to it lands here as documentation
+only.
 
 - Source: `C:\SkyrimBehaviorDebugger\` — CMake + vcpkg + CommonLibSSE-NG,
-  one translation unit (`src/Plugin.cpp`, ~470 lines) plus a PCH and a one-symbol
-  `RegexStub.cpp` that satisfies a CommonLibSSE built against an older MSVC STL.
+  one translation unit (`src/Plugin.cpp`, ~500 lines) plus a PCH and
+  `src/PipeServer.h`. Version 1.1.0; the version matters, because the editor
+  asks it for things older builds cannot do.
 - Built artefact: `SkyrimBehaviorDebugger.dll`, installed to
   `Data/SKSE/Plugins/`. Writes `SkyrimBehaviorDebugger.log` to the usual SKSE log
   directory.
 - Dependencies are `commonlibsse-ng` and `spdlog` (header-only), both via vcpkg;
-  C++23, static MSVC runtime.
+  C++23, static MSVC runtime. **The generator in `CMakePresets.json` has to name
+  the same MSVC toolset vcpkg builds CommonLibSSE with** — both link the static
+  CRT, and the STL's `__std_*` helpers are not stable across versions, so a
+  mismatch is an unresolved symbol across dozens of CommonLibSSE objects rather
+  than anything that reads as a version problem. `RELEASING.md` step 5b has the
+  re-point recipe.
 
 Getting it published is tracked in `ROADMAP.md` under *Live debugger*.
 
@@ -52,6 +60,7 @@ spaces:
 {
   "formId": "00000014",
   "actorName": "Player",
+  "source": "player",
   "behaviorFile": "0_master",
   "activeStates": [
     { "smName": "MTState", "stateId": 12, "stateName": "" }
@@ -65,8 +74,14 @@ spaces:
 
 - **`formId`** — eight uppercase hex digits, **no `0x` prefix** (`00000014` for
   the player). Carried by the editor but not currently displayed.
-- **`actorName`** — hardcoded `"Player"`. The plugin only ever reports the player
-  (plus a mount, below); it does not look at targets or followers.
+- **`actorName`** — the subject's `GetDisplayFullName()`, so a real name: the
+  character's own name for the player, `Wolf` for a wolf. `(unnamed)` when the
+  form has no name, and `(no target)` for the empty snapshot described under
+  *Which actor* below. It was the hardcoded literal `"Player"` before 1.1.0.
+- **`source`** — how the subject was resolved: `player`, `crosshair`, `console`,
+  `held`, or `none`. **Absent entirely from a plugin older than 1.1.0**, and the
+  editor leans on that: a missing `source` while it is asking for a target is how
+  it knows the game side is too old to honour the request.
 - **`behaviorFile`** — read from `graphs[0]->behaviorGraph->name`, so it is the
   **graph's name**, not a path or a filename with an extension. Empty string if
   the actor has no animation graph yet.
@@ -103,7 +118,8 @@ wait for a reply.
   ],
   "stateMachines": [
     { "variableName": "iState_MT", "smName": "MTState" }
-  ]
+  ],
+  "actorSource": "target"
 }
 ```
 
@@ -113,6 +129,10 @@ wait for a reply.
   `GetGraphVariableFloat` or `GetGraphVariableInt`.
 - **`stateMachines`** — each machine's name plus the behaviour variable to read
   its state from. See below.
+- **`actorSource`** — `"player"` (the default, and what is assumed when the key is
+  absent) or `"target"`. A flat scalar on purpose: the array scanning below stops
+  at the first `]` after its own key, so a scalar beside the arrays cannot disturb
+  it, and an older plugin ignores it and carries on reporting the player.
 
 The editor re-sends the whole config — never a delta — on start, on every
 reconnect, whenever a different file is loaded while debugging, and immediately
@@ -130,6 +150,42 @@ constrains the format more than the format admits:
 
 This matches what the editor emits today. It is worth knowing before either side
 changes shape.
+
+## Which actor a snapshot is about
+
+Before 1.1.0 the answer was always the player. `BuildSnapshot` began with
+`RE::PlayerCharacter::GetSingleton()` and read every value through that pointer;
+nothing in the plugin enumerated the cell, the crosshair or the follower list, so
+no way of spawning an actor could put one in the panel. The only non-player it
+could report was the player's own mount.
+
+It now resolves a **subject** first, in this order:
+
+1. `CrosshairPickData::targetActor`, then its `target` when that is an actor —
+   pointing at something is the obvious gesture, and the pick data clears the
+   moment you look away.
+2. `Console::GetSelectedRef()`, for what you cannot put a crosshair on: a
+   reference clicked with the console open stays selected while you walk around
+   it.
+3. The last actor resolved by either, **held**. Without this, turning your head
+   or alt-tabbing to read the editor would drop the subject on the frame you
+   wanted to read it. The hold is an `ActorHandle`, re-resolved each snapshot and
+   released once it no longer resolves to a loaded actor.
+
+Each candidate must be an `Actor` with `Is3DLoaded()` — an actor with no 3D has
+no animation graph, and asking one for a graph variable off the sender thread is
+not how you want to find that out. The resolved actor is held as a
+`NiPointer<Actor>` for the duration of the snapshot so it cannot be freed
+mid-read.
+
+With `actorSource` of `target` and nothing resolved, the plugin sends a snapshot
+with `"actorName": "(no target)"`, `"source": "none"`, an empty `behaviorFile`
+and empty arrays — deliberately, rather than falling back to the player. The
+editor highlights the graph of whatever it is sent, so a silent substitution
+would light up the wrong file.
+
+The mount group still rides on the subject: `bIsRiding` and `GetMount()` are read
+from the resolved actor, not from the player, so a mounted NPC reports its horse.
 
 ## How active states are read, and why it is the weak point
 
@@ -162,19 +218,18 @@ produce a machine name that exists in no real graph.
 
 Worth fixing before the plugin is published, and worth knowing meanwhile.
 
-1. **One editor session per game launch.** After a client connects, the pipe
-   thread parks in `while (_running) Sleep(100)` and never notices the
-   disconnect, so the pipe is never torn down and recreated. Stop Debug and start
-   again and the editor will wait forever against a game that thinks it still has
-   a client. The editor's own reconnect loop is fine; the plugin is the half that
-   cannot. Restarting Skyrim is the current workaround.
-2. **Write failures are ignored.** `Send` discards the `WriteFile` result, so a
-   broken pipe is indistinguishable from a successful send and the plugin keeps
-   building snapshots for a reader that has gone. Checking it is also how the
-   thread would learn to recreate the pipe and fix (1).
-3. **Player only.** Reporting a targeted actor would be more useful for debugging
-   a creature or a follower, and costs the protocol nothing — but the editor's
-   panel would need an actor picker.
-4. **Fixed 2 Hz.** Fine for variables, coarse for catching a state held briefly.
+1. **Fixed 2 Hz.** Fine for variables, coarse for catching a state held briefly.
    The graph's live pulse redraws about 30 times a second, so there is headroom;
    sending on change would be better than simply raising the rate.
+2. **The snapshot thread reads game state off the main thread.** It always has —
+   `GetGraphVariableInt` on a detached thread predates target following — and
+   resolving handles and reading `GetDisplayFullName()` there is more of the same.
+   Holding a `NiPointer` keeps the actor alive across a snapshot, which is the
+   part that matters, but a task queued onto the main thread would be the correct
+   shape.
+
+Fixed since this document was first written: the pipe served one editor session
+per game launch (the accept loop parked and never saw the disconnect, because
+`Send` discarded the `WriteFile` result — both addressed, with
+`test/pipe_reconnect_test.cpp` covering the cycle), and the plugin reported the
+player and nothing else (see *Which actor a snapshot is about*).
